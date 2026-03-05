@@ -1,21 +1,26 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "db2eacd95acd27e5c871faebfd9468c0"
-name = "Antigravity Dev"
+name = "LAB NUTRITION — Suscripciones"
 application_url = "https://example.com"
 embedded = true
 
 [build]
-automatically_update_urls_on_dev = true
+  automatically_update_urls_on_dev = true
+  include_config_on_deploy = true
+  dev_store_url = "nutrition-lab-cluster.myshopify.com"
 
 [webhooks]
-api_version = "2026-01"
+  api_version = "2026-01"
 
 [access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = ""
-optional_scopes = [ ]
-use_legacy_install_flow = false
+  scopes = "write_orders,read_orders,read_customers,write_customers,read_products"
 
 [auth]
-redirect_urls = [ ]
+  redirect_urls = [
+    "https://example.com/auth/callback",
+    "http://localhost:3000/auth/callback"
+  ]
+
+[pos]
+  embedded = false

@@ -26,4 +26,5 @@ extensions/*/dist
 
 # Ignore shopify files created during app dev
 .shopify/*
-.shopify.lock
+.shopify.lockweb/node_modules/
+web/.env

@@ -19,6 +19,7 @@
   "author": "usuario",
   "private": true,
   "workspaces": [
-    "extensions/*"
+    "extensions/*",
+    "web"
   ]
 }
