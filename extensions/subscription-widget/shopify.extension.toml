@@ -1,6 +1,0 @@
-api_version = "2026-01"
-
-[[extensions]]
-type = "theme"
-name = "LAB Subscription Widget"
-handle = "lab-subscription-widget"
