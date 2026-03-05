@@ -588,14 +588,17 @@ app.delete('/api/stacks/:id', async (req, res) => {
 ═══════════════════════════════════════════════ */
 app.get('/api/shopify/products', async (req, res) => {
     try {
-        const shop = process.env.SHOPIFY_SHOP;
-        const token = process.env.SHOPIFY_ACCESS_TOKEN;
-        if (!shop || !token) {
-            return res.json({ products: [], error: 'Shopify credentials not configured' });
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) {
+            return res.json({ products: [], error: 'SHOPIFY_ACCESS_TOKEN not set. Visit /auth?shop=' + shop + ' to authorize.' });
         }
         const url = `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,images,variants,status`;
         const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } });
-        if (!r.ok) return res.json({ products: [], error: `Shopify API error: ${r.status}` });
+        if (!r.ok) {
+            const errText = await r.text();
+            return res.json({ products: [], error: `Shopify API ${r.status}: ${errText.slice(0, 200)}` });
+        }
         const data = await r.json();
         res.json({
             products: (data.products || []).map(p => ({
