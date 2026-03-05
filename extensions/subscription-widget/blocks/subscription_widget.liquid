@@ -1,0 +1,306 @@
+{{ 'subscription-widget.css' | asset_url | stylesheet_tag }}
+
+{%- liquid
+  assign product_price = product.selected_or_first_available_variant.price | divided_by: 100.0
+  assign currency = cart.currency.iso_code | default: 'PEN'
+-%}
+
+<div class="lab-sub-widget"
+  id="lab-sub-widget-{{ block.id }}"
+  data-product-id="{{ product.id }}"
+  data-variant-id="{{ product.selected_or_first_available_variant.id }}"
+  data-price="{{ product_price }}"
+  data-currency="{{ currency }}"
+  data-product-title="{{ product.title | escape }}"
+  data-product-image="{{ product.featured_image | img_url: '200x200' }}"
+  data-checkout-url="{{ block.settings.checkout_url }}"
+  {{ block.shopify_attributes }}>
+
+  <!-- TOGGLE -->
+  <div class="lab-sub-toggle-wrap">
+    <button class="lab-sub-toggle-btn active" data-mode="one-time" id="btn-onetime-{{ block.id }}">
+      Compra única
+    </button>
+    <button class="lab-sub-toggle-btn" data-mode="subscription" id="btn-sub-{{ block.id }}">
+      Suscripción
+      <span class="lab-sub-badge">AHORRA HASTA 30%</span>
+    </button>
+  </div>
+
+  <!-- ONE-TIME SECTION -->
+  <div class="lab-sub-section lab-sub-onetime active" id="section-onetime-{{ block.id }}">
+    <div class="lab-sub-price-display">
+      <span class="lab-sub-price-current" id="price-onetime-{{ block.id }}">
+        {{ currency }} {{ product_price | money_without_currency }}
+      </span>
+      <span class="lab-sub-price-label">Precio estándar</span>
+    </div>
+  </div>
+
+  <!-- SUBSCRIPTION SECTION -->
+  <div class="lab-sub-section lab-sub-recurring" id="section-sub-{{ block.id }}" style="display:none">
+
+    <!-- FREQUENCY -->
+    <div class="lab-sub-selector-group">
+      <label class="lab-sub-selector-label">Frecuencia de envío</label>
+      <div class="lab-sub-selector-row" id="freq-row-{{ block.id }}">
+        <button class="lab-sub-chip active" data-freq="1" data-freq-label="Mensual">
+          📦 Mensual
+        </button>
+        <button class="lab-sub-chip" data-freq="2" data-freq-label="Bimestral">
+          📦 Bimestral
+        </button>
+      </div>
+    </div>
+
+    <!-- PERMANENCE -->
+    <div class="lab-sub-selector-group">
+      <label class="lab-sub-selector-label">Permanencia mínima</label>
+      <div class="lab-sub-selector-row" id="perm-row-{{ block.id }}">
+        <button class="lab-sub-chip active" data-perm="3" data-perm-label="3 meses">
+          3 meses
+        </button>
+        <button class="lab-sub-chip" data-perm="6" data-perm-label="6 meses">
+          6 meses
+        </button>
+        <button class="lab-sub-chip" data-perm="12" data-perm-label="12 meses">
+          ⭐ 12 meses
+        </button>
+      </div>
+    </div>
+
+    <!-- BENEFIT DISPLAY -->
+    <div class="lab-sub-benefit-box" id="benefit-box-{{ block.id }}">
+      <div class="lab-sub-benefit-discount" id="benefit-discount-{{ block.id }}">20% OFF</div>
+      <div class="lab-sub-benefit-prices">
+        <span class="lab-sub-price-original" id="price-original-{{ block.id }}"></span>
+        <span class="lab-sub-price-final" id="price-final-{{ block.id }}"></span>
+      </div>
+      <div class="lab-sub-benefit-extra" id="benefit-extra-{{ block.id }}"></div>
+      <div class="lab-sub-benefit-saving" id="benefit-saving-{{ block.id }}"></div>
+    </div>
+
+    <!-- LEGAL / CANCELLATION NOTICE -->
+    <div class="lab-sub-legal" id="benefit-legal-{{ block.id }}">
+      <span class="lab-sub-legal-icon">🔒</span>
+      Cancelación disponible <strong>entre los días 30 y 15</strong> antes de cada envío.
+      Vigente tras completar tu permanencia mínima.
+    </div>
+
+    <!-- GIFT REVEAL -->
+    <div class="lab-sub-gift" id="benefit-gift-{{ block.id }}" style="display:none">
+      <div class="lab-sub-gift-inner">
+        <span class="lab-sub-gift-icon">🎁</span>
+        <div>
+          <div class="lab-sub-gift-title" id="benefit-gift-title-{{ block.id }}">¡Regalo incluido!</div>
+          <div class="lab-sub-gift-desc" id="benefit-gift-desc-{{ block.id }}"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CTA BUTTON -->
+  <button class="lab-sub-cta" id="lab-sub-cta-{{ block.id }}">
+    <span class="lab-sub-cta-text">Agregar al carrito</span>
+  </button>
+
+  <!-- TRUST BADGES -->
+  <div class="lab-sub-trust">
+    <span>🔒 Pago seguro</span>
+    <span>✅ Sin permanencia oculta</span>
+    <span>🚚 Envío automático</span>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  const BLOCK_ID = '{{ block.id }}';
+  const BASE_PRICE = {{ product_price }};
+  const CURRENCY = '{{ currency }}';
+
+  // Benefit matrix
+  const MATRIX = {
+    '1-3':  { pct: 25, points: false, gift: null },
+    '2-3':  { pct: 20, points: false, gift: null },
+    '1-6':  { pct: 30, points: true,  gift: null },
+    '2-6':  { pct: 30, points: false, gift: null },
+    '1-12': { pct: 30, points: true,  gift: { title: '¡Creatina GRATIS en tu mes 12!', desc: 'Creatine Micronized (300g) incluida automáticamente en tu 12° pedido.' } },
+    '2-12': { pct: 30, points: false, gift: { title: '¡Shaker GRATIS en tu mes 6!', desc: 'Shaker LAB NUTRITION incluido en tu 6° pedido.' } },
+  };
+
+  let currentMode = 'one-time';
+  let currentFreq = 1;
+  let currentPerm = 3;
+
+  const $ = (id) => document.getElementById(id + '-' + BLOCK_ID);
+
+  function fmt(n) {
+    return CURRENCY + ' ' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  function getKey() { return currentFreq + '-' + currentPerm; }
+
+  function updateBenefits() {
+    const benefit = MATRIX[getKey()] || { pct: 20, points: false, gift: null };
+    const pct = benefit.pct;
+    const discounted = BASE_PRICE * (1 - pct / 100);
+    const saving = BASE_PRICE - discounted;
+
+    $('benefit-discount').textContent = pct + '% OFF';
+    $('price-original').textContent = fmt(BASE_PRICE);
+    $('price-final').textContent = fmt(discounted);
+    $('benefit-saving').textContent = 'Ahorrás ' + fmt(saving) + ' por pedido';
+
+    // Extra benefits
+    let extras = [];
+    if (benefit.points) extras.push('✨ Puntos LAB extra en cada ciclo');
+    $('benefit-extra').textContent = extras.join(' · ');
+
+    // Gift
+    if (benefit.gift) {
+      $('benefit-gift').style.display = 'block';
+      $('benefit-gift-title').textContent = benefit.gift.title;
+      $('benefit-gift-desc').textContent = benefit.gift.desc;
+    } else {
+      $('benefit-gift').style.display = 'none';
+    }
+
+    // Update CTA
+    const cta = $('lab-sub-cta');
+    if (currentMode === 'subscription') {
+      cta.querySelector('.lab-sub-cta-text').textContent =
+        'Suscribirme — ' + pct + '% OFF';
+      cta.dataset.mode = 'subscription';
+      cta.dataset.freq = currentFreq;
+      cta.dataset.perm = currentPerm;
+      cta.dataset.pct = pct;
+      cta.dataset.price = discounted.toFixed(2);
+    } else {
+      cta.querySelector('.lab-sub-cta-text').textContent = 'Agregar al carrito';
+      cta.dataset.mode = 'one-time';
+    }
+  }
+
+  // Toggle mode
+  function setMode(mode) {
+    currentMode = mode;
+    const oneTimeSection = $('section-onetime');
+    const subSection = $('section-sub');
+    const btnOnetime = $('btn-onetime');
+    const btnSub = $('btn-sub');
+
+    if (mode === 'subscription') {
+      oneTimeSection.style.display = 'none';
+      subSection.style.display = 'block';
+      btnOnetime.classList.remove('active');
+      btnSub.classList.add('active');
+      updateBenefits();
+    } else {
+      oneTimeSection.style.display = 'block';
+      subSection.style.display = 'none';
+      btnOnetime.classList.add('active');
+      btnSub.classList.remove('active');
+      const cta = $('lab-sub-cta');
+      cta.querySelector('.lab-sub-cta-text').textContent = 'Agregar al carrito';
+      cta.dataset.mode = 'one-time';
+    }
+  }
+
+  // Init toggle buttons
+  document.querySelectorAll('#lab-sub-widget-' + BLOCK_ID + ' .lab-sub-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => setMode(btn.dataset.mode));
+  });
+
+  // Frequency chips
+  document.querySelectorAll('#freq-row-' + BLOCK_ID + ' .lab-sub-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#freq-row-' + BLOCK_ID + ' .lab-sub-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      currentFreq = parseInt(chip.dataset.freq);
+      updateBenefits();
+    });
+  });
+
+  // Permanence chips
+  document.querySelectorAll('#perm-row-' + BLOCK_ID + ' .lab-sub-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#perm-row-' + BLOCK_ID + ' .lab-sub-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      currentPerm = parseInt(chip.dataset.perm);
+      updateBenefits();
+    });
+  });
+
+  // CTA click
+  document.getElementById('lab-sub-cta-' + BLOCK_ID).addEventListener('click', function() {
+    const mode = this.dataset.mode;
+    const widget = document.getElementById('lab-sub-widget-' + BLOCK_ID);
+    const variantId = widget.dataset.variantId;
+    const productTitle = widget.dataset.productTitle;
+    const productImage = widget.dataset.productImage;
+
+    if (mode === 'one-time') {
+      // Standard add to cart
+      fetch('/cart/add.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: variantId, quantity: 1 })
+      }).then(() => {
+        window.location.href = '/cart';
+      }).catch(() => {
+        window.location.href = '/cart?variant=' + variantId;
+      });
+    } else {
+      // Subscription flow — store intent and redirect to subscription checkout
+      const subData = {
+        variantId,
+        productId: widget.dataset.productId,
+        productTitle,
+        productImage,
+        frequency: parseInt(this.dataset.freq),
+        permanence: parseInt(this.dataset.perm),
+        discount: parseInt(this.dataset.pct),
+        finalPrice: parseFloat(this.dataset.price),
+        basePrice: BASE_PRICE,
+        currency: CURRENCY,
+        timestamp: Date.now()
+      };
+      sessionStorage.setItem('lab_subscription_intent', JSON.stringify(subData));
+
+      const checkoutUrl = widget.dataset.checkoutUrl || '/pages/suscripcion';
+      window.location.href = checkoutUrl + '?v=' + variantId + '&f=' + subData.frequency + '&p=' + subData.permanence;
+    }
+  });
+
+  // Initial render
+  updateBenefits();
+})();
+</script>
+
+{% schema %}
+{
+  "name": "LAB Subscription Widget",
+  "target": "section",
+  "settings": [
+    {
+      "type": "url",
+      "id": "checkout_url",
+      "label": "URL de página de suscripción",
+      "info": "URL del checkout de suscripción (ej: /pages/suscripcion)"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_trust_badges",
+      "label": "Mostrar trust badges",
+      "default": true
+    }
+  ],
+  "presets": [
+    {
+      "name": "LAB Subscription Widget"
+    }
+  ]
+}
+{% endschema %}
