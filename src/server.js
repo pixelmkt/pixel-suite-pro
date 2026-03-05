@@ -410,6 +410,116 @@ app.get('/portal/:customerId', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'portal.html'));
 });
 
+/* ═══════════════════════════════════════════════
+   📣 MARKETING API
+═══════════════════════════════════════════════ */
+
+/* Send email campaign to a subscriber segment */
+app.post('/api/marketing/send', async (req, res) => {
+    try {
+        const { segment, subject, body, previewText } = req.body;
+        if (!subject || !body) return res.status(400).json({ error: 'subject and body required' });
+
+        // Build segment query
+        let q = supabase.from('subscriptions').select('customer_email, customer_name, product_title, frequency_months, permanence_months, discount_pct');
+        if (segment === 'active') q = q.eq('status', 'active');
+        else if (segment === 'paused') q = q.eq('status', 'paused');
+        else if (segment === 'failed') q = q.eq('status', 'payment_failed');
+        else if (segment === 'cancelled') q = q.eq('status', 'cancelled');
+        // 'all' = no filter
+
+        const { data: subs, error } = await q;
+        if (error) throw error;
+
+        // Deduplicate by email
+        const unique = Object.values(subs.reduce((acc, s) => { acc[s.customer_email] = s; return acc; }, {}));
+
+        let sent = 0, failed = 0;
+        for (const sub of unique) {
+            const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+        body{font-family:sans-serif;background:#f2f2f2;color:#111}
+        .w{max-width:600px;margin:32px auto;background:#fff;border-radius:10px;overflow:hidden}
+        .h{background:#9d2a23;padding:24px 32px;color:#fff;font-size:20px;font-weight:900;letter-spacing:2px}
+        .b{padding:28px 32px;line-height:1.6} .f{background:#f2f2f2;padding:14px 32px;text-align:center;font-size:11px;color:#aaa}
+      </style></head><body><div class="w">
+        <div class="h">🧬 LAB NUTRITION</div>
+        <div class="b">${body.replace(/\n/g, '<br>')}</div>
+        <div class="f">LAB NUTRITION · <a href="${process.env.BACKEND_URL}/portal/${sub.customer_email}" style="color:#9d2a23">Gestionar suscripción</a></div>
+      </div></body></html>`;
+            try {
+                const nodemailer = require('nodemailer');
+                const t = nodemailer.createTransport({ host: process.env.SMTP_HOST, port: 587, secure: false, auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } });
+                await t.sendMail({ from: process.env.EMAIL_FROM, to: sub.customer_email, subject, html });
+                sent++;
+            } catch { failed++; }
+        }
+
+        // Log campaign
+        await supabase.from('subscription_events').insert({
+            subscription_id: null, event_type: 'campaign_sent',
+            metadata: { subject, segment, total: unique.length, sent, failed }
+        }).catch(() => { });
+
+        res.json({ success: true, sent, failed, total: unique.length });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/* ── Export subscribers as CSV ── */
+app.get('/api/subscribers/export', async (req, res) => {
+    const { status } = req.query;
+    let q = supabase.from('subscriptions').select('customer_email,customer_name,customer_phone,product_title,frequency_months,permanence_months,discount_pct,final_price,status,cycles_completed,cycles_required,next_charge_at,created_at');
+    if (status) q = q.eq('status', status);
+    const { data } = await q;
+
+    const header = 'Email,Nombre,Teléfono,Producto,Frecuencia,Permanencia,Descuento%,Precio,Estado,Ciclos,ProximoCobro,Inicio\n';
+    const rows = (data || []).map(s => [
+        s.customer_email, s.customer_name || '', s.customer_phone || '',
+        `"${s.product_title}"`, s.frequency_months === 1 ? 'Mensual' : 'Bimestral',
+        s.permanence_months + 'm', s.discount_pct + '%', s.final_price,
+        s.status, `${s.cycles_completed}/${s.cycles_required}`,
+        s.next_charge_at?.split('T')[0] || '', s.created_at?.split('T')[0] || ''
+    ].join(',')).join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="suscriptores-lab.csv"');
+    res.send(header + rows);
+});
+
+/* ═══════════════════════════════════════════════
+   📦 STACKS API
+═══════════════════════════════════════════════ */
+app.get('/api/stacks', async (req, res) => {
+    const { data } = await supabase.from('subscription_stacks').select('*').order('created_at', { ascending: false });
+    res.json(data || []);
+});
+
+app.post('/api/stacks', async (req, res) => {
+    const { data, error } = await supabase.from('subscription_stacks').upsert(req.body).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+});
+
+app.delete('/api/stacks/:id', async (req, res) => {
+    await supabase.from('subscription_stacks').delete().eq('id', req.params.id);
+    res.json({ success: true });
+});
+
+/* ═══════════════════════════════════════════════
+   ⚙️ SETTINGS API
+═══════════════════════════════════════════════ */
+app.get('/api/settings', async (req, res) => {
+    const { data } = await supabase.from('app_settings').select('*').single();
+    res.json(data || {});
+});
+
+app.put('/api/settings', async (req, res) => {
+    const { data, error } = await supabase.from('app_settings').upsert({ id: 1, ...req.body }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+});
+
 /* ── Health check ── */
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date() }));
 

@@ -126,3 +126,7 @@ ALTER TABLE eligible_products ENABLE ROW LEVEL SECURITY;
 
 -- Service role has full access (backend uses service key)
 -- Public has no direct access (all goes through backend API)
+
+CREATE TABLE IF NOT EXISTS subscription_stacks (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name TEXT NOT NULL, description TEXT, goal TEXT, products JSONB DEFAULT '[]', discount_pct INTEGER DEFAULT 25, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS app_settings (id INTEGER PRIMARY KEY DEFAULT 1, cancellation_window_open INTEGER DEFAULT 30, cancellation_window_close INTEGER DEFAULT 15, max_pause_months INTEGER DEFAULT 2, widget_enabled BOOLEAN DEFAULT true, discount_badge_text TEXT DEFAULT 'HASTA -30%', brand_color TEXT DEFAULT '#9d2a23', updated_at TIMESTAMPTZ DEFAULT NOW());
+INSERT INTO app_settings DEFAULT VALUES ON CONFLICT(id) DO NOTHING;

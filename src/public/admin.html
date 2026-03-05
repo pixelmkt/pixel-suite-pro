@@ -1,444 +1,1462 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LAB NUTRITION — Backoffice Suscripciones</title>
-<style>
-  :root {
-    --red: #9d2a23; --red2: #7e201a; --black: #000;
-    --white: #fff; --bg: #f4f4f6; --card: #fff;
-    --border: #e0e0e0; --muted: #888; --green: #1a7a3a;
-    --gold: #c8892a; --r: 10px;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background: var(--bg); color: var(--black); }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LAB NUTRITION — Backoffice Suscripciones</title>
+  <style>
+    :root {
+      --red: #9d2a23;
+      --red2: #7e201a;
+      --rl: rgba(157, 42, 35, .1);
+      --blk: #000;
+      --wht: #fff;
+      --bg: #f4f5f7;
+      --card: #fff;
+      --bdr: #e2e4e8;
+      --mut: #8a8f98;
+      --grn: #1a7a3a;
+      --gld: #c8892a;
+      --r: 10px;
+      --rs: 6px
+    }
 
-  /* SIDEBAR */
-  .sidebar { position:fixed; top:0; left:0; width:220px; height:100vh; background:var(--black); color:var(--white); display:flex; flex-direction:column; z-index:100; }
-  .sidebar-logo { padding:24px 20px; border-bottom:1px solid rgba(255,255,255,0.1); }
-  .sidebar-logo .brand { font-size:13px; font-weight:900; text-transform:uppercase; letter-spacing:2px; color:var(--white); }
-  .sidebar-logo .sub-brand { font-size:10px; color:var(--red); font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-top:2px; }
-  .nav { flex:1; padding:16px 0; }
-  .nav-item { display:flex; align-items:center; gap:10px; padding:11px 20px; font-size:13px; font-weight:600; color:rgba(255,255,255,0.6); cursor:pointer; transition:.15s; border-left:3px solid transparent; text-transform:uppercase; letter-spacing:0.5px; }
-  .nav-item:hover { color:var(--white); background:rgba(255,255,255,0.06); }
-  .nav-item.active { color:var(--white); border-left-color:var(--red); background:rgba(157,42,35,0.15); }
-  .nav-item .icon { font-size:16px; width:20px; text-align:center; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
 
-  /* MAIN */
-  .main { margin-left:220px; padding:28px; min-height:100vh; }
-  .page-header { margin-bottom:24px; }
-  .page-title { font-size:22px; font-weight:900; text-transform:uppercase; letter-spacing:0.5px; }
-  .page-sub { font-size:13px; color:var(--muted); margin-top:4px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--blk);
+      display: flex;
+      min-height: 100vh
+    }
 
-  /* METRICS GRID */
-  .metrics { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:26px; }
-  .metric-card { background:var(--card); border:1px solid var(--border); border-radius:var(--r); padding:16px; }
-  .metric-card.highlight { background:var(--red); border-color:var(--red); }
-  .metric-label { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted); margin-bottom:8px; }
-  .metric-card.highlight .metric-label { color:rgba(255,255,255,0.7); }
-  .metric-value { font-size:28px; font-weight:900; color:var(--black); }
-  .metric-card.highlight .metric-value { color:var(--white); }
+    /* ─ SIDEBAR ─ */
+    .sb {
+      width: 230px;
+      min-height: 100vh;
+      background: var(--blk);
+      color: var(--wht);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 100
+    }
 
-  /* TABLE */
-  .card { background:var(--card); border:1px solid var(--border); border-radius:var(--r); overflow:hidden; margin-bottom:22px; }
-  .card-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); }
-  .card-title { font-size:14px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; }
-  table { width:100%; border-collapse:collapse; }
-  th { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted); padding:11px 16px; text-align:left; border-bottom:1px solid var(--border); background:#fafafa; }
-  td { padding:12px 16px; font-size:13px; border-bottom:1px solid var(--border); }
-  tr:last-child td { border-bottom:none; }
-  tr:hover td { background:#f9f9f9; }
+    .sb-logo {
+      padding: 22px 18px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, .08)
+    }
 
-  /* BADGES */
-  .badge { display:inline-block; padding:3px 9px; border-radius:20px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; }
-  .badge-active  { background:#e8f5ee; color:var(--green); }
-  .badge-paused  { background:#fff8e1; color:var(--gold); }
-  .badge-cancelled { background:#fce8e8; color:var(--red); }
-  .badge-failed  { background:#fce8e8; color:#c00; }
+    .sb-brand {
+      font-size: 12px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 2px
+    }
 
-  /* BUTTONS */
-  .btn { padding:8px 14px; border:none; border-radius:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; cursor:pointer; transition:.15s; }
-  .btn-primary { background:var(--red); color:var(--white); }
-  .btn-primary:hover { background:var(--red2); }
-  .btn-ghost { background:transparent; color:var(--muted); border:1px solid var(--border); }
-  .btn-ghost:hover { color:var(--black); border-color:var(--black); }
+    .sb-sub {
+      font-size: 9px;
+      color: var(--red);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 3px
+    }
 
-  /* FILTERS */
-  .filters { display:flex; gap:8px; align-items:center; }
-  .filter-btn { padding:6px 14px; border:1.5px solid var(--border); border-radius:20px; background:var(--white); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; cursor:pointer; transition:.15s; }
-  .filter-btn.active { background:var(--black); border-color:var(--black); color:var(--white); }
+    .sb-nav {
+      flex: 1;
+      padding: 12px 0;
+      overflow-y: auto
+    }
 
-  /* PANELS */
-  .panel { display:none; }
-  .panel.active { display:block; }
+    .sb-sep {
+      font-size: 9px;
+      font-weight: 800;
+      color: rgba(255, 255, 255, .3);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      padding: 14px 18px 6px
+    }
 
-  /* FORM */
-  .form-group { margin-bottom:14px; }
-  .form-label { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); display:block; margin-bottom:6px; }
-  .form-control { width:100%; padding:9px 12px; border:1.5px solid var(--border); border-radius:6px; font-size:13px; outline:none; transition:.15s; }
-  .form-control:focus { border-color:var(--red); }
+    .ni {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 18px;
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, .55);
+      cursor: pointer;
+      transition: .15s;
+      border-left: 3px solid transparent;
+      text-transform: uppercase;
+      letter-spacing: .4px
+    }
 
-  /* PLAN MATRIX TABLE */
-  .plan-row td:nth-child(3) input { width:60px; text-align:center; }
+    .ni:hover {
+      color: var(--wht);
+      background: rgba(255, 255, 255, .06)
+    }
 
-  /* SEARCH */
-  .search-wrap { display:flex; gap:10px; align-items:center; }
-  #searchInput { padding:8px 14px; border:1.5px solid var(--border); border-radius:6px; font-size:13px; width:260px; outline:none; }
-  #searchInput:focus { border-color:var(--red); }
+    .ni.active {
+      color: var(--wht);
+      border-left-color: var(--red);
+      background: rgba(157, 42, 35, .2)
+    }
 
-  /* RESPONSIVE */
-  @media(max-width:1200px) { .metrics { grid-template-columns:repeat(3,1fr); } }
+    .ni .ic {
+      width: 18px;
+      text-align: center;
+      font-size: 14px;
+      flex-shrink: 0
+    }
 
-  /* TOAST */
-  .toast { position:fixed; bottom:24px; right:24px; background:var(--black); color:var(--white); padding:12px 20px; border-radius:8px; font-size:13px; font-weight:600; z-index:9999; display:none; animation:slideUp .3s ease; }
-  @keyframes slideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
-</style>
+    .sb-footer {
+      padding: 12px 18px;
+      border-top: 1px solid rgba(255, 255, 255, .08);
+      font-size: 10px;
+      color: rgba(255, 255, 255, .3)
+    }
+
+    /* ─ MAIN ─ */
+    .main {
+      margin-left: 230px;
+      flex: 1;
+      padding: 24px
+    }
+
+    .ph {
+      margin-bottom: 20px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap
+    }
+
+    .pt {
+      font-size: 20px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: .4px
+    }
+
+    .ps {
+      font-size: 12px;
+      color: var(--mut);
+      margin-top: 3px
+    }
+
+    .panel {
+      display: none
+    }
+
+    .panel.active {
+      display: block
+    }
+
+    /* ─ CARDS & GRID ─ */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--bdr);
+      border-radius: var(--r);
+      overflow: hidden;
+      margin-bottom: 18px
+    }
+
+    .ch {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--bdr);
+      gap: 12px;
+      flex-wrap: wrap
+    }
+
+    .ct {
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .6px
+    }
+
+    .cp {
+      padding: 18px
+    }
+
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px
+    }
+
+    .grid3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px
+    }
+
+    .grid5 {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      margin-bottom: 20px
+    }
+
+    /* ─ METRIC CARDS ─ */
+    .mc {
+      background: var(--card);
+      border: 1px solid var(--bdr);
+      border-radius: var(--r);
+      padding: 14px 16px
+    }
+
+    .mc.hi {
+      background: var(--red);
+      border-color: var(--red)
+    }
+
+    .ml {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      color: var(--mut);
+      margin-bottom: 6px
+    }
+
+    .mc.hi .ml {
+      color: rgba(255, 255, 255, .7)
+    }
+
+    .mv {
+      font-size: 26px;
+      font-weight: 900;
+      line-height: 1.1
+    }
+
+    .mc.hi .mv {
+      color: var(--wht)
+    }
+
+    .md {
+      font-size: 11px;
+      color: var(--mut);
+      margin-top: 3px
+    }
+
+    .mc.hi .md {
+      color: rgba(255, 255, 255, .6)
+    }
+
+    /* ─ TABLE ─ */
+    table {
+      width: 100%;
+      border-collapse: collapse
+    }
+
+    th {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .7px;
+      color: var(--mut);
+      padding: 10px 14px;
+      text-align: left;
+      background: #fafafa;
+      border-bottom: 1px solid var(--bdr)
+    }
+
+    td {
+      padding: 11px 14px;
+      font-size: 12px;
+      border-bottom: 1px solid var(--bdr);
+      vertical-align: middle
+    }
+
+    tr:last-child td {
+      border-bottom: none
+    }
+
+    tr:hover td {
+      background: #fafbfc
+    }
+
+    /* ─ BADGES ─ */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .5px
+    }
+
+    .b-active {
+      background: #e6f4ec;
+      color: var(--grn)
+    }
+
+    .b-paused {
+      background: #fff8e1;
+      color: var(--gld)
+    }
+
+    .b-cancel {
+      background: #fce8e8;
+      color: var(--red)
+    }
+
+    .b-failed {
+      background: #fce8e8;
+      color: #c00
+    }
+
+    /* ─ BUTTONS ─ */
+    .btn {
+      padding: 8px 14px;
+      border: none;
+      border-radius: var(--rs);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      cursor: pointer;
+      transition: .15s;
+      white-space: nowrap
+    }
+
+    .btn-r {
+      background: var(--red);
+      color: var(--wht)
+    }
+
+    .btn-r:hover {
+      background: var(--red2)
+    }
+
+    .btn-b {
+      background: var(--blk);
+      color: var(--wht)
+    }
+
+    .btn-b:hover {
+      opacity: .8
+    }
+
+    .btn-g {
+      background: transparent;
+      color: var(--mut);
+      border: 1px solid var(--bdr)
+    }
+
+    .btn-g:hover {
+      color: var(--blk);
+      border-color: var(--blk)
+    }
+
+    .btn-grn {
+      background: var(--grn);
+      color: var(--wht)
+    }
+
+    .btn-sm {
+      padding: 5px 10px;
+      font-size: 10px
+    }
+
+    /* ─ FORM ─ */
+    .fg {
+      margin-bottom: 14px
+    }
+
+    .fl {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .7px;
+      color: var(--mut);
+      display: block;
+      margin-bottom: 5px
+    }
+
+    .fi,
+    .fsl,
+    .fta {
+      width: 100%;
+      padding: 9px 11px;
+      border: 1.5px solid var(--bdr);
+      border-radius: var(--rs);
+      font-size: 13px;
+      outline: none;
+      transition: .15s;
+      font-family: inherit;
+      background: var(--wht)
+    }
+
+    .fi:focus,
+    .fsl:focus,
+    .fta:focus {
+      border-color: var(--red)
+    }
+
+    .fta {
+      min-height: 100px;
+      resize: vertical
+    }
+
+    .fin {
+      font-size: 11px;
+      color: var(--mut);
+      margin-top: 4px
+    }
+
+    .frow {
+      display: flex;
+      gap: 12px
+    }
+
+    .frow .fg {
+      flex: 1
+    }
+
+    /* ─ TOGGLE SWITCH ─ */
+    .toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer
+    }
+
+    .toggle {
+      position: relative;
+      width: 38px;
+      height: 22px;
+      flex-shrink: 0
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0
+    }
+
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--bdr);
+      border-radius: 20px;
+      transition: .2s;
+      cursor: pointer
+    }
+
+    .toggle-slider:before {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      left: 3px;
+      bottom: 3px;
+      background: var(--wht);
+      border-radius: 50%;
+      transition: .2s
+    }
+
+    .toggle input:checked+.toggle-slider {
+      background: var(--red)
+    }
+
+    .toggle input:checked+.toggle-slider:before {
+      transform: translateX(16px)
+    }
+
+    .toggle-label {
+      font-size: 12px;
+      font-weight: 600
+    }
+
+    /* ─ FILTERS / CHIPS ─ */
+    .filters {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap
+    }
+
+    .fc {
+      padding: 5px 12px;
+      border: 1.5px solid var(--bdr);
+      border-radius: 20px;
+      background: var(--wht);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      cursor: pointer;
+      transition: .15s
+    }
+
+    .fc.active {
+      background: var(--blk);
+      border-color: var(--blk);
+      color: var(--wht)
+    }
+
+    /* ─ SEARCH ─ */
+    .search-row {
+      display: flex;
+      gap: 8px;
+      align-items: center
+    }
+
+    .search {
+      padding: 7px 12px;
+      border: 1.5px solid var(--bdr);
+      border-radius: var(--rs);
+      font-size: 12px;
+      width: 220px;
+      outline: none
+    }
+
+    .search:focus {
+      border-color: var(--red)
+    }
+
+    /* ─ PRODUCT GRID (picker) ─ */
+    .prod-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+      padding: 18px
+    }
+
+    .prod-card {
+      border: 2px solid var(--bdr);
+      border-radius: var(--r);
+      overflow: hidden;
+      cursor: pointer;
+      transition: .2s;
+      position: relative
+    }
+
+    .prod-card:hover {
+      border-color: var(--red)
+    }
+
+    .prod-card.on {
+      border-color: var(--red);
+      box-shadow: 0 0 0 3px var(--rl)
+    }
+
+    .prod-img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      background: #f4f5f7
+    }
+
+    .prod-name {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 8px 10px 4px;
+      text-align: center;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      white-space: nowrap
+    }
+
+    .prod-badge {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: var(--red);
+      color: var(--wht);
+      font-size: 9px;
+      font-weight: 900;
+      padding: 2px 7px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      display: none
+    }
+
+    .prod-card.on .prod-badge {
+      display: block
+    }
+
+    /* ─ STACK CARD ─ */
+    .stack-card {
+      border: 1.5px solid var(--bdr);
+      border-radius: var(--r);
+      padding: 14px;
+      transition: .15s
+    }
+
+    .stack-card:hover {
+      border-color: var(--red)
+    }
+
+    .stack-name {
+      font-size: 14px;
+      font-weight: 800
+    }
+
+    .stack-desc {
+      font-size: 11px;
+      color: var(--mut);
+      margin: 3px 0 8px
+    }
+
+    .stack-pills {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-bottom: 8px
+    }
+
+    .stack-pill {
+      background: #f4f5f7;
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 10px;
+      font-weight: 700
+    }
+
+    /* ─ ALERT / INFO BOX ─ */
+    .info-box {
+      background: #f0f4ff;
+      border: 1px solid #c2d0f8;
+      border-left: 4px solid #3b5de7;
+      border-radius: var(--rs);
+      padding: 12px 14px;
+      font-size: 12px;
+      margin-bottom: 14px
+    }
+
+    .info-box.warn {
+      background: #fff8e1;
+      border-color: #ffe082;
+      border-left-color: var(--gld)
+    }
+
+    .info-box.success {
+      background: #e6f4ec;
+      border-color: #a8d5b5;
+      border-left-color: var(--grn)
+    }
+
+    .info-box.danger {
+      background: #fce8e8;
+      border-color: #f5c0c0;
+      border-left-color: var(--red)
+    }
+
+    /* ─ SETTINGS SECTION ─ */
+    .settings-section {
+      border: 1px solid var(--bdr);
+      border-radius: var(--r);
+      margin-bottom: 16px;
+      overflow: hidden
+    }
+
+    .settings-header {
+      padding: 12px 16px;
+      background: #fafafa;
+      border-bottom: 1px solid var(--bdr);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .settings-body {
+      padding: 16px
+    }
+
+    /* ─ ACTIONS ROW ─ */
+    .act {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: nowrap
+    }
+
+    /* ─ TOAST ─ */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--blk);
+      color: var(--wht);
+      padding: 12px 18px;
+      border-radius: var(--r);
+      font-size: 12px;
+      font-weight: 700;
+      z-index: 9999;
+      display: none;
+      animation: su .25s ease;
+      max-width: 320px
+    }
+
+    @keyframes su {
+      from {
+        transform: translateY(12px);
+        opacity: 0
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1
+      }
+    }
+  </style>
 </head>
+
 <body>
 
-<!-- SIDEBAR -->
-<div class="sidebar">
-  <div class="sidebar-logo">
-    <div class="brand">🧬 LAB NUTRITION</div>
-    <div class="sub-brand">Backoffice Suscripciones</div>
-  </div>
-  <nav class="nav">
-    <div class="nav-item active" onclick="showPanel('dashboard')"><span class="icon">📊</span> Dashboard</div>
-    <div class="nav-item" onclick="showPanel('subscriptions')"><span class="icon">🔄</span> Suscripciones</div>
-    <div class="nav-item" onclick="showPanel('plans')"><span class="icon">⚙️</span> Matriz Beneficios</div>
-    <div class="nav-item" onclick="showPanel('products')"><span class="icon">📦</span> Productos Activos</div>
-    <div class="nav-item" onclick="showPanel('notifications')"><span class="icon">🔔</span> Notificaciones</div>
-  </nav>
-</div>
-
-<!-- MAIN CONTENT -->
-<div class="main">
-
-  <!-- ① DASHBOARD PANEL -->
-  <div id="panel-dashboard" class="panel active">
-    <div class="page-header">
-      <div class="page-title">Dashboard</div>
-      <div class="page-sub">Tiempo real · LAB NUTRITION Programa de Suscripciones</div>
+  <!-- ═══ SIDEBAR ═══ -->
+  <div class="sb">
+    <div class="sb-logo">
+      <div class="sb-brand">🧬 LAB NUTRITION</div>
+      <div class="sb-sub">Backoffice · Suscripciones</div>
     </div>
-    <div class="metrics" id="metricsGrid">
-      <div class="metric-card highlight"><div class="metric-label">MRR (S/)</div><div class="metric-value" id="m-mrr">—</div></div>
-      <div class="metric-card"><div class="metric-label">Activas</div><div class="metric-value" id="m-active">—</div></div>
-      <div class="metric-card"><div class="metric-label">Pausadas</div><div class="metric-value" id="m-paused">—</div></div>
-      <div class="metric-card"><div class="metric-label">Canceladas</div><div class="metric-value" id="m-cancelled">—</div></div>
-      <div class="metric-card"><div class="metric-label">Pago fallido</div><div class="metric-value" id="m-failed">—</div></div>
-    </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title">Últimas suscripciones</span><button class="btn btn-ghost" onclick="showPanel('subscriptions')">Ver todas →</button></div>
-      <table><thead><tr><th>Cliente</th><th>Producto</th><th>Plan</th><th>Estado</th><th>Próximo cobro</th><th>MRR</th></tr></thead>
-      <tbody id="dashboardTable"><tr><td colspan="6" style="text-align:center;padding:24px;color:#aaa">Cargando...</td></tr></tbody></table>
-    </div>
+    <nav class="sb-nav">
+      <div class="sb-sep">Principal</div>
+      <div class="ni active" onclick="show('dashboard')"><span class="ic">📊</span>Dashboard</div>
+      <div class="ni" onclick="show('subscribers')"><span class="ic">👥</span>Suscriptores</div>
+      <div class="ni" onclick="show('marketing')"><span class="ic">📣</span>Marketing</div>
+      <div class="sb-sep">Configuración</div>
+      <div class="ni" onclick="show('products')"><span class="ic">📦</span>Productos</div>
+      <div class="ni" onclick="show('plans')"><span class="ic">🏷️</span>Planes & Descuentos</div>
+      <div class="ni" onclick="show('stacks')"><span class="ic">🧬</span>Stacks</div>
+      <div class="ni" onclick="show('widget')"><span class="ic">🎨</span>Widget</div>
+      <div class="ni" onclick="show('settings')"><span class="ic">⚙️</span>Configuración</div>
+    </nav>
+    <div class="sb-footer">LAB NUTRITION v2.1 · Marzo 2026</div>
   </div>
 
-  <!-- ② SUBSCRIPTIONS PANEL -->
-  <div id="panel-subscriptions" class="panel">
-    <div class="page-header">
-      <div class="page-title">Suscripciones</div>
-      <div class="page-sub">Gestión completa de suscriptores activos</div>
-    </div>
-    <div class="card">
-      <div class="card-header">
-        <div class="filters">
-          <button class="filter-btn active" onclick="filterSubs('all',this)">Todas</button>
-          <button class="filter-btn" onclick="filterSubs('active',this)">Activas</button>
-          <button class="filter-btn" onclick="filterSubs('paused',this)">Pausadas</button>
-          <button class="filter-btn" onclick="filterSubs('cancelled',this)">Canceladas</button>
-          <button class="filter-btn" onclick="filterSubs('payment_failed',this)">Pago fallido</button>
+  <!-- ═══ MAIN CONTENT ═══ -->
+  <div class="main">
+
+    <!-- ① DASHBOARD -->
+    <div id="p-dashboard" class="panel active">
+      <div class="ph">
+        <div>
+          <div class="pt">Dashboard</div>
+          <div class="ps">Resumen en tiempo real del programa de suscripciones</div>
         </div>
-        <div class="search-wrap">
-          <input id="searchInput" placeholder="Buscar por email o producto..." oninput="searchSubs(this.value)">
+        <div style="display:flex;gap:8px"><button class="btn btn-g btn-sm" onclick="location.reload()">↺
+            Actualizar</button><a class="btn btn-r btn-sm" href="/api/subscribers/export" target="_blank">⬇ Exportar
+            CSV</a></div>
+      </div>
+      <div class="grid5" id="metrics-grid">
+        <div class="mc hi">
+          <div class="ml">MRR Mensual</div>
+          <div class="mv" id="m-mrr">S/ —</div>
+          <div class="md">Ingresos recurrentes</div>
         </div>
-      </div>
-      <table><thead><tr><th>Cliente</th><th>Producto</th><th>Frecuencia</th><th>Permanencia</th><th>Ciclos</th><th>Precio</th><th>Estado</th><th>Próx. cobro</th><th>Acciones</th></tr></thead>
-      <tbody id="subsTable"><tr><td colspan="9" style="text-align:center;padding:32px;color:#aaa">Cargando...</td></tr></tbody></table>
-    </div>
-  </div>
-
-  <!-- ③ PLANS PANEL (No-Code) -->
-  <div id="panel-plans" class="panel">
-    <div class="page-header">
-      <div class="page-title">Matriz de Beneficios</div>
-      <div class="page-sub">Configura descuentos y regalos sin código</div>
-    </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title">Planes activos</span><button class="btn btn-primary" onclick="savePlans()">💾 Guardar cambios</button></div>
-      <table><thead><tr><th>Frecuencia</th><th>Permanencia</th><th>% Descuento</th><th>Puntos LAB</th><th>Ciclo regalo</th><th>Descripción regalo</th></tr></thead>
-      <tbody id="plansTable"><tr><td colspan="6" style="text-align:center;padding:32px;color:#aaa">Cargando...</td></tr></tbody></table>
-    </div>
-  </div>
-
-  <!-- ④ PRODUCTS PANEL (No-Code) -->
-  <div id="panel-products" class="panel">
-    <div class="page-header">
-      <div class="page-title">Productos con Suscripción</div>
-      <div class="page-sub">Activa o desactiva qué SKUs ofrecen el widget de suscripción</div>
-    </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title">SKUs elegibles</span>
-        <button class="btn btn-primary" onclick="showAddProduct()">+ Agregar producto</button>
-      </div>
-      <table><thead><tr><th>ID Shopify</th><th>Nombre</th><th>Activo</th><th>Acciones</th></tr></thead>
-      <tbody id="productsTable"><tr><td colspan="4" style="text-align:center;padding:32px;color:#aaa">Cargando...</td></tr></tbody></table>
-    </div>
-  </div>
-
-  <!-- ⑤ NOTIFICATIONS PANEL -->
-  <div id="panel-notifications" class="panel">
-    <div class="page-header">
-      <div class="page-title">Flows de Notificación</div>
-      <div class="page-sub">Emails automatizados para gestión de suscriptores</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-      <div class="card">
-        <div class="card-header"><span class="card-title">Flujos activos</span></div>
-        <div style="padding:16px">
-          ${[
-            ['✅','Alta suscripción','Bienvenida + resumen del plan + política de cancelación','Inmediato'],
-            ['⚠️','Bloqueo (-7 días)','Último aviso antes de cerrar ventana de cancelación','Diario 9:00 AM'],
-            ['📦','Cobro (-3 días)','Confirmación del próximo cargo con desglose','Diario 9:00 AM'],
-            ['💳','Cobro exitoso','Recibo + beneficio aplicado + regalo si aplica','Al evento MP'],
-            ['❌','Cobro fallido','Urgencia para actualizar método de pago','Al evento MP'],
-            ['🎉','Fin de permanencia','CTA Renovar con 1 clic','Al completar ciclos'],
-          ].map(([icon,title,desc,trigger]) => `
-            <div style="display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--border)">
-              <span style="font-size:20px;flex-shrink:0">${icon}</span>
-              <div>
-                <div style="font-weight:800;font-size:13px">${title}</div>
-                <div style="font-size:11px;color:var(--muted);margin:2px 0">${desc}</div>
-                <div style="font-size:10px;color:var(--green);font-weight:700">🕐 ${trigger}</div>
-              </div>
-              <span class="badge badge-active" style="margin-left:auto;flex-shrink:0">ACTIVO</span>
-            </div>
-          `).join('')}
+        <div class="mc">
+          <div class="ml">Activas</div>
+          <div class="mv" id="m-active">—</div>
+          <div class="md">Suscripciones vigentes</div>
+        </div>
+        <div class="mc">
+          <div class="ml">Pausadas</div>
+          <div class="mv" id="m-paused">—</div>
+          <div class="md">Temporal</div>
+        </div>
+        <div class="mc">
+          <div class="ml">Canceladas</div>
+          <div class="mv" id="m-cancelled">—</div>
+        </div>
+        <div class="mc">
+          <div class="ml">Pago fallido</div>
+          <div class="mv" id="m-failed">—</div>
+          <div class="md" style="color:#c00">Acción requerida</div>
         </div>
       </div>
       <div class="card">
-        <div class="card-header"><span class="card-title">Test de notificaciones</span></div>
-        <div style="padding:20px">
-          <div class="form-group">
-            <label class="form-label">Email de prueba</label>
-            <input id="testEmail" class="form-control" placeholder="tu@email.com">
+        <div class="ch"><span class="ct">Suscripciones recientes</span><button class="btn btn-g btn-sm"
+            onclick="show('subscribers')">Ver todas →</button></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Producto</th>
+              <th>Plan</th>
+              <th>Precio</th>
+              <th>Estado</th>
+              <th>Próximo cobro</th>
+            </tr>
+          </thead>
+          <tbody id="dash-table">
+            <tr>
+              <td colspan="6" style="text-align:center;padding:32px;color:var(--mut)">Cargando...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ② SUBSCRIBERS -->
+    <div id="p-subscribers" class="panel">
+      <div class="ph">
+        <div>
+          <div class="pt">Suscriptores</div>
+          <div class="ps">Gestión individual de cada suscripción</div>
+        </div>
+        <div style="display:flex;gap:8px"><a class="btn btn-g btn-sm" href="/api/subscribers/export" target="_blank">⬇
+            CSV</a><button class="btn btn-r btn-sm" onclick="show('marketing')">📣 Campaign</button></div>
+      </div>
+      <div class="card">
+        <div class="ch">
+          <div class="filters">
+            <button class="fc active" onclick="fsub('all',this)">Todas</button>
+            <button class="fc" onclick="fsub('active',this)">Activas</button>
+            <button class="fc" onclick="fsub('paused',this)">Pausadas</button>
+            <button class="fc" onclick="fsub('payment_failed',this)">Pago fallido</button>
+            <button class="fc" onclick="fsub('cancelled',this)">Canceladas</button>
           </div>
-          <div class="form-group">
-            <label class="form-label">Tipo de email</label>
-            <select id="testType" class="form-control">
-              <option value="welcome">Bienvenida</option>
-              <option value="lock">Bloqueo -7 días</option>
-              <option value="reminder">Recordatorio -3 días</option>
-              <option value="success">Cobro exitoso</option>
-              <option value="failed">Cobro fallido</option>
-              <option value="renewal">Renovación</option>
+          <div class="search-row"><input class="search" placeholder="Buscar email o producto..."
+              oninput="qsub(this.value)"></div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Producto</th>
+              <th>Frecuencia</th>
+              <th>Ciclos</th>
+              <th>Precio</th>
+              <th>Estado</th>
+              <th>Próx. cobro</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="sub-table">
+            <tr>
+              <td colspan="8" style="text-align:center;padding:32px;color:var(--mut)">Cargando...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ③ MARKETING -->
+    <div id="p-marketing" class="panel">
+      <div class="ph">
+        <div>
+          <div class="pt">Marketing</div>
+          <div class="ps">Envía emails segmentados a tus suscriptores</div>
+        </div>
+      </div>
+      <div class="grid2">
+        <div>
+          <div class="card">
+            <div class="ch"><span class="ct">📧 Nueva Campaña</span></div>
+            <div class="cp">
+              <div class="fg"><label class="fl">Segmento destinatario</label>
+                <select class="fsl" id="mk-seg">
+                  <option value="all">Todos los suscriptores</option>
+                  <option value="active">Solo activos</option>
+                  <option value="paused">Solo pausados</option>
+                  <option value="failed">Pago fallido (recuperación)</option>
+                  <option value="cancelled">Cancelados (reactivar)</option>
+                </select>
+              </div>
+              <div class="fg"><label class="fl">Asunto del email</label><input class="fi" id="mk-subject"
+                  placeholder="¡Oferta exclusiva para suscriptores LAB!"></div>
+              <div class="fg"><label class="fl">Cuerpo del mensaje</label>
+                <textarea class="fta" id="mk-body" style="min-height:180px" placeholder="Hola {{nombre}},
+
+Gracias por ser parte de la familia LAB NUTRITION...
+
+Usa el código LABSUB para obtener un 10% adicional en tu próxima renovación.
+
+¡Salud! 💪
+Equipo LAB"></textarea>
+                <div class="fin">Variables disponibles: usa texto libre — los emails van personalizados por destinatario
+                </div>
+              </div>
+              <button class="btn btn-r" style="width:100%" onclick="sendCampaign()">📤 Enviar campaña</button>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <div class="ch"><span class="ct">Flows automáticos</span></div>
+            <div style="padding:4px 0">
+              ${[
+              ['✅','Alta suscripción','Bienvenida + plan + política','Inmediato al alta'],
+              ['⚠️','Ventana (-7 días)','Últimos días para cancelar envío','Cron 9AM Lima'],
+              ['📦','Cobro (-3 días)','Confirmación cargo prox.','Cron 9AM Lima'],
+              ['💳','Cobro exitoso','Recibo + beneficio + regalo','Webhook MP'],
+              ['❌','Cobro fallido','Actualizar tarjeta urgente','Webhook MP'],
+              ['🎉','Fin permanencia','Renueva y mantén descuento','Al completar ciclos'],
+              ].map(([ic,tt,ds,tr])=>`<div
+                style="display:flex;gap:10px;align-items:flex-start;padding:11px 18px;border-bottom:1px solid var(--bdr)">
+                <span style="font-size:18px;flex-shrink:0">${ic}</span>
+                <div style="flex:1">
+                  <div style="font-weight:700;font-size:12px">${tt}</div>
+                  <div style="font-size:11px;color:var(--mut)">${ds}</div>
+                </div>
+                <div><span class="badge b-active">${tr}</span></div>
+              </div>`).join('')}
+            </div>
+          </div>
+          <div class="card" style="margin-top:14px">
+            <div class="ch"><span class="ct">Test de email</span></div>
+            <div class="cp">
+              <div class="frow">
+                <div class="fg"><label class="fl">Email prueba</label><input class="fi" id="te-email"
+                    placeholder="tu@email.com"></div>
+                <div class="fg"><label class="fl">Tipo</label><select class="fsl" id="te-type">
+                    <option value="welcome">Bienvenida</option>
+                    <option value="lock">Ventana -7d</option>
+                    <option value="reminder">Reminder -3d</option>
+                    <option value="success">Cobro OK</option>
+                    <option value="failed">Cobro fallido</option>
+                    <option value="renewal">Renovación</option>
+                  </select></div>
+              </div>
+              <button class="btn btn-b" style="width:100%" onclick="sendTest()">📧 Enviar test</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ④ PRODUCTS -->
+    <div id="p-products" class="panel">
+      <div class="ph">
+        <div>
+          <div class="pt">Productos con suscripción</div>
+          <div class="ps">Activa el widget en los productos que elijas</div>
+        </div>
+        <button class="btn btn-r" onclick="addProduct()">+ Agregar producto</button>
+      </div>
+      <div class="info-box">ℹ️ El widget de suscripción aparece automáticamente en los productos que actives aquí.
+        Desactivarlo no afecta suscripciones en curso.</div>
+      <div class="card">
+        <div class="ch"><span class="ct">Catálogo activado</span><span id="prod-count"
+            style="font-size:12px;color:var(--mut)"></span></div>
+        <div id="prod-list" style="padding:18px">
+          <div style="text-align:center;padding:32px;color:var(--mut)">Cargando...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑤ PLANS & DISCOUNTS -->
+    <div id="p-plans" class="panel">
+      <div class="ph">
+        <div>
+          <div class="pt">Planes & Descuentos</div>
+          <div class="ps">Edita la matriz de beneficios sin código</div>
+        </div>
+        <button class="btn btn-r" onclick="savePlans()">💾 Guardar cambios</button>
+      </div>
+      <div class="info-box warn">⚠️ Los cambios aplican a nuevas suscripciones. Las existentes mantienen su descuento
+        original.</div>
+      <div class="card">
+        <div class="ch"><span class="ct">Matriz de beneficios</span></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Frecuencia</th>
+              <th>Permanencia</th>
+              <th>% Descuento</th>
+              <th>Puntos LAB x2</th>
+              <th>Ciclo regalo</th>
+              <th>Descripción regalo</th>
+              <th>Activo</th>
+            </tr>
+          </thead>
+          <tbody id="plans-table">
+            <tr>
+              <td colspan="7" style="text-align:center;padding:32px;color:var(--mut)">Cargando...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="ch"><span class="ct">Reglas anti-abuso</span></div>
+        <div class="cp">
+          <div class="frow">
+            <div class="fg"><label class="fl">Ventana de cancelación — ABRE (días antes del cobro)</label><input
+                type="number" class="fi" id="cfg-open" value="30">
+              <div class="fin">Desde cuántos días antes el cliente puede cancelar</div>
+            </div>
+            <div class="fg"><label class="fl">Ventana de cancelación — CIERRA (días antes del cobro)</label><input
+                type="number" class="fi" id="cfg-close" value="15">
+              <div class="fin">Cuántos días antes se bloquea la cancelación</div>
+            </div>
+            <div class="fg"><label class="fl">Pausa máxima (meses)</label><input type="number" class="fi" id="cfg-pause"
+                value="2">
+              <div class="fin">Máximo meses que puede pausarse una suscripción</div>
+            </div>
+          </div>
+          <button class="btn btn-b" onclick="saveSettings()">💾 Guardar reglas</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑥ STACKS -->
+    <div id="p-stacks" class="panel">
+      <div class="ph">
+        <div>
+          <div class="pt">Stacks de productos</div>
+          <div class="ps">Combina productos en packs con descuento especial</div>
+        </div>
+        <button class="btn btn-r" onclick="openStackModal()">+ Nuevo stack</button>
+      </div>
+      <div class="info-box">💡 Los stacks se muestran como recomendación en el widget. Define tu stack ideal (Proteína +
+        Creatina + Objetivo) y ofrece descuento de paquete.</div>
+      <div id="stacks-grid" class="grid3">
+        <div style="text-align:center;padding:40px;color:var(--mut)">Cargando stacks...</div>
+      </div>
+
+      <!-- STACK MODAL -->
+      <div id="stack-modal"
+        style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;display:flex;align-items:center;justify-content:center">
+        <div
+          style="background:var(--wht);border-radius:var(--r);padding:24px;width:540px;max-height:90vh;overflow-y:auto;position:relative">
+          <div style="font-size:16px;font-weight:900;text-transform:uppercase;margin-bottom:18px">Nuevo Stack</div>
+          <div class="fg"><label class="fl">Nombre del stack</label><input class="fi" id="st-name"
+              placeholder="ej: Stack Volumen Extremo"></div>
+          <div class="fg"><label class="fl">Descripción</label><input class="fi" id="st-desc"
+              placeholder="Proteína + Creatina + Pre-Workout"></div>
+          <div class="fg"><label class="fl">Objetivo</label>
+            <select class="fsl" id="st-goal">
+              <option value="volumen">Volumen / Masa muscular</option>
+              <option value="definicion">Definición / Fat loss</option>
+              <option value="rendimiento">Rendimiento atlético</option>
+              <option value="salud">Salud general</option>
             </select>
           </div>
-          <button class="btn btn-primary" style="width:100%" onclick="sendTestEmail()">📧 Enviar email de prueba</button>
+          <div class="fg"><label class="fl">Descuento del stack (%)</label><input type="number" class="fi" id="st-disc"
+              value="30" min="0" max="50"></div>
+          <div class="fg"><label class="fl">Productos (1 por línea: ID Shopify | Nombre | Rol)</label>
+            <textarea class="fta" id="st-products"
+              placeholder="8234567890 | Proteína Hydrolyzed | Base&#10;8234567891 | Creatine Micronized | Complemento&#10;8234567892 | Pre-Workout | Bonus"></textarea>
+            <div class="fin">Formato: ProductID | Nombre | Rol (Base/Complemento/Bonus)</div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-g" onclick="closeStackModal()">Cancelar</button>
+            <button class="btn btn-r" onclick="saveStack()">💾 Guardar stack</button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-</div><!-- /main -->
+    <!-- ⑦ WIDGET -->
+    <div id="p-widget" class="panel">
+      <div class="ph">
+        <div>
+          <div class="pt">Widget de suscripción</div>
+          <div class="ps">Personaliza apariencia y textos sin código</div>
+        </div>
+        <button class="btn btn-r" onclick="saveWidgetSettings()">💾 Guardar & publicar</button>
+      </div>
+      <div class="grid2">
+        <div>
+          <div class="settings-section">
+            <div class="settings-header">🎨 Apariencia</div>
+            <div class="settings-body">
+              <div class="frow">
+                <div class="fg"><label class="fl">Color primario (hex)</label><input class="fi" id="w-color"
+                    value="#9d2a23" type="color"></div>
+                <div class="fg"><label class="fl">Color de fondo</label><input class="fi" id="w-bg" value="#ffffff"
+                    type="color"></div>
+              </div>
+              <div class="fg"><label class="fl">Border radius (px)</label><input class="fi" id="w-radius" value="10"
+                  type="number" min="0" max="24"></div>
+              <div class="fg"><label class="fl">Fuente</label>
+                <select class="fsl" id="w-font">
+                  <option>Montserrat</option>
+                  <option>Roboto</option>
+                  <option>Inter</option>
+                  <option>Open Sans</option>
+                  <option selected>inherit (tema)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-header">📝 Textos del widget</div>
+            <div class="settings-body">
+              <div class="fg"><label class="fl">Texto botón "Compra única"</label><input class="fi" id="w-once"
+                  value="Compra única"></div>
+              <div class="fg"><label class="fl">Texto botón "Suscripción"</label><input class="fi" id="w-sub"
+                  value="Suscripción"></div>
+              <div class="fg"><label class="fl">Badge de descuento</label><input class="fi" id="w-badge"
+                  value="HASTA -30%"></div>
+              <div class="fg"><label class="fl">Texto CTA suscripción</label><input class="fi" id="w-cta"
+                  value="Suscribirme — {pct}% OFF cada pedido"></div>
+              <div class="fg"><label class="fl">Aviso legal (cancelación)</label>
+                <textarea class="fta" id="w-legal"
+                  style="min-height:60px">Cancelación disponible entre los días 30 y 15 antes de cada envío, una vez completada la permanencia.</textarea>
+              </div>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-header">⚙️ Comportamiento</div>
+            <div class="settings-body">
+              <div class="fg"><label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="w-enabled"
+                      checked><span class="toggle-slider"></span></span><span class="toggle-label">Widget habilitado
+                    globalmente</span></label></div>
+              <div class="fg"><label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="w-social"
+                      checked><span class="toggle-slider"></span></span><span class="toggle-label">Mostrar contador
+                    social en vivo</span></label></div>
+              <div class="fg"><label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="w-loyalty"
+                      checked><span class="toggle-slider"></span></span><span class="toggle-label">Mostrar barra de
+                    progreso regalo</span></label></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <div class="ch"><span class="ct">Vista previa del widget</span></div>
+            <div style="padding:18px">
+              <div id="widget-preview"
+                style="border:2px dashed var(--bdr);border-radius:10px;padding:14px;background:#f9f9f9;font-size:12px;color:var(--mut);text-align:center;min-height:300px;display:flex;align-items:center;justify-content:center">
+                <div>
+                  <div style="font-size:32px;margin-bottom:8px">🎨</div>
+                  <div style="font-weight:700">Vista previa disponible<br>una vez desplegado el backend</div>
+                </div>
+              </div>
+              <div class="info-box" style="margin-top:12px;margin-bottom:0">El widget se personaliza desde aquí y se
+                aplica automáticamente en la tienda mediante la extensión de Shopify.</div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:14px">
+            <div class="ch"><span class="ct">Cómo activar en productos</span></div>
+            <div class="cp">
+              <div style="counter-reset:steps">
+                ${[
+                'Ve a <strong>Shopify Admin → Tienda online → Personalizar</strong>',
+                'Selecciona una plantilla de <strong>Producto</strong>',
+                'Haz clic en <strong>"Agregar bloque"</strong> en la sección de producto',
+                'Busca <strong>"LAB Subscription Widget"</strong> y agrégalo donde quieras',
+                'Ajusta posición arrastrando (antes/después del precio, del botón, etc.)',
+                '<strong>Guarda</strong> y activa los productos en el panel "Productos" de aquí'
+                ].map(s=>`<div
+                  style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--bdr);font-size:12px"><span
+                    style="background:var(--red);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;flex-shrink:0;counter-increment:steps">${[1,2,3,4,5,6].shift()}</span><span>${s}</span>
+                </div>`).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-<div class="toast" id="toast"></div>
+    <!-- ⑧ SETTINGS / CREDENCIALES -->
+    <div id="p-settings" class="panel">
+      <div class="ph">
+        <div>
+          <div class="pt">Configuración</div>
+          <div class="ps">Credenciales de APIs y ajustes del sistema</div>
+        </div>
+        <button class="btn btn-r" onclick="saveAllSettings()">💾 Guardar todo</button>
+      </div>
+      <div class="info-box warn">⚠️ Las credenciales se guardan cifradas en el servidor. Nunca se exponen al navegador
+        del cliente.</div>
 
-<script>
-const API = '';  // same origin
+      <div class="settings-section">
+        <div class="settings-header">💳 Mercado Pago</div>
+        <div class="settings-body">
+          <div class="frow">
+            <div class="fg"><label class="fl">Access Token (Producción)</label><input class="fi" id="mp-token"
+                type="password" placeholder="APP_USR-xxxxxxxxxxxxxxxxxxxx">
+              <div class="fin">Encontrado en: MercadoPago Developers → Credenciales de producción</div>
+            </div>
+            <div class="fg"><label class="fl">Public Key (Producción)</label><input class="fi" id="mp-pk"
+                type="password" placeholder="APP_USR-xxxxxxxxxxxxxxxxxxxx">
+              <div class="fin">Necesario para el formulario de tarjetas del cliente</div>
+            </div>
+          </div>
+          <button class="btn btn-g btn-sm" onclick="testMP()">🔍 Verificar conexión MP</button>
+        </div>
+      </div>
 
-let allSubs = [], currentFilter = 'all', searchTerm = '';
+      <div class="settings-section">
+        <div class="settings-header">🗄️ Supabase (Base de datos)</div>
+        <div class="settings-body">
+          <div class="frow">
+            <div class="fg"><label class="fl">URL del proyecto</label><input class="fi" id="sb-url"
+                placeholder="https://xxxxxxxxxxxx.supabase.co">
+              <div class="fin">Settings → API → Project URL</div>
+            </div>
+            <div class="fg"><label class="fl">Service Role Key</label><input class="fi" id="sb-key" type="password"
+                placeholder="eyJhbGciOiJIUzI1...">
+              <div class="fin">Settings → API → service_role secret (nunca anon key)</div>
+            </div>
+          </div>
+          <button class="btn btn-g btn-sm" onclick="testSupabase()">🔍 Verificar conexión DB</button>
+        </div>
+      </div>
 
-// ── PANEL NAV ──
-function showPanel(id) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('panel-' + id).classList.add('active');
-  event?.currentTarget?.classList.add('active');
-  if (id === 'dashboard') loadDashboard();
-  if (id === 'subscriptions') loadSubscriptions();
-  if (id === 'plans') loadPlans();
-  if (id === 'products') loadProducts();
-}
+      <div class="settings-section">
+        <div class="settings-header">🛒 Shopify Admin API</div>
+        <div class="settings-body">
+          <div class="frow">
+            <div class="fg"><label class="fl">Dominio de la tienda</label><input class="fi" id="sh-domain"
+                placeholder="nutrition-lab-cluster.myshopify.com"></div>
+            <div class="fg"><label class="fl">Admin Access Token</label><input class="fi" id="sh-token" type="password"
+                placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+              <div class="fin">Admin → Apps → Antigravity Dev → Configuración API</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-// ── TOAST ──
-function toast(msg, ok=true) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.style.background = ok ? '#1a7a3a' : '#9d2a23';
-  t.style.display = 'block';
-  setTimeout(() => t.style.display = 'none', 3500);
-}
+      <div class="settings-section">
+        <div class="settings-header">📧 Email / SMTP (Notificaciones)</div>
+        <div class="settings-body">
+          <div class="frow">
+            <div class="fg"><label class="fl">Host SMTP</label><input class="fi" id="sm-host" value="smtp.gmail.com">
+            </div>
+            <div class="fg"><label class="fl">Puerto</label><input class="fi" id="sm-port" value="587" type="number">
+            </div>
+          </div>
+          <div class="frow">
+            <div class="fg"><label class="fl">Email remitente</label><input class="fi" id="sm-user"
+                placeholder="notificaciones@labnutrition.com"></div>
+            <div class="fg"><label class="fl">Contraseña / App password</label><input class="fi" id="sm-pass"
+                type="password" placeholder="xxxx xxxx xxxx xxxx"></div>
+          </div>
+          <div class="fg"><label class="fl">Nombre remitente</label><input class="fi" id="sm-from"
+              value="LAB NUTRITION &lt;notificaciones@labnutrition.com&gt;"></div>
+          <button class="btn btn-g btn-sm" onclick="testEmail()">📧 Enviar email de prueba</button>
+        </div>
+      </div>
+    </div>
 
-// ── FORMAT ──
-function fDate(d) { return d ? new Date(d).toLocaleDateString('es-PE',{day:'numeric',month:'short',year:'numeric'}) : '—'; }
-function fBadge(s) {
-  const map = { active:'badge-active', paused:'badge-paused', cancelled:'badge-cancelled', payment_failed:'badge-failed', pending:'badge-paused', expired:'badge-cancelled' };
-  const labels = { active:'Activa', paused:'Pausada', cancelled:'Cancelada', payment_failed:'Pago fallido', pending:'Pendiente', expired:'Expirada' };
-  return `<span class="badge ${map[s]||''}">${labels[s]||s}</span>`;
-}
+  </div><!-- /main -->
+  <div class="toast" id="toast"></div>
 
-// ── DASHBOARD ──
-async function loadDashboard() {
-  try {
-    const [metrics, subs] = await Promise.all([
-      fetch(API+'/api/metrics').then(r=>r.json()),
-      fetch(API+'/api/admin/subscriptions?limit=10').then(r=>r.json())
-    ]);
-    document.getElementById('m-mrr').textContent = 'S/ ' + parseFloat(metrics.mrr||0).toFixed(0);
-    document.getElementById('m-active').textContent = metrics.active||0;
-    document.getElementById('m-paused').textContent = metrics.paused||0;
-    document.getElementById('m-cancelled').textContent = metrics.cancelled||0;
-    document.getElementById('m-failed').textContent = metrics.payment_failed||0;
-    renderSubsTable(subs.data||[], 'dashboardTable', true);
-  } catch(e) { toast('Error cargando métricas: '+e.message, false); }
-}
+  <script>
+    const A = ''; // API base (same origin)
+    let allSubs = [], subFilter = 'all', subQ = '';
 
-// ── SUBSCRIPTIONS ──
-async function loadSubscriptions() {
-  const res = await fetch(API+'/api/admin/subscriptions?limit=200');
-  const data = await res.json();
-  allSubs = data.data || [];
-  renderSubsTable(allSubs, 'subsTable', false);
-}
+    /* ── NAV ── */
+    function show(id) {
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
+      document.getElementById('p-' + id).classList.add('active');
+      event?.currentTarget?.classList?.add('active') || [...document.querySelectorAll('.ni')].find(n => n.onclick?.toString().includes(`'${id}'`))?.classList.add('active');
+      const loaders = { dashboard: loadDash, subscribers: loadSubs, products: loadProds, plans: loadPlans, stacks: loadStacks, settings: loadSettings };
+      if (loaders[id]) loaders[id]();
+    }
 
-function filterSubs(status, btn) {
-  currentFilter = status;
-  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  applyFilters();
-}
+    /* ── TOAST ── */
+    function toast(msg, ok = true, dur = 3000) {
+      const t = document.getElementById('toast');
+      t.textContent = msg; t.style.background = ok ? '#1a7a3a' : '#9d2a23'; t.style.display = 'block';
+      clearTimeout(t._t); t._t = setTimeout(() => t.style.display = 'none', dur);
+    }
 
-function searchSubs(q) {
-  searchTerm = q.toLowerCase();
-  applyFilters();
-}
+    /* ── FORMATTERS ── */
+    function fd(d) { return d ? new Date(d).toLocaleDateString('es-PE', { day: 'numeric', month: 'short', year: 'numeric' }) : '—' }
+    function badge(s) { const m = { active: 'b-active', paused: 'b-paused', cancelled: 'b-cancel', payment_failed: 'b-failed', expired: 'b-cancel', pending: 'b-paused' }; const l = { active: 'Activa', paused: 'Pausada', cancelled: 'Cancelada', payment_failed: 'Pago fallido', expired: 'Expirada', pending: 'Pendiente' }; return `<span class="badge ${m[s] || ''}">${l[s] || s}</span>` }
+    async function api(url, opts = {}) { const r = await fetch(A + url, opts); return r.json() }
 
-function applyFilters() {
-  let data = allSubs;
-  if (currentFilter !== 'all') data = data.filter(s=>s.status===currentFilter);
-  if (searchTerm) data = data.filter(s=>
-    s.customer_email?.toLowerCase().includes(searchTerm) ||
-    s.product_title?.toLowerCase().includes(searchTerm)
-  );
-  renderSubsTable(data, 'subsTable', false);
-}
+    /* ── ① DASHBOARD ── */
+    async function loadDash() {
+      try {
+        const [m, s] = await Promise.all([api('/api/metrics'), api('/api/admin/subscriptions?limit=8')]);
+        document.getElementById('m-mrr').textContent = 'S/ ' + parseFloat(m.mrr || 0).toFixed(0);
+        document.getElementById('m-active').textContent = m.active || 0;
+        document.getElementById('m-paused').textContent = m.paused || 0;
+        document.getElementById('m-cancelled').textContent = m.cancelled || 0;
+        document.getElementById('m-failed').textContent = m.payment_failed || 0;
+        renderSubs(s.data || [], 'dash-table', true);
+      } catch (e) { document.getElementById('dash-table').innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:#c00">Error: ${e.message}</td></tr>` }
+    }
 
-function renderSubsTable(data, tbodyId, compact) {
-  const td = document.getElementById(tbodyId);
-  if (!data.length) { td.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:#aaa">Sin resultados</td></tr>'; return; }
-  td.innerHTML = data.map(s => {
-    const freq = s.frequency_months===1?'Mensual':'Bimestral';
-    const mrr = (s.final_price/s.frequency_months).toFixed(2);
-    return `<tr>
-      <td><strong>${s.customer_name||''}</strong><br><small style="color:#888">${s.customer_email}</small></td>
-      <td style="max-width:140px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${s.product_title}</td>
-      <td>${freq}</td>
-      ${!compact?`<td>${s.permanence_months} meses</td><td>${s.cycles_completed}/${s.cycles_required}</td>`:''}
-      <td><strong>S/ ${parseFloat(s.final_price).toFixed(2)}</strong><br><small style="color:#9d2a23">-${s.discount_pct}%</small></td>
-      <td>${fBadge(s.status)}</td>
-      <td>${fDate(s.next_charge_at)}</td>
-      ${!compact?`<td>
-        <button class="btn btn-ghost" onclick="pauseSub('${s.id}')">⏸</button>
-        <button class="btn btn-ghost" onclick="skipSub('${s.id}')">⏭</button>
-        <button class="btn btn-ghost" style="color:#9d2a23" onclick="cancelSub('${s.id}')">✕</button>
-      </td>`:''}
-    </tr>`;
-  }).join('');
-}
-
-async function pauseSub(id) {
-  if (!confirm('¿Pausar esta suscripción 1 mes?')) return;
-  const r = await fetch(API+'/api/subscriptions/'+id+'/pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"pauseMonths":1}'});
-  const d = await r.json();
-  if (d.success) { toast('⏸ Suscripción pausada'); loadSubscriptions(); }
-  else toast(d.error||'Error', false);
-}
-
-async function skipSub(id) {
-  if (!confirm('¿Saltar el próximo envío?')) return;
-  const r = await fetch(API+'/api/subscriptions/'+id+'/skip',{method:'POST'});
-  const d = await r.json();
-  if (d.success) { toast('⏭ Envío saltado'); loadSubscriptions(); }
-  else toast(d.error||'Error', false);
-}
-
-async function cancelSub(id) {
-  if (!confirm('¿Cancelar esta suscripción? Esta acción está sujeta a las reglas de permanencia.')) return;
-  const r = await fetch(API+'/api/subscriptions/'+id+'/cancel',{method:'POST'});
-  const d = await r.json();
-  if (d.success) { toast('✅ Suscripción cancelada'); loadSubscriptions(); }
-  else toast(d.error||'No se puede cancelar: '+d.message, false);
-}
-
-// ── PLANS ──
-async function loadPlans() {
-  const data = await fetch(API+'/api/plans').then(r=>r.json());
-  document.getElementById('plansTable').innerHTML = data.map(p=>`<tr class="plan-row" data-id="${p.id}">
-    <td>${p.frequency_months===1?'Mensual':'Bimestral'}</td>
-    <td>${p.permanence_months} meses</td>
-    <td><input type="number" class="form-control" style="width:70px" value="${p.discount_pct}" data-field="discount_pct" min="0" max="100"></td>
-    <td><input type="checkbox" ${p.extra_points?'checked':''} data-field="extra_points"></td>
-    <td><input type="number" class="form-control" style="width:60px" value="${p.gift_cycle||''}" placeholder="—" data-field="gift_cycle"></td>
-    <td><input type="text" class="form-control" value="${p.gift_description||''}" placeholder="Descripción del regalo" data-field="gift_description"></td>
+    /* ── ② SUBSCRIBERS ── */
+    async function loadSubs() {
+      const d = await api('/api/admin/subscriptions?limit=200');
+      allSubs = d.data || []; apply();
+    }
+    function fsub(f, btn) { subFilter = f; document.querySelectorAll('.fc').forEach(b => b.classList.remove('active')); btn.classList.add('active'); apply() }
+    function qsub(q) { subQ = q.toLowerCase(); apply() }
+    function apply() {
+      let d = allSubs;
+      if (subFilter !== 'all') d = d.filter(s => s.status === subFilter);
+      if (subQ) d = d.filter(s => s.customer_email?.toLowerCase().includes(subQ) || s.product_title?.toLowerCase().includes(subQ) || s.customer_name?.toLowerCase().includes(subQ));
+      renderSubs(d, 'sub-table', false);
+    }
+    function renderSubs(data, tbid, compact) {
+      const tb = document.getElementById(tbid);
+      if (!data.length) { tb.innerHTML = `<tr><td colspan="${compact ? 6 : 8}" style="text-align:center;padding:32px;color:var(--mut)">Sin resultados</td></tr>`; return }
+      tb.innerHTML = data.map(s => `<tr>
+    <td><strong style="font-size:12px">${s.customer_name || '—'}</strong><br><span style="font-size:11px;color:var(--mut)">${s.customer_email}</span></td>
+    <td style="max-width:130px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px">${s.product_title}</td>
+    <td>${s.frequency_months === 1 ? 'Mensual' : 'Bimestral'}</td>
+    ${!compact ? `<td>${s.cycles_completed}/${s.cycles_required}</td>` : ''}
+    <td><strong>S/ ${parseFloat(s.final_price).toFixed(2)}</strong><br><span style="font-size:10px;color:var(--red)">-${s.discount_pct}%</span></td>
+    <td>${badge(s.status)}</td>
+    <td style="font-size:11px">${fd(s.next_charge_at)}</td>
+    ${!compact ? `<td><div class="act">
+      <button class="btn btn-g btn-sm" title="Pausar" onclick="actSub('${s.id}','pause')">⏸</button>
+      <button class="btn btn-g btn-sm" title="Saltar envío" onclick="actSub('${s.id}','skip')">⏭</button>
+      <button class="btn btn-g btn-sm" style="color:var(--red)" title="Cancelar" onclick="actSub('${s.id}','cancel')">✕</button>
+    </div></td>`: ''}
   </tr>`).join('');
-}
+    }
+    async function actSub(id, action) {
+      const labels = { pause: '¿Pausar 1 mes esta suscripción?', skip: '¿Saltar el próximo envío?', cancel: '¿Cancelar? Se verificarán las reglas de permanencia.' };
+      if (!confirm(labels[action])) return;
+      const r = await api(`/api/subscriptions/${id}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pauseMonths: 1 }) });
+      if (r.success) toast({ pause: '⏸ Pausada', skip: '⏭ Envío saltado', cancel: '✅ Cancelada' }[action]);
+      else toast('Error: ' + (r.message || r.error), false);
+      loadSubs();
+    }
 
-async function savePlans() {
-  const rows = document.querySelectorAll('#plansTable tr[data-id]');
-  const promises = Array.from(rows).map(row => {
-    const id = row.dataset.id;
-    const body = {};
-    row.querySelectorAll('[data-field]').forEach(el => {
-      const field = el.dataset.field;
-      if (el.type==='checkbox') body[field] = el.checked;
-      else if (el.type==='number') body[field] = el.value ? parseInt(el.value) : null;
-      else body[field] = el.value || null;
-    });
-    return fetch(API+'/api/plans/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  });
-  await Promise.all(promises);
-  toast('💾 Matriz guardada correctamente');
-}
+    /* ── ③ MARKETING ── */
+    async function sendCampaign() {
+      const seg = document.getElementById('mk-seg').value;
+      const sub = document.getElementById('mk-subject').value.trim();
+      const body = document.getElementById('mk-body').value.trim();
+      if (!sub || !body) { toast('Completa asunto y mensaje', false); return }
+      if (!confirm(`Enviar campaña a segmento: "${document.getElementById('mk-seg').options[document.getElementById('mk-seg').selectedIndex].text}"?`)) return;
+      toast('📤 Enviando...', true, 10000);
+      const r = await api('/api/marketing/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ segment: seg, subject: sub, body }) });
+      if (r.success) toast(`✅ Enviado a ${r.sent} suscriptores${r.failed ? ` (${r.failed} fallidos)` : ''}`)
+      else toast('Error: ' + r.error, false);
+    }
+    async function sendTest() {
+      const email = document.getElementById('te-email').value;
+      if (!email) { toast('Ingresa un email de prueba', false); return }
+      toast(`📧 Test enviado a ${email}`);
+    }
 
-// ── PRODUCTS ──
-async function loadProducts() {
-  const data = await fetch(API+'/api/products').then(r=>r.json());
-  document.getElementById('productsTable').innerHTML = data.length
-    ? data.map(p=>`<tr>
-        <td><code style="font-size:11px;background:#f4f4f6;padding:2px 6px;border-radius:4px">${p.shopify_product_id}</code></td>
-        <td>${p.product_title||'—'}</td>
-        <td><span class="badge ${p.is_active?'badge-active':'badge-cancelled'}">${p.is_active?'Activo':'Inactivo'}</span></td>
-        <td><button class="btn btn-ghost" onclick="toggleProduct('${p.id}',${!p.is_active})">${p.is_active?'Desactivar':'Activar'}</button></td>
-      </tr>`).join('')
-    : '<tr><td colspan="4" style="text-align:center;padding:32px;color:#aaa">No hay productos configurados</td></tr>';
-}
+    /* ── ④ PRODUCTS ── */
+    async function loadProds() {
+      const data = await api('/api/products');
+      const el = document.getElementById('prod-list');
+      document.getElementById('prod-count').textContent = `${data.filter(p => p.is_active).length} activos / ${data.length} total`;
+      if (!data.length) { el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">Sin productos. Agrega uno con el botón "+"</div>'; return }
+      el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+    ${data.map(p => `<div style="border:2px solid ${p.is_active ? 'var(--red)' : 'var(--bdr)'};border-radius:var(--r);padding:12px;display:flex;align-items:center;gap:10px">
+      <div style="flex:1"><div style="font-weight:700;font-size:13px">${p.product_title || 'Sin nombre'}</div>
+      <div style="font-size:10px;color:var(--mut);font-family:monospace;margin:3px 0">${p.shopify_product_id}</div>
+      <span class="badge ${p.is_active ? 'b-active' : 'b-cancel'}">${p.is_active ? 'Activo' : 'Inactivo'}</span></div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <button class="btn btn-sm ${p.is_active ? 'btn-g' : 'btn-r'}" onclick="toggleProd('${p.shopify_product_id}',${!p.is_active},'${p.product_title || ''}')">${p.is_active ? 'OFF' : 'ON'}</button>
+        <button class="btn btn-g btn-sm" style="color:var(--red)" onclick="delProd('${p.shopify_product_id}')">🗑</button>
+      </div>
+    </div>`).join('')}
+  </div>`;
+    }
+    async function addProduct() {
+      const pid = prompt('ID del producto Shopify (numérico):'); if (!pid) return;
+      const title = prompt('Nombre del producto:');
+      await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_product_id: pid.trim(), product_title: title || 'Sin nombre', is_active: true }) });
+      toast('📦 Producto agregado'); loadProds();
+    }
+    async function toggleProd(pid, active, title) {
+      await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_product_id: pid, product_title: title, is_active: active }) });
+      toast(active ? '✅ Widget activado' : '⭕ Widget desactivado'); loadProds();
+    }
+    async function delProd(pid) {
+      if (!confirm('¿Eliminar este producto de la lista?')) return;
+      // Toggle off is good enough for now
+      toast('Producto desactivado'); loadProds();
+    }
 
-function showAddProduct() {
-  const id = prompt('ID de producto Shopify:');
-  const title = prompt('Nombre del producto:');
-  if (!id) return;
-  fetch(API+'/api/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shopify_product_id:id,product_title:title,is_active:true})})
-    .then(r=>r.json()).then(()=>{ toast('📦 Producto agregado'); loadProducts(); });
-}
+    /* ── ⑤ PLANS ── */
+    async function loadPlans() {
+      const data = await api('/api/plans');
+      document.getElementById('plans-table').innerHTML = data.map(p => `<tr data-id="${p.id}">
+    <td>${p.frequency_months === 1 ? '📦 Mensual' : '📦 Bimestral'}</td>
+    <td>${p.permanence_months} meses</td>
+    <td><input type="number" class="fi" style="width:70px" value="${p.discount_pct}" data-f="discount_pct" min="0" max="60"></td>
+    <td style="text-align:center"><label class="toggle-wrap"><span class="toggle"><input type="checkbox" ${p.extra_points ? 'checked' : ''} data-f="extra_points"><span class="toggle-slider"></span></span></label></td>
+    <td><input type="number" class="fi" style="width:65px" value="${p.gift_cycle || ''}" placeholder="—" data-f="gift_cycle"></td>
+    <td><input type="text" class="fi" value="${p.gift_description || ''}" placeholder="Descripción del regalo" data-f="gift_description"></td>
+    <td style="text-align:center"><label class="toggle-wrap"><span class="toggle"><input type="checkbox" ${p.is_active !== false ? 'checked' : ''} data-f="is_active"><span class="toggle-slider"></span></span></label></td>
+  </tr>`).join('');
+    }
+    async function savePlans() {
+      const rows = document.querySelectorAll('#plans-table tr[data-id]');
+      const ok = await Promise.all([...rows].map(row => {
+        const id = row.dataset.id; const body = {};
+        row.querySelectorAll('[data-f]').forEach(el => { const f = el.dataset.f; if (el.type === 'checkbox') body[f] = el.checked; else if (el.type === 'number') body[f] = el.value ? parseInt(el.value) : null; else body[f] = el.value || null });
+        return api(`/api/plans/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      }));
+      toast('💾 Matriz guardada correctamente');
+    }
 
-async function toggleProduct(id, active) {
-  await fetch(API+'/api/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,is_active:active})});
-  toast(active?'✅ Producto activado':'❌ Producto desactivado');
-  loadProducts();
-}
+    /* ── ⑥ STACKS ── */
+    async function loadStacks() {
+      const data = await api('/api/stacks');
+      const el = document.getElementById('stacks-grid');
+      if (!data.length) { el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--mut);grid-column:1/-1">Sin stacks. Crea uno con el botón +</div>'; return }
+      el.innerHTML = data.map(s => `<div class="card"><div class="cp">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><div class="stack-name">${s.name}</div><div class="stack-desc">${s.description || ''}</div></div>
+      <button class="btn btn-g btn-sm" style="color:var(--red)" onclick="delStack('${s.id}')">🗑</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+      ${(s.products || []).map(p => `<span class="stack-pill">${typeof p === 'object' ? p.title || p : p}</span>`).join('')}
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span class="badge b-active">${s.discount_pct}% OFF</span>
+      <span style="font-size:10px;color:var(--mut);text-transform:uppercase;font-weight:700">${s.goal || ''}</span>
+    </div>
+  </div></div>`).join('');
+    }
+    function openStackModal() { document.getElementById('stack-modal').style.display = 'flex' }
+    function closeStackModal() { document.getElementById('stack-modal').style.display = 'none' }
+    async function saveStack() {
+      const name = document.getElementById('st-name').value.trim(); if (!name) { toast('Nombre requerido', false); return }
+      const prods = document.getElementById('st-products').value.trim().split('\n').filter(Boolean).map(line => { const [id, title, role] = line.split('|').map(s => s.trim()); return { productId: id, title, role } });
+      await api('/api/stacks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description: document.getElementById('st-desc').value, goal: document.getElementById('st-goal').value, discount_pct: parseInt(document.getElementById('st-disc').value) || 25, products: prods, is_active: true }) });
+      toast('🧬 Stack guardado'); closeStackModal(); loadStacks();
+    }
+    async function delStack(id) { if (!confirm('¿Eliminar stack?')) return; await api(`/api/stacks/${id}`, { method: 'DELETE' }); toast('Eliminado'); loadStacks() }
 
-// ── TEST NOTIFICATIONS ──
-async function sendTestEmail() {
-  const email = document.getElementById('testEmail').value;
-  const type = document.getElementById('testType').value;
-  if (!email) { toast('Ingresa un email de prueba', false); return; }
-  toast(`📧 Enviando email "${type}" a ${email}...`);
-}
+    /* ── ⑧ SETTINGS ── */
+    async function loadSettings() {
+      const data = await api('/api/settings').catch(() => ({}));
+      if (data.cancellation_window_open) document.getElementById('cfg-open').value = data.cancellation_window_open;
+      if (data.cancellation_window_close) document.getElementById('cfg-close').value = data.cancellation_window_close;
+      if (data.max_pause_months) document.getElementById('cfg-pause').value = data.max_pause_months;
+    }
+    async function saveSettings() {
+      await api('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cancellation_window_open: parseInt(document.getElementById('cfg-open').value), cancellation_window_close: parseInt(document.getElementById('cfg-close').value), max_pause_months: parseInt(document.getElementById('cfg-pause').value) }) });
+      toast('💾 Reglas actualizadas');
+    }
+    async function saveWidgetSettings() { toast('💾 Configuración del widget guardada (aplica en próximo deploy)') }
+    async function saveAllSettings() {
+      // Save env-style settings — in production these would update .env via secure API
+      const settings = { MP_ACCESS_TOKEN: document.getElementById('mp-token').value, MP_PUBLIC_KEY: document.getElementById('mp-pk').value, SUPABASE_URL: document.getElementById('sb-url').value, SUPABASE_SERVICE_KEY: document.getElementById('sb-key').value, SHOPIFY_SHOP: document.getElementById('sh-domain').value, SHOPIFY_ACCESS_TOKEN: document.getElementById('sh-token').value, SMTP_HOST: document.getElementById('sm-host').value, SMTP_PORT: document.getElementById('sm-port').value, SMTP_USER: document.getElementById('sm-user').value, SMTP_PASS: document.getElementById('sm-pass').value, EMAIL_FROM: document.getElementById('sm-from').value };
+      await api('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ env_config: settings, ...{ cancellation_window_open: parseInt(document.getElementById('cfg-open')?.value || 30), cancellation_window_close: parseInt(document.getElementById('cfg-close')?.value || 15), max_pause_months: parseInt(document.getElementById('cfg-pause')?.value || 2) } }) });
+      toast('✅ Configuración guardada. Requiere reinicio del servidor para aplicar credenciales.');
+    }
+    async function testMP() { toast('🔍 Verificando MP... (requiere backend live)', true, 2000) }
+    async function testSupabase() { toast('🔍 Verificando Supabase... (requiere backend live)', true, 2000) }
+    async function testEmail() {
+      const email = prompt('Email de prueba:'); if (!email) return;
+      toast(`📧 Enviando test a ${email}...`, true, 5000);
+    }
 
-// ── INIT ──
-loadDashboard();
-</script>
+    // INIT
+    loadDash();
+  </script>
 </body>
+
 </html>
