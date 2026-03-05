@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LAB NUTRITION — Backoffice Suscripciones</title>
+<style>
+  :root {
+    --red: #9d2a23; --red2: #7e201a; --black: #000;
+    --white: #fff; --bg: #f4f4f6; --card: #fff;
+    --border: #e0e0e0; --muted: #888; --green: #1a7a3a;
+    --gold: #c8892a; --r: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background: var(--bg); color: var(--black); }
+
+  /* SIDEBAR */
+  .sidebar { position:fixed; top:0; left:0; width:220px; height:100vh; background:var(--black); color:var(--white); display:flex; flex-direction:column; z-index:100; }
+  .sidebar-logo { padding:24px 20px; border-bottom:1px solid rgba(255,255,255,0.1); }
+  .sidebar-logo .brand { font-size:13px; font-weight:900; text-transform:uppercase; letter-spacing:2px; color:var(--white); }
+  .sidebar-logo .sub-brand { font-size:10px; color:var(--red); font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-top:2px; }
+  .nav { flex:1; padding:16px 0; }
+  .nav-item { display:flex; align-items:center; gap:10px; padding:11px 20px; font-size:13px; font-weight:600; color:rgba(255,255,255,0.6); cursor:pointer; transition:.15s; border-left:3px solid transparent; text-transform:uppercase; letter-spacing:0.5px; }
+  .nav-item:hover { color:var(--white); background:rgba(255,255,255,0.06); }
+  .nav-item.active { color:var(--white); border-left-color:var(--red); background:rgba(157,42,35,0.15); }
+  .nav-item .icon { font-size:16px; width:20px; text-align:center; }
+
+  /* MAIN */
+  .main { margin-left:220px; padding:28px; min-height:100vh; }
+  .page-header { margin-bottom:24px; }
+  .page-title { font-size:22px; font-weight:900; text-transform:uppercase; letter-spacing:0.5px; }
+  .page-sub { font-size:13px; color:var(--muted); margin-top:4px; }
+
+  /* METRICS GRID */
+  .metrics { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:26px; }
+  .metric-card { background:var(--card); border:1px solid var(--border); border-radius:var(--r); padding:16px; }
+  .metric-card.highlight { background:var(--red); border-color:var(--red); }
+  .metric-label { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted); margin-bottom:8px; }
+  .metric-card.highlight .metric-label { color:rgba(255,255,255,0.7); }
+  .metric-value { font-size:28px; font-weight:900; color:var(--black); }
+  .metric-card.highlight .metric-value { color:var(--white); }
+
+  /* TABLE */
+  .card { background:var(--card); border:1px solid var(--border); border-radius:var(--r); overflow:hidden; margin-bottom:22px; }
+  .card-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); }
+  .card-title { font-size:14px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; }
+  table { width:100%; border-collapse:collapse; }
+  th { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted); padding:11px 16px; text-align:left; border-bottom:1px solid var(--border); background:#fafafa; }
+  td { padding:12px 16px; font-size:13px; border-bottom:1px solid var(--border); }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#f9f9f9; }
+
+  /* BADGES */
+  .badge { display:inline-block; padding:3px 9px; border-radius:20px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; }
+  .badge-active  { background:#e8f5ee; color:var(--green); }
+  .badge-paused  { background:#fff8e1; color:var(--gold); }
+  .badge-cancelled { background:#fce8e8; color:var(--red); }
+  .badge-failed  { background:#fce8e8; color:#c00; }
+
+  /* BUTTONS */
+  .btn { padding:8px 14px; border:none; border-radius:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; cursor:pointer; transition:.15s; }
+  .btn-primary { background:var(--red); color:var(--white); }
+  .btn-primary:hover { background:var(--red2); }
+  .btn-ghost { background:transparent; color:var(--muted); border:1px solid var(--border); }
+  .btn-ghost:hover { color:var(--black); border-color:var(--black); }
+
+  /* FILTERS */
+  .filters { display:flex; gap:8px; align-items:center; }
+  .filter-btn { padding:6px 14px; border:1.5px solid var(--border); border-radius:20px; background:var(--white); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; cursor:pointer; transition:.15s; }
+  .filter-btn.active { background:var(--black); border-color:var(--black); color:var(--white); }
+
+  /* PANELS */
+  .panel { display:none; }
+  .panel.active { display:block; }
+
+  /* FORM */
+  .form-group { margin-bottom:14px; }
+  .form-label { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.6px; color:var(--muted); display:block; margin-bottom:6px; }
+  .form-control { width:100%; padding:9px 12px; border:1.5px solid var(--border); border-radius:6px; font-size:13px; outline:none; transition:.15s; }
+  .form-control:focus { border-color:var(--red); }
+
+  /* PLAN MATRIX TABLE */
+  .plan-row td:nth-child(3) input { width:60px; text-align:center; }
+
+  /* SEARCH */
+  .search-wrap { display:flex; gap:10px; align-items:center; }
+  #searchInput { padding:8px 14px; border:1.5px solid var(--border); border-radius:6px; font-size:13px; width:260px; outline:none; }
+  #searchInput:focus { border-color:var(--red); }
+
+  /* RESPONSIVE */
+  @media(max-width:1200px) { .metrics { grid-template-columns:repeat(3,1fr); } }
+
+  /* TOAST */
+  .toast { position:fixed; bottom:24px; right:24px; background:var(--black); color:var(--white); padding:12px 20px; border-radius:8px; font-size:13px; font-weight:600; z-index:9999; display:none; animation:slideUp .3s ease; }
+  @keyframes slideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="sidebar-logo">
+    <div class="brand">🧬 LAB NUTRITION</div>
+    <div class="sub-brand">Backoffice Suscripciones</div>
+  </div>
+  <nav class="nav">
+    <div class="nav-item active" onclick="showPanel('dashboard')"><span class="icon">📊</span> Dashboard</div>
+    <div class="nav-item" onclick="showPanel('subscriptions')"><span class="icon">🔄</span> Suscripciones</div>
+    <div class="nav-item" onclick="showPanel('plans')"><span class="icon">⚙️</span> Matriz Beneficios</div>
+    <div class="nav-item" onclick="showPanel('products')"><span class="icon">📦</span> Productos Activos</div>
+    <div class="nav-item" onclick="showPanel('notifications')"><span class="icon">🔔</span> Notificaciones</div>
+  </nav>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main">
+
+  <!-- ① DASHBOARD PANEL -->
+  <div id="panel-dashboard" class="panel active">
+    <div class="page-header">
+      <div class="page-title">Dashboard</div>
+      <div class="page-sub">Tiempo real · LAB NUTRITION Programa de Suscripciones</div>
+    </div>
+    <div class="metrics" id="metricsGrid">
+      <div class="metric-card highlight"><div class="metric-label">MRR (S/)</div><div class="metric-value" id="m-mrr">—</div></div>
+      <div class="metric-card"><div class="metric-label">Activas</div><div class="metric-value" id="m-active">—</div></div>
+      <div class="metric-card"><div class="metric-label">Pausadas</div><div class="metric-value" id="m-paused">—</div></div>
+      <div class="metric-card"><div class="metric-label">Canceladas</div><div class="metric-value" id="m-cancelled">—</div></div>
+      <div class="metric-card"><div class="metric-label">Pago fallido</div><div class="metric-value" id="m-failed">—</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Últimas suscripciones</span><button class="btn btn-ghost" onclick="showPanel('subscriptions')">Ver todas →</button></div>
+      <table><thead><tr><th>Cliente</th><th>Producto</th><th>Plan</th><th>Estado</th><th>Próximo cobro</th><th>MRR</th></tr></thead>
+      <tbody id="dashboardTable"><tr><td colspan="6" style="text-align:center;padding:24px;color:#aaa">Cargando...</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- ② SUBSCRIPTIONS PANEL -->
+  <div id="panel-subscriptions" class="panel">
+    <div class="page-header">
+      <div class="page-title">Suscripciones</div>
+      <div class="page-sub">Gestión completa de suscriptores activos</div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="filters">
+          <button class="filter-btn active" onclick="filterSubs('all',this)">Todas</button>
+          <button class="filter-btn" onclick="filterSubs('active',this)">Activas</button>
+          <button class="filter-btn" onclick="filterSubs('paused',this)">Pausadas</button>
+          <button class="filter-btn" onclick="filterSubs('cancelled',this)">Canceladas</button>
+          <button class="filter-btn" onclick="filterSubs('payment_failed',this)">Pago fallido</button>
+        </div>
+        <div class="search-wrap">
+          <input id="searchInput" placeholder="Buscar por email o producto..." oninput="searchSubs(this.value)">
+        </div>
+      </div>
+      <table><thead><tr><th>Cliente</th><th>Producto</th><th>Frecuencia</th><th>Permanencia</th><th>Ciclos</th><th>Precio</th><th>Estado</th><th>Próx. cobro</th><th>Acciones</th></tr></thead>
+      <tbody id="subsTable"><tr><td colspan="9" style="text-align:center;padding:32px;color:#aaa">Cargando...</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- ③ PLANS PANEL (No-Code) -->
+  <div id="panel-plans" class="panel">
+    <div class="page-header">
+      <div class="page-title">Matriz de Beneficios</div>
+      <div class="page-sub">Configura descuentos y regalos sin código</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Planes activos</span><button class="btn btn-primary" onclick="savePlans()">💾 Guardar cambios</button></div>
+      <table><thead><tr><th>Frecuencia</th><th>Permanencia</th><th>% Descuento</th><th>Puntos LAB</th><th>Ciclo regalo</th><th>Descripción regalo</th></tr></thead>
+      <tbody id="plansTable"><tr><td colspan="6" style="text-align:center;padding:32px;color:#aaa">Cargando...</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- ④ PRODUCTS PANEL (No-Code) -->
+  <div id="panel-products" class="panel">
+    <div class="page-header">
+      <div class="page-title">Productos con Suscripción</div>
+      <div class="page-sub">Activa o desactiva qué SKUs ofrecen el widget de suscripción</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">SKUs elegibles</span>
+        <button class="btn btn-primary" onclick="showAddProduct()">+ Agregar producto</button>
+      </div>
+      <table><thead><tr><th>ID Shopify</th><th>Nombre</th><th>Activo</th><th>Acciones</th></tr></thead>
+      <tbody id="productsTable"><tr><td colspan="4" style="text-align:center;padding:32px;color:#aaa">Cargando...</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- ⑤ NOTIFICATIONS PANEL -->
+  <div id="panel-notifications" class="panel">
+    <div class="page-header">
+      <div class="page-title">Flows de Notificación</div>
+      <div class="page-sub">Emails automatizados para gestión de suscriptores</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Flujos activos</span></div>
+        <div style="padding:16px">
+          ${[
+            ['✅','Alta suscripción','Bienvenida + resumen del plan + política de cancelación','Inmediato'],
+            ['⚠️','Bloqueo (-7 días)','Último aviso antes de cerrar ventana de cancelación','Diario 9:00 AM'],
+            ['📦','Cobro (-3 días)','Confirmación del próximo cargo con desglose','Diario 9:00 AM'],
+            ['💳','Cobro exitoso','Recibo + beneficio aplicado + regalo si aplica','Al evento MP'],
+            ['❌','Cobro fallido','Urgencia para actualizar método de pago','Al evento MP'],
+            ['🎉','Fin de permanencia','CTA Renovar con 1 clic','Al completar ciclos'],
+          ].map(([icon,title,desc,trigger]) => `
+            <div style="display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:20px;flex-shrink:0">${icon}</span>
+              <div>
+                <div style="font-weight:800;font-size:13px">${title}</div>
+                <div style="font-size:11px;color:var(--muted);margin:2px 0">${desc}</div>
+                <div style="font-size:10px;color:var(--green);font-weight:700">🕐 ${trigger}</div>
+              </div>
+              <span class="badge badge-active" style="margin-left:auto;flex-shrink:0">ACTIVO</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Test de notificaciones</span></div>
+        <div style="padding:20px">
+          <div class="form-group">
+            <label class="form-label">Email de prueba</label>
+            <input id="testEmail" class="form-control" placeholder="tu@email.com">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tipo de email</label>
+            <select id="testType" class="form-control">
+              <option value="welcome">Bienvenida</option>
+              <option value="lock">Bloqueo -7 días</option>
+              <option value="reminder">Recordatorio -3 días</option>
+              <option value="success">Cobro exitoso</option>
+              <option value="failed">Cobro fallido</option>
+              <option value="renewal">Renovación</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" style="width:100%" onclick="sendTestEmail()">📧 Enviar email de prueba</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';  // same origin
+
+let allSubs = [], currentFilter = 'all', searchTerm = '';
+
+// ── PANEL NAV ──
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  event?.currentTarget?.classList.add('active');
+  if (id === 'dashboard') loadDashboard();
+  if (id === 'subscriptions') loadSubscriptions();
+  if (id === 'plans') loadPlans();
+  if (id === 'products') loadProducts();
+}
+
+// ── TOAST ──
+function toast(msg, ok=true) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = ok ? '#1a7a3a' : '#9d2a23';
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3500);
+}
+
+// ── FORMAT ──
+function fDate(d) { return d ? new Date(d).toLocaleDateString('es-PE',{day:'numeric',month:'short',year:'numeric'}) : '—'; }
+function fBadge(s) {
+  const map = { active:'badge-active', paused:'badge-paused', cancelled:'badge-cancelled', payment_failed:'badge-failed', pending:'badge-paused', expired:'badge-cancelled' };
+  const labels = { active:'Activa', paused:'Pausada', cancelled:'Cancelada', payment_failed:'Pago fallido', pending:'Pendiente', expired:'Expirada' };
+  return `<span class="badge ${map[s]||''}">${labels[s]||s}</span>`;
+}
+
+// ── DASHBOARD ──
+async function loadDashboard() {
+  try {
+    const [metrics, subs] = await Promise.all([
+      fetch(API+'/api/metrics').then(r=>r.json()),
+      fetch(API+'/api/admin/subscriptions?limit=10').then(r=>r.json())
+    ]);
+    document.getElementById('m-mrr').textContent = 'S/ ' + parseFloat(metrics.mrr||0).toFixed(0);
+    document.getElementById('m-active').textContent = metrics.active||0;
+    document.getElementById('m-paused').textContent = metrics.paused||0;
+    document.getElementById('m-cancelled').textContent = metrics.cancelled||0;
+    document.getElementById('m-failed').textContent = metrics.payment_failed||0;
+    renderSubsTable(subs.data||[], 'dashboardTable', true);
+  } catch(e) { toast('Error cargando métricas: '+e.message, false); }
+}
+
+// ── SUBSCRIPTIONS ──
+async function loadSubscriptions() {
+  const res = await fetch(API+'/api/admin/subscriptions?limit=200');
+  const data = await res.json();
+  allSubs = data.data || [];
+  renderSubsTable(allSubs, 'subsTable', false);
+}
+
+function filterSubs(status, btn) {
+  currentFilter = status;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+function searchSubs(q) {
+  searchTerm = q.toLowerCase();
+  applyFilters();
+}
+
+function applyFilters() {
+  let data = allSubs;
+  if (currentFilter !== 'all') data = data.filter(s=>s.status===currentFilter);
+  if (searchTerm) data = data.filter(s=>
+    s.customer_email?.toLowerCase().includes(searchTerm) ||
+    s.product_title?.toLowerCase().includes(searchTerm)
+  );
+  renderSubsTable(data, 'subsTable', false);
+}
+
+function renderSubsTable(data, tbodyId, compact) {
+  const td = document.getElementById(tbodyId);
+  if (!data.length) { td.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:#aaa">Sin resultados</td></tr>'; return; }
+  td.innerHTML = data.map(s => {
+    const freq = s.frequency_months===1?'Mensual':'Bimestral';
+    const mrr = (s.final_price/s.frequency_months).toFixed(2);
+    return `<tr>
+      <td><strong>${s.customer_name||''}</strong><br><small style="color:#888">${s.customer_email}</small></td>
+      <td style="max-width:140px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${s.product_title}</td>
+      <td>${freq}</td>
+      ${!compact?`<td>${s.permanence_months} meses</td><td>${s.cycles_completed}/${s.cycles_required}</td>`:''}
+      <td><strong>S/ ${parseFloat(s.final_price).toFixed(2)}</strong><br><small style="color:#9d2a23">-${s.discount_pct}%</small></td>
+      <td>${fBadge(s.status)}</td>
+      <td>${fDate(s.next_charge_at)}</td>
+      ${!compact?`<td>
+        <button class="btn btn-ghost" onclick="pauseSub('${s.id}')">⏸</button>
+        <button class="btn btn-ghost" onclick="skipSub('${s.id}')">⏭</button>
+        <button class="btn btn-ghost" style="color:#9d2a23" onclick="cancelSub('${s.id}')">✕</button>
+      </td>`:''}
+    </tr>`;
+  }).join('');
+}
+
+async function pauseSub(id) {
+  if (!confirm('¿Pausar esta suscripción 1 mes?')) return;
+  const r = await fetch(API+'/api/subscriptions/'+id+'/pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"pauseMonths":1}'});
+  const d = await r.json();
+  if (d.success) { toast('⏸ Suscripción pausada'); loadSubscriptions(); }
+  else toast(d.error||'Error', false);
+}
+
+async function skipSub(id) {
+  if (!confirm('¿Saltar el próximo envío?')) return;
+  const r = await fetch(API+'/api/subscriptions/'+id+'/skip',{method:'POST'});
+  const d = await r.json();
+  if (d.success) { toast('⏭ Envío saltado'); loadSubscriptions(); }
+  else toast(d.error||'Error', false);
+}
+
+async function cancelSub(id) {
+  if (!confirm('¿Cancelar esta suscripción? Esta acción está sujeta a las reglas de permanencia.')) return;
+  const r = await fetch(API+'/api/subscriptions/'+id+'/cancel',{method:'POST'});
+  const d = await r.json();
+  if (d.success) { toast('✅ Suscripción cancelada'); loadSubscriptions(); }
+  else toast(d.error||'No se puede cancelar: '+d.message, false);
+}
+
+// ── PLANS ──
+async function loadPlans() {
+  const data = await fetch(API+'/api/plans').then(r=>r.json());
+  document.getElementById('plansTable').innerHTML = data.map(p=>`<tr class="plan-row" data-id="${p.id}">
+    <td>${p.frequency_months===1?'Mensual':'Bimestral'}</td>
+    <td>${p.permanence_months} meses</td>
+    <td><input type="number" class="form-control" style="width:70px" value="${p.discount_pct}" data-field="discount_pct" min="0" max="100"></td>
+    <td><input type="checkbox" ${p.extra_points?'checked':''} data-field="extra_points"></td>
+    <td><input type="number" class="form-control" style="width:60px" value="${p.gift_cycle||''}" placeholder="—" data-field="gift_cycle"></td>
+    <td><input type="text" class="form-control" value="${p.gift_description||''}" placeholder="Descripción del regalo" data-field="gift_description"></td>
+  </tr>`).join('');
+}
+
+async function savePlans() {
+  const rows = document.querySelectorAll('#plansTable tr[data-id]');
+  const promises = Array.from(rows).map(row => {
+    const id = row.dataset.id;
+    const body = {};
+    row.querySelectorAll('[data-field]').forEach(el => {
+      const field = el.dataset.field;
+      if (el.type==='checkbox') body[field] = el.checked;
+      else if (el.type==='number') body[field] = el.value ? parseInt(el.value) : null;
+      else body[field] = el.value || null;
+    });
+    return fetch(API+'/api/plans/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  });
+  await Promise.all(promises);
+  toast('💾 Matriz guardada correctamente');
+}
+
+// ── PRODUCTS ──
+async function loadProducts() {
+  const data = await fetch(API+'/api/products').then(r=>r.json());
+  document.getElementById('productsTable').innerHTML = data.length
+    ? data.map(p=>`<tr>
+        <td><code style="font-size:11px;background:#f4f4f6;padding:2px 6px;border-radius:4px">${p.shopify_product_id}</code></td>
+        <td>${p.product_title||'—'}</td>
+        <td><span class="badge ${p.is_active?'badge-active':'badge-cancelled'}">${p.is_active?'Activo':'Inactivo'}</span></td>
+        <td><button class="btn btn-ghost" onclick="toggleProduct('${p.id}',${!p.is_active})">${p.is_active?'Desactivar':'Activar'}</button></td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" style="text-align:center;padding:32px;color:#aaa">No hay productos configurados</td></tr>';
+}
+
+function showAddProduct() {
+  const id = prompt('ID de producto Shopify:');
+  const title = prompt('Nombre del producto:');
+  if (!id) return;
+  fetch(API+'/api/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shopify_product_id:id,product_title:title,is_active:true})})
+    .then(r=>r.json()).then(()=>{ toast('📦 Producto agregado'); loadProducts(); });
+}
+
+async function toggleProduct(id, active) {
+  await fetch(API+'/api/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,is_active:active})});
+  toast(active?'✅ Producto activado':'❌ Producto desactivado');
+  loadProducts();
+}
+
+// ── TEST NOTIFICATIONS ──
+async function sendTestEmail() {
+  const email = document.getElementById('testEmail').value;
+  const type = document.getElementById('testType').value;
+  if (!email) { toast('Ingresa un email de prueba', false); return; }
+  toast(`📧 Enviando email "${type}" a ${email}...`);
+}
+
+// ── INIT ──
+loadDashboard();
+</script>
+</body>
+</html>
