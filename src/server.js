@@ -6,9 +6,12 @@ const cron = require('node-cron');
 const path = require('path');
 
 const supabase = require('./db/client');
-const mp = require('./services/mercadopago');
-const notifications = require('./services/notifications');
-const shopify = require('./services/shopify');
+
+// Crash-proof service imports — server starts even without credentials
+let mp, notifications, shopify;
+try { mp = require('./services/mercadopago'); } catch (e) { console.warn('[MP] Not configured:', e.message); mp = {}; }
+try { notifications = require('./services/notifications'); } catch (e) { console.warn('[EMAIL] Not configured:', e.message); notifications = {}; }
+try { shopify = require('./services/shopify'); } catch (e) { console.warn('[SHOPIFY] Not configured:', e.message); shopify = {}; }
 
 const app = express();
 const PORT = process.env.PORT || 3000;
