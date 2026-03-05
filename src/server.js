@@ -17,7 +17,13 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 /* ─── MIDDLEWARE ─── */
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({
+    contentSecurityPolicy: false,
+    frameguard: false,            // Allow Shopify Admin to iframe the app
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: false
+}));
 app.use(cors({
     origin: [
         'https://nutrition-lab-cluster.myshopify.com',
