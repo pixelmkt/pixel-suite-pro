@@ -516,6 +516,32 @@ app.delete('/api/stacks/:id', async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════
+   🛒 SHOPIFY PRODUCTS API (fetch real products)
+═══════════════════════════════════════════════ */
+app.get('/api/shopify/products', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP;
+        const token = process.env.SHOPIFY_ACCESS_TOKEN;
+        if (!shop || !token) {
+            return res.json({ products: [], error: 'Shopify credentials not configured' });
+        }
+        const url = `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,images,variants,status`;
+        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } });
+        if (!r.ok) return res.json({ products: [], error: `Shopify API error: ${r.status}` });
+        const data = await r.json();
+        res.json({
+            products: (data.products || []).map(p => ({
+                id: p.id,
+                title: p.title,
+                image: p.images?.[0]?.src || null,
+                price: p.variants?.[0]?.price || '0',
+                status: p.status
+            }))
+        });
+    } catch (e) { res.json({ products: [], error: e.message }) }
+});
+
+/* ═══════════════════════════════════════════════
    ⚙️ SETTINGS API
 ═══════════════════════════════════════════════ */
 app.get('/api/settings', async (req, res) => {

@@ -730,8 +730,8 @@
   <!-- ═══ SIDEBAR ═══ -->
   <div class="sb">
     <div class="sb-logo">
-      <div class="sb-brand">🧬 LAB NUTRITION</div>
-      <div class="sb-sub">Backoffice · Suscripciones</div>
+      <div class="sb-brand">💳 Suscriptions MP</div>
+      <div class="sb-sub">Admin · Suscripciones</div>
     </div>
     <nav class="sb-nav">
       <div class="sb-sep">Principal</div>
@@ -745,7 +745,7 @@
       <div class="ni" onclick="show('widget')"><span class="ic">🎨</span>Widget</div>
       <div class="ni" onclick="show('settings')"><span class="ic">⚙️</span>Configuración</div>
     </nav>
-    <div class="sb-footer">LAB NUTRITION v2.1 · Marzo 2026</div>
+    <div class="sb-footer">Suscriptions MP v2.1</div>
   </div>
 
   <!-- ═══ MAIN CONTENT ═══ -->
@@ -899,22 +899,59 @@ Equipo LAB"></textarea>
           <div class="card">
             <div class="ch"><span class="ct">Flows automáticos</span></div>
             <div style="padding:4px 0">
-              ${[
-              ['✅','Alta suscripción','Bienvenida + plan + política','Inmediato al alta'],
-              ['⚠️','Ventana (-7 días)','Últimos días para cancelar envío','Cron 9AM Lima'],
-              ['📦','Cobro (-3 días)','Confirmación cargo prox.','Cron 9AM Lima'],
-              ['💳','Cobro exitoso','Recibo + beneficio + regalo','Webhook MP'],
-              ['❌','Cobro fallido','Actualizar tarjeta urgente','Webhook MP'],
-              ['🎉','Fin permanencia','Renueva y mantén descuento','Al completar ciclos'],
-              ].map(([ic,tt,ds,tr])=>`<div
+              <div
                 style="display:flex;gap:10px;align-items:flex-start;padding:11px 18px;border-bottom:1px solid var(--bdr)">
-                <span style="font-size:18px;flex-shrink:0">${ic}</span>
+                <span style="font-size:18px;flex-shrink:0">✅</span>
                 <div style="flex:1">
-                  <div style="font-weight:700;font-size:12px">${tt}</div>
-                  <div style="font-size:11px;color:var(--mut)">${ds}</div>
+                  <div style="font-weight:700;font-size:12px">Alta suscripción</div>
+                  <div style="font-size:11px;color:var(--mut)">Bienvenida + plan + política</div>
                 </div>
-                <div><span class="badge b-active">${tr}</span></div>
-              </div>`).join('')}
+                <div><span class="badge b-active">Inmediato</span></div>
+              </div>
+              <div
+                style="display:flex;gap:10px;align-items:flex-start;padding:11px 18px;border-bottom:1px solid var(--bdr)">
+                <span style="font-size:18px;flex-shrink:0">⚠️</span>
+                <div style="flex:1">
+                  <div style="font-weight:700;font-size:12px">Ventana (-7 días)</div>
+                  <div style="font-size:11px;color:var(--mut)">Últimos días para cancelar envío</div>
+                </div>
+                <div><span class="badge b-paused">Cron 9AM</span></div>
+              </div>
+              <div
+                style="display:flex;gap:10px;align-items:flex-start;padding:11px 18px;border-bottom:1px solid var(--bdr)">
+                <span style="font-size:18px;flex-shrink:0">📦</span>
+                <div style="flex:1">
+                  <div style="font-weight:700;font-size:12px">Cobro (-3 días)</div>
+                  <div style="font-size:11px;color:var(--mut)">Confirmación cargo próximo</div>
+                </div>
+                <div><span class="badge b-paused">Cron 9AM</span></div>
+              </div>
+              <div
+                style="display:flex;gap:10px;align-items:flex-start;padding:11px 18px;border-bottom:1px solid var(--bdr)">
+                <span style="font-size:18px;flex-shrink:0">💳</span>
+                <div style="flex:1">
+                  <div style="font-weight:700;font-size:12px">Cobro exitoso</div>
+                  <div style="font-size:11px;color:var(--mut)">Recibo + beneficio + regalo</div>
+                </div>
+                <div><span class="badge b-active">Webhook MP</span></div>
+              </div>
+              <div
+                style="display:flex;gap:10px;align-items:flex-start;padding:11px 18px;border-bottom:1px solid var(--bdr)">
+                <span style="font-size:18px;flex-shrink:0">❌</span>
+                <div style="flex:1">
+                  <div style="font-weight:700;font-size:12px">Cobro fallido</div>
+                  <div style="font-size:11px;color:var(--mut)">Actualizar tarjeta urgente</div>
+                </div>
+                <div><span class="badge b-failed">Webhook MP</span></div>
+              </div>
+              <div style="display:flex;gap:10px;align-items:flex-start;padding:11px 18px">
+                <span style="font-size:18px;flex-shrink:0">🎉</span>
+                <div style="flex:1">
+                  <div style="font-weight:700;font-size:12px">Fin permanencia</div>
+                  <div style="font-size:11px;color:var(--mut)">Renueva y mantén descuento</div>
+                </div>
+                <div><span class="badge b-active">Auto</span></div>
+              </div>
             </div>
           </div>
           <div class="card" style="margin-top:14px">
@@ -946,7 +983,7 @@ Equipo LAB"></textarea>
           <div class="pt">Productos con suscripción</div>
           <div class="ps">Activa el widget en los productos que elijas</div>
         </div>
-        <button class="btn btn-r" onclick="addProduct()">+ Agregar producto</button>
+        <button class="btn btn-r" onclick="showProductPicker()">+ Seleccionar productos</button>
       </div>
       <div class="info-box">ℹ️ El widget de suscripción aparece automáticamente en los productos que actives aquí.
         Desactivarlo no afecta suscripciones en curso.</div>
@@ -955,6 +992,20 @@ Equipo LAB"></textarea>
             style="font-size:12px;color:var(--mut)"></span></div>
         <div id="prod-list" style="padding:18px">
           <div style="text-align:center;padding:32px;color:var(--mut)">Cargando...</div>
+        </div>
+      </div>
+      <!-- PRODUCT PICKER MODAL -->
+      <div id="product-picker"
+        style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;align-items:center;justify-content:center">
+        <div
+          style="background:var(--wht);border-radius:var(--r);padding:24px;width:680px;max-height:85vh;overflow-y:auto;position:relative">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div style="font-size:16px;font-weight:900;text-transform:uppercase">Seleccionar productos</div>
+            <button class="btn btn-g btn-sm" onclick="closeProductPicker()">✕ Cerrar</button>
+          </div>
+          <input class="fi" id="picker-search" placeholder="Buscar producto..." oninput="filterPicker(this.value)"
+            style="margin-bottom:14px">
+          <div id="picker-grid" class="prod-grid">Cargando productos de Shopify...</div>
         </div>
       </div>
     </div>
@@ -1346,37 +1397,57 @@ Equipo LAB"></textarea>
     }
 
     /* ── ④ PRODUCTS ── */
+    let shopifyProducts = [];
     async function loadProds() {
       const data = await api('/api/products');
       const el = document.getElementById('prod-list');
       document.getElementById('prod-count').textContent = `${data.filter(p => p.is_active).length} activos / ${data.length} total`;
-      if (!data.length) { el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">Sin productos. Agrega uno con el botón "+"</div>'; return }
-      el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
-    ${data.map(p => `<div style="border:2px solid ${p.is_active ? 'var(--red)' : 'var(--bdr)'};border-radius:var(--r);padding:12px;display:flex;align-items:center;gap:10px">
-      <div style="flex:1"><div style="font-weight:700;font-size:13px">${p.product_title || 'Sin nombre'}</div>
-      <div style="font-size:10px;color:var(--mut);font-family:monospace;margin:3px 0">${p.shopify_product_id}</div>
-      <span class="badge ${p.is_active ? 'b-active' : 'b-cancel'}">${p.is_active ? 'Activo' : 'Inactivo'}</span></div>
-      <div style="display:flex;flex-direction:column;gap:4px">
-        <button class="btn btn-sm ${p.is_active ? 'btn-g' : 'btn-r'}" onclick="toggleProd('${p.shopify_product_id}',${!p.is_active},'${p.product_title || ''}')">${p.is_active ? 'OFF' : 'ON'}</button>
-        <button class="btn btn-g btn-sm" style="color:var(--red)" onclick="delProd('${p.shopify_product_id}')">🗑</button>
+      if (!data.length) { el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">Sin productos. Haz clic en "+ Seleccionar productos" para agregar desde tu catálogo Shopify.</div>'; return }
+      el.innerHTML = `<div class="prod-grid">
+    ${data.map(p => `<div class="prod-card ${p.is_active ? 'on' : ''}" style="position:relative">
+      <div style="width:100%;aspect-ratio:1;background:#f4f5f7;display:flex;align-items:center;justify-content:center;overflow:hidden">
+        ${p.product_image ? `<img src="${p.product_image}" style="width:100%;height:100%;object-fit:cover">` : '<span style="font-size:40px">📦</span>'}
       </div>
+      <div class="prod-name">${p.product_title || 'Sin nombre'}</div>
+      <div style="padding:4px 10px 8px;text-align:center;display:flex;gap:4px;justify-content:center">
+        <button class="btn btn-sm ${p.is_active ? 'btn-r' : 'btn-g'}" onclick="toggleProd('${p.shopify_product_id}',${!p.is_active},'${(p.product_title || '').replace(/'/g, "\\'")}')"><span style="font-size:10px">${p.is_active ? '✅ Activo' : '⭕ Inactivo'}</span></button>
+      </div>
+      <div class="prod-badge">ACTIVO</div>
     </div>`).join('')}
   </div>`;
     }
-    async function addProduct() {
-      const pid = prompt('ID del producto Shopify (numérico):'); if (!pid) return;
-      const title = prompt('Nombre del producto:');
-      await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_product_id: pid.trim(), product_title: title || 'Sin nombre', is_active: true }) });
-      toast('📦 Producto agregado'); loadProds();
+    async function showProductPicker() {
+      document.getElementById('product-picker').style.display = 'flex';
+      const grid = document.getElementById('picker-grid');
+      grid.innerHTML = '<div style="text-align:center;padding:24px;color:var(--mut)">Cargando productos de Shopify...</div>';
+      try {
+        const r = await api('/api/shopify/products');
+        shopifyProducts = r.products || [];
+        if (!shopifyProducts.length) { grid.innerHTML = '<div style="text-align:center;padding:24px;color:var(--mut)">No se pudieron cargar productos. Verifica las credenciales de Shopify en Configuración.</div>'; return }
+        renderPicker(shopifyProducts);
+      } catch (e) { grid.innerHTML = `<div style="text-align:center;padding:24px;color:#c00">Error: ${e.message}</div>` }
+    }
+    function renderPicker(prods) {
+      document.getElementById('picker-grid').innerHTML = prods.map(p => `<div class="prod-card" onclick="pickProduct('${p.id}','${(p.title || '').replace(/'/g, "\\'")}',' ${p.image || ''}')" style="cursor:pointer">
+        <div style="width:100%;aspect-ratio:1;background:#f4f5f7;display:flex;align-items:center;justify-content:center;overflow:hidden">
+          ${p.image ? `<img src="${p.image}" style="width:100%;height:100%;object-fit:cover">` : '<span style="font-size:40px">📦</span>'}
+        </div>
+        <div class="prod-name">${p.title}</div>
+        <div style="font-size:11px;text-align:center;padding:2px 10px 8px;color:var(--mut)">S/ ${p.price}</div>
+      </div>`).join('');
+    }
+    function filterPicker(q) {
+      const filtered = shopifyProducts.filter(p => p.title.toLowerCase().includes(q.toLowerCase()));
+      renderPicker(filtered);
+    }
+    function closeProductPicker() { document.getElementById('product-picker').style.display = 'none' }
+    async function pickProduct(pid, title, image) {
+      await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_product_id: pid, product_title: title.trim(), product_image: image.trim(), is_active: true }) });
+      toast('📦 ' + title + ' agregado'); closeProductPicker(); loadProds();
     }
     async function toggleProd(pid, active, title) {
       await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_product_id: pid, product_title: title, is_active: active }) });
       toast(active ? '✅ Widget activado' : '⭕ Widget desactivado'); loadProds();
-    }
-    async function delProd(pid) {
-      if (!confirm('¿Eliminar este producto de la lista?')) return;
-      // Toggle off is good enough for now
-      toast('Producto desactivado'); loadProds();
     }
 
     /* ── ⑤ PLANS ── */
