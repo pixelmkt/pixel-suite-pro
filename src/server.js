@@ -527,7 +527,7 @@ app.put('/api/settings', async (req, res) => {
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date() }));
 
 /* ─── START ─── */
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 LAB NUTRITION Backend running on port ${PORT}`);
     console.log(`📊 Admin dashboard: http://localhost:${PORT}/admin`);
     console.log(`🔗 Shopify store: ${process.env.SHOPIFY_SHOP}\n`);
