@@ -1,6 +1,9 @@
 api_version = "2026-01"
 
 [[extensions]]
+
+uid = "4155d041-6adb-5e48-1fc5-809fdebf7f954a1156be"
+
 type = "theme"
 name = "LAB NUTRITION Subscriptions"
 handle = "lab-nutrition-subscriptions"
