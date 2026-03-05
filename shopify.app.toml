@@ -1,13 +1,10 @@
-# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
-
-client_id = "db2eacd95acd27e5c871faebfd9468c0"
-name = "LAB NUTRITION — Suscripciones"
-application_url = "https://example.com"
+client_id = "fc20b3f68f1c8e854a3dca30788acd48"
+name = "Suscriptions MP"
+application_url = "https://pixel-suite-pro-production.up.railway.app"
 embedded = true
 
 [build]
   automatically_update_urls_on_dev = true
-  include_config_on_deploy = true
   dev_store_url = "nutrition-lab-cluster.myshopify.com"
 
 [webhooks]
@@ -18,8 +15,8 @@ embedded = true
 
 [auth]
   redirect_urls = [
-    "https://example.com/auth/callback",
-    "http://localhost:3000/auth/callback"
+    "https://pixel-suite-pro-production.up.railway.app/auth/callback",
+    "http://localhost:4000/auth/callback"
   ]
 
 [pos]
