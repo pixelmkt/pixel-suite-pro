@@ -11,18 +11,18 @@
     :root {
       --red: #c0392b;
       --red2: #96281b;
-      --rl: rgba(192, 57, 43, .1);
+      --rl: rgba(192, 57, 43, .10);
       --blk: #111;
       --wht: #fff;
-      --bg: #f1f3f5;
+      --bg: #f7f8fa;
       --card: #fff;
-      --bdr: #e4e6ea;
-      --mut: #868e96;
-      --grn: #2e7d4f;
-      --gld: #b08000;
-      --r: 8px;
-      --rs: 6px;
-      --shadow: 0 1px 3px rgba(0, 0, 0, .06), 0 1px 2px rgba(0, 0, 0, .04)
+      --bdr: #eaecf0;
+      --mut: #9ca3af;
+      --grn: #16a34a;
+      --gld: #d97706;
+      --r: 10px;
+      --rs: 7px;
+      --sh: 0 1px 4px rgba(0, 0, 0, .07), 0 1px 2px rgba(0, 0, 0, .04)
     }
 
     * {
@@ -37,7 +37,8 @@
       color: var(--blk);
       display: flex;
       min-height: 100vh;
-      font-size: 13px
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased
     }
 
     /* ─ SIDEBAR ─ */
@@ -178,14 +179,13 @@
       display: block
     }
 
-    /* ─ CARDS & GRID ─ */
     .card {
       background: var(--card);
       border: 1px solid var(--bdr);
       border-radius: var(--r);
       overflow: hidden;
       margin-bottom: 16px;
-      box-shadow: var(--shadow)
+      box-shadow: var(--sh)
     }
 
     .ch {
@@ -194,15 +194,15 @@
       justify-content: space-between;
       padding: 14px 18px;
       border-bottom: 1px solid var(--bdr);
-      gap: 12px;
-      flex-wrap: wrap
+      gap: 12px
     }
 
     .ct {
-      font-size: 12px;
-      font-weight: 800;
+      font-size: 11px;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: .6px
+      letter-spacing: .8px;
+      color: #444
     }
 
     .cp {
@@ -212,71 +212,69 @@
     .grid2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 14px
+      gap: 16px
     }
 
     .grid3 {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 12px
+      gap: 14px
     }
 
     .grid5 {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 12px;
-      margin-bottom: 20px
+      gap: 14px;
+      margin-bottom: 24px
     }
 
     .mc {
       background: var(--card);
       border: 1px solid var(--bdr);
       border-radius: var(--r);
-      padding: 18px 20px;
-      box-shadow: var(--shadow)
+      padding: 20px 22px;
+      box-shadow: var(--sh)
     }
 
     .mc.hi {
-      background: var(--red);
-      border-color: var(--red)
+      background: #111;
+      border-color: #111
     }
 
     .ml {
       font-size: 10px;
-      font-weight: 800;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: .8px;
+      letter-spacing: .9px;
       color: var(--mut);
-      margin-bottom: 6px
+      margin-bottom: 8px
     }
 
     .mc.hi .ml {
-      color: rgba(255, 255, 255, .7)
+      color: rgba(255, 255, 255, .5)
     }
 
     .mv {
-      font-size: 28px;
-      font-weight: 900;
-      line-height: 1;
-      letter-spacing: -1px;
-      margin-top: 4px
+      font-size: 30px;
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      line-height: 1
     }
 
     .mc.hi .mv {
-      color: var(--wht)
+      color: #fff
     }
 
     .md {
       font-size: 11px;
       color: var(--mut);
-      margin-top: 3px
+      margin-top: 6px
     }
 
     .mc.hi .md {
-      color: rgba(255, 255, 255, .6)
+      color: rgba(255, 255, 255, .4)
     }
 
-    /* ─ TABLE ─ */
     table {
       width: 100%;
       border-collapse: collapse
@@ -284,19 +282,19 @@
 
     th {
       font-size: 10px;
-      font-weight: 800;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: .7px;
+      letter-spacing: .8px;
       color: var(--mut);
-      padding: 10px 14px;
+      padding: 11px 16px;
       text-align: left;
       background: #fafafa;
       border-bottom: 1px solid var(--bdr)
     }
 
     td {
-      padding: 11px 14px;
-      font-size: 12px;
+      padding: 12px 16px;
+      font-size: 12.5px;
       border-bottom: 1px solid var(--bdr);
       vertical-align: middle
     }
@@ -309,58 +307,56 @@
       background: #fafbfc
     }
 
-    /* ─ BADGES ─ */
     .badge {
-      display: inline-block;
-      padding: 2px 8px;
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 9px;
       border-radius: 20px;
-      font-size: 9px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: .5px
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .2px
     }
 
     .b-active {
-      background: #e6f4ec;
-      color: var(--grn)
+      background: #dcfce7;
+      color: #15803d
     }
 
     .b-paused {
-      background: #fff8e1;
-      color: var(--gld)
+      background: #fef3c7;
+      color: #92400e
     }
 
     .b-cancel {
-      background: #fce8e8;
-      color: var(--red)
+      background: #fee2e2;
+      color: #b91c1c
     }
 
     .b-failed {
-      background: #fce8e8;
-      color: #c00
+      background: #fee2e2;
+      color: #b91c1c
     }
 
-    /* ─ BUTTONS ─ */
     .btn {
-      padding: 8px 14px;
+      padding: 8px 16px;
       border: none;
       border-radius: var(--rs);
-      font-size: 11px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: .5px;
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: .2px;
       cursor: pointer;
       transition: .15s;
-      white-space: nowrap
+      white-space: nowrap;
+      font-family: inherit
     }
 
     .btn-r {
-      background: var(--red);
+      background: var(--blk);
       color: var(--wht)
     }
 
     .btn-r:hover {
-      background: var(--red2)
+      background: #333
     }
 
     .btn-b {
@@ -374,7 +370,7 @@
 
     .btn-g {
       background: transparent;
-      color: var(--mut);
+      color: #555;
       border: 1px solid var(--bdr)
     }
 
@@ -389,8 +385,8 @@
     }
 
     .btn-sm {
-      padding: 5px 10px;
-      font-size: 10px
+      padding: 5px 11px;
+      font-size: 10.5px
     }
 
     /* ─ FORM ─ */
