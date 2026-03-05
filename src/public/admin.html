@@ -9,19 +9,20 @@
     rel="stylesheet">
   <style>
     :root {
-      --red: #9d2a23;
-      --red2: #7e201a;
-      --rl: rgba(157, 42, 35, .1);
-      --blk: #000;
+      --red: #c0392b;
+      --red2: #96281b;
+      --rl: rgba(192, 57, 43, .1);
+      --blk: #111;
       --wht: #fff;
-      --bg: #f4f5f7;
+      --bg: #f1f3f5;
       --card: #fff;
-      --bdr: #e2e4e8;
-      --mut: #8a8f98;
-      --grn: #1a7a3a;
-      --gld: #c8892a;
-      --r: 10px;
-      --rs: 6px
+      --bdr: #e4e6ea;
+      --mut: #868e96;
+      --grn: #2e7d4f;
+      --gld: #b08000;
+      --r: 8px;
+      --rs: 6px;
+      --shadow: 0 1px 3px rgba(0, 0, 0, .06), 0 1px 2px rgba(0, 0, 0, .04)
     }
 
     * {
@@ -41,16 +42,17 @@
 
     /* ─ SIDEBAR ─ */
     .sb {
-      width: 230px;
+      width: 220px;
       min-height: 100vh;
-      background: var(--blk);
+      background: #0e0e0e;
       color: var(--wht);
       display: flex;
       flex-direction: column;
       position: fixed;
       top: 0;
       left: 0;
-      z-index: 100
+      z-index: 100;
+      border-right: 1px solid rgba(255, 255, 255, .04)
     }
 
     .sb-logo {
@@ -139,11 +141,11 @@
       color: rgba(255, 255, 255, .3)
     }
 
-    /* ─ MAIN ─ */
     .main {
-      margin-left: 230px;
+      margin-left: 220px;
       flex: 1;
-      padding: 24px
+      padding: 28px 28px 28px 28px;
+      min-height: 100vh
     }
 
     .ph {
@@ -182,7 +184,8 @@
       border: 1px solid var(--bdr);
       border-radius: var(--r);
       overflow: hidden;
-      margin-bottom: 18px
+      margin-bottom: 16px;
+      box-shadow: var(--shadow)
     }
 
     .ch {
@@ -225,12 +228,12 @@
       margin-bottom: 20px
     }
 
-    /* ─ METRIC CARDS ─ */
     .mc {
       background: var(--card);
       border: 1px solid var(--bdr);
       border-radius: var(--r);
-      padding: 14px 16px
+      padding: 18px 20px;
+      box-shadow: var(--shadow)
     }
 
     .mc.hi {
@@ -252,9 +255,11 @@
     }
 
     .mv {
-      font-size: 26px;
+      font-size: 28px;
       font-weight: 900;
-      line-height: 1.1
+      line-height: 1;
+      letter-spacing: -1px;
+      margin-top: 4px
     }
 
     .mc.hi .mv {
