@@ -37,6 +37,74 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 /* ═══════════════════════════════════════════════
+   🔐 SHOPIFY OAUTH — captures Admin API token
+═══════════════════════════════════════════════ */
+const SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY || process.env.SHOPIFY_CLIENT_ID;
+const SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET || process.env.SHOPIFY_CLIENT_SECRET;
+const SCOPES = 'read_products,read_orders,write_orders,read_customers,write_customers';
+const HOST = process.env.RAILWAY_PUBLIC_DOMAIN
+    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+    : 'https://pixel-suite-pro-production.up.railway.app';
+
+// In-memory token store (persists while server runs)
+let _shopifyToken = process.env.SHOPIFY_ACCESS_TOKEN || null;
+let _shopifyShop = process.env.SHOPIFY_SHOP || null;
+if (_shopifyToken) console.log(`[OAUTH] Token loaded from env — shop: ${_shopifyShop}`);
+
+// Start OAuth — redirect to Shopify
+app.get('/auth', (req, res) => {
+    const shop = req.query.shop || _shopifyShop || process.env.SHOPIFY_SHOP;
+    if (!shop) return res.status(400).send('Missing shop parameter');
+    if (!SHOPIFY_API_KEY) return res.status(500).send('SHOPIFY_API_KEY not configured');
+    const redirectUri = `${HOST}/auth/callback`;
+    const nonce = Math.random().toString(36).substring(2);
+    const authUrl = `https://${shop}/admin/oauth/authorize?client_id=${SHOPIFY_API_KEY}&scope=${SCOPES}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${nonce}`;
+    console.log(`[OAUTH] Redirecting to: ${authUrl}`);
+    res.redirect(authUrl);
+});
+
+// OAuth callback — exchange code for token
+app.get('/auth/callback', async (req, res) => {
+    const { shop, code } = req.query;
+    if (!shop || !code) return res.status(400).send('Missing shop or code');
+    try {
+        const r = await fetch(`https://${shop}/admin/oauth/access_token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ client_id: SHOPIFY_API_KEY, client_secret: SHOPIFY_API_SECRET, code })
+        });
+        const data = await r.json();
+        if (!data.access_token) throw new Error(JSON.stringify(data));
+        _shopifyToken = data.access_token;
+        _shopifyShop = shop;
+        process.env.SHOPIFY_ACCESS_TOKEN = _shopifyToken;
+        process.env.SHOPIFY_SHOP = shop;
+        console.log(`\n✅ [OAUTH] ACCESS TOKEN CAPTURED!`);
+        console.log(`   Shop: ${shop}`);
+        console.log(`   Token: ${_shopifyToken}`);
+        console.log(`   → Copy this to Railway Variables as SHOPIFY_ACCESS_TOKEN\n`);
+        res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">
+            <h2>✅ Autorización exitosa</h2>
+            <p>Token capturado correctamente.</p>
+            <p style="background:#f4f5f7;padding:12px;border-radius:8px;font-family:monospace;font-size:12px">
+                SHOPIFY_ACCESS_TOKEN = ${_shopifyToken}
+            </p>
+            <p style="color:#888;font-size:12px">Copia este token en Railway → Variables → SHOPIFY_ACCESS_TOKEN</p>
+            <p><a href="/">← Volver al dashboard</a></p>
+        </body></html>`);
+    } catch (e) {
+        console.error(`[OAUTH] Error: ${e.message}`);
+        res.status(500).send(`OAuth error: ${e.message}`);
+    }
+});
+
+// Helper to get current token
+function getShopifyToken() { return _shopifyToken; }
+function getShopifyShop() { return _shopifyShop; }
+
+
+
+/* ═══════════════════════════════════════════════
    🛒 SUBSCRIPTION API
 ═══════════════════════════════════════════════ */
 
