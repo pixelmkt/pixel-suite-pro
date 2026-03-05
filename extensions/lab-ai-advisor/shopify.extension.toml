@@ -1,7 +1,6 @@
 api_version = "2026-01"
 
 [[extensions]]
-uid = "4336d316-2a70-8140-5e1a-0afd95a3184a08235308"
 type = "theme"
-name = "LAB NUTRITION — Suscripciones & AI Advisor"
-handle = "lab-nutrition-app"
+name = "LAB NUTRITION Subscriptions"
+handle = "lab-nutrition-subscriptions"

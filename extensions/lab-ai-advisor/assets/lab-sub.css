@@ -1,0 +1,433 @@
+/* LAB NUTRITION — Subscription Widget Premium CSS v2.0
+   World-class design inspired by Recharge, AG1, Bold Subscriptions
+   Zero warnings | March 2026 */
+
+:root {
+    --g: #00E575;
+    --g2: #00C062;
+    --bg: #0D0D14;
+    --card: rgba(255, 255, 255, 0.04);
+    --card2: rgba(255, 255, 255, 0.07);
+    --border: rgba(255, 255, 255, 0.09);
+    --text: #F2F2F5;
+    --muted: #787890;
+    --gold: #FFD166;
+    --r: 14px;
+}
+
+.lab-sub {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    padding: 22px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--bg);
+    color: var(--text);
+    margin: 20px 0;
+}
+
+/* ── TOGGLE ── */
+.lab-sub__toggle {
+    display: flex;
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 11px;
+    padding: 4px;
+    margin-bottom: 20px
+}
+
+.lab-sub__tab {
+    flex: 1;
+    padding: 11px 8px;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: .22s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px
+}
+
+.lab-sub__tab--active {
+    background: var(--g);
+    color: #000;
+    box-shadow: 0 4px 18px rgba(0, 229, 117, .35)
+}
+
+.lab-sub__pill {
+    background: #FF3B5C;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 900;
+    padding: 2px 7px;
+    border-radius: 20px;
+    letter-spacing: .6px;
+    line-height: 1.4
+}
+
+/* ── PANELS ── */
+.lab-sub__panel {
+    display: none
+}
+
+.lab-sub__panel--active {
+    display: block
+}
+
+.lab-sub__once-price {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0
+}
+
+.lab-sub__price-num {
+    font-size: 22px;
+    font-weight: 800
+}
+
+.lab-sub__price-note {
+    font-size: 12px;
+    color: var(--muted)
+}
+
+/* ── SELECTORS ── */
+.lab-sub__group {
+    margin-bottom: 15px
+}
+
+.lab-sub__label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .9px;
+    margin: 0 0 9px
+}
+
+.lab-sub__chips {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap
+}
+
+.lab-sub__chip {
+    padding: 9px 18px;
+    border: 1.5px solid var(--border);
+    border-radius: 30px;
+    background: transparent;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: .18s;
+    white-space: nowrap
+}
+
+.lab-sub__chip:hover {
+    border-color: var(--g);
+    color: var(--g)
+}
+
+.lab-sub__chip--active {
+    background: rgba(0, 229, 117, .12);
+    border-color: var(--g);
+    color: var(--g)
+}
+
+.lab-sub__chip--star {
+    border-color: var(--gold);
+    color: var(--gold)
+}
+
+.lab-sub__chip--star.lab-sub__chip--active {
+    background: rgba(255, 209, 102, .12);
+    border-color: var(--gold);
+    color: var(--gold)
+}
+
+/* ── BENEFIT BOX ── */
+.lab-sub__benefit {
+    background: linear-gradient(135deg, rgba(0, 229, 117, .09) 0%, rgba(0, 119, 255, .05) 100%);
+    border: 1px solid rgba(0, 229, 117, .22);
+    border-radius: 14px;
+    padding: 17px;
+    margin-bottom: 14px;
+    animation: fadeUp .3s ease
+}
+
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(5px)
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0)
+    }
+}
+
+.lab-sub__benefit-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px
+}
+
+.lab-sub__pct {
+    font-size: 34px;
+    font-weight: 900;
+    color: var(--g);
+    line-height: 1;
+    letter-spacing: -1px
+}
+
+.lab-sub__prices {
+    text-align: right
+}
+
+.lab-sub__was {
+    display: block;
+    font-size: 13px;
+    color: var(--muted);
+    text-decoration: line-through
+}
+
+.lab-sub__now {
+    display: block;
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--text)
+}
+
+.lab-sub__saving {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 5px
+}
+
+.lab-sub__extra {
+    font-size: 12px;
+    color: var(--gold);
+    font-weight: 600;
+    min-height: 16px
+}
+
+/* ── LOYALTY BAR ── */
+.lab-sub__loyalty {
+    margin-bottom: 13px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px
+}
+
+.lab-sub__loyalty-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 7px;
+    font-weight: 600
+}
+
+.lab-sub__loyalty-bar {
+    background: rgba(255, 255, 255, .07);
+    border-radius: 6px;
+    height: 6px;
+    overflow: hidden;
+    margin-bottom: 6px
+}
+
+.lab-sub__loyalty-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--g), #00aaff);
+    border-radius: 6px;
+    transition: width .6s ease
+}
+
+.lab-sub__loyalty-desc {
+    font-size: 11px;
+    color: var(--g)
+}
+
+/* ── GIFT ── */
+.lab-sub__gift {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: linear-gradient(135deg, rgba(255, 209, 102, .1), rgba(255, 100, 0, .06));
+    border: 1px solid rgba(255, 209, 102, .3);
+    border-radius: 12px;
+    padding: 13px;
+    margin-bottom: 13px;
+    animation: fadeUp .3s ease
+}
+
+.lab-sub__gift-icon {
+    font-size: 26px;
+    flex-shrink: 0
+}
+
+.lab-sub__gift-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--gold);
+    margin-bottom: 4px
+}
+
+.lab-sub__gift-desc {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.45
+}
+
+/* ── PERKS ── */
+.lab-sub__perks {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 12px
+}
+
+.lab-sub__perk {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 8px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    text-align: center
+}
+
+/* ── LEGAL ── */
+.lab-sub__legal {
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    line-height: 1.5
+}
+
+.lab-sub__legal strong {
+    color: var(--text)
+}
+
+/* ── SOCIAL ── */
+.lab-sub__social {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 14px
+}
+
+.lab-sub__social-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--g);
+    flex-shrink: 0;
+    animation: pulse 2s infinite
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(0, 229, 117, .5)
+    }
+
+    70% {
+        box-shadow: 0 0 0 6px transparent
+    }
+}
+
+/* ── CTA ── */
+.lab-sub__cta {
+    width: 100%;
+    padding: 15px 20px;
+    border: none;
+    border-radius: 12px;
+    background: var(--g);
+    color: #000;
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: .25s cubic-bezier(.34, 1.56, .64, 1);
+    box-shadow: 0 6px 24px rgba(0, 229, 117, .3);
+    letter-spacing: .2px
+}
+
+.lab-sub__cta:hover {
+    background: var(--g2);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 32px rgba(0, 229, 117, .5)
+}
+
+.lab-sub__cta:active {
+    transform: translateY(0)
+}
+
+.lab-sub__cta:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+    transform: none
+}
+
+.lab-sub__cta-arrow {
+    font-size: 18px;
+    transition: .2s
+}
+
+.lab-sub__cta:hover .lab-sub__cta-arrow {
+    transform: translateX(4px)
+}
+
+/* ── TRUST ── */
+.lab-sub__trust {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 13px;
+    flex-wrap: wrap
+}
+
+.lab-sub__trust span {
+    font-size: 11px;
+    color: var(--muted)
+}
+
+/* ── RESPONSIVE ── */
+@media(max-width:480px) {
+    .lab-sub {
+        padding: 15px
+    }
+
+    .lab-sub__chips {
+        flex-direction: column
+    }
+
+    .lab-sub__perks {
+        grid-template-columns: 1fr
+    }
+
+    .lab-sub__trust {
+        gap: 8px
+    }
+}
