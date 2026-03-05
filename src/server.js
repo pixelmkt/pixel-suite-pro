@@ -524,13 +524,26 @@ app.put('/api/settings', async (req, res) => {
 });
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, ts: new Date() }));
 
 /* ─── START ─── */
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 LAB NUTRITION Backend running on port ${PORT}`);
-    console.log(`📊 Admin dashboard: http://localhost:${PORT}/admin`);
+console.log(`[BOOT] PORT env = "${process.env.PORT}" → using ${PORT}`);
+console.log(`[BOOT] NODE_ENV = "${process.env.NODE_ENV}"`);
+console.log(`[BOOT] Binding to 0.0.0.0:${PORT}...`);
+
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🚀 LAB NUTRITION Backend running on 0.0.0.0:${PORT}`);
+    console.log(`📊 Admin dashboard: /`);
     console.log(`🔗 Shopify store: ${process.env.SHOPIFY_SHOP}\n`);
+});
+
+server.on('error', (err) => {
+    console.error(`[FATAL] Server failed to start: ${err.message}`);
+    process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[FATAL] Uncaught:', err);
 });
 
 module.exports = app;
