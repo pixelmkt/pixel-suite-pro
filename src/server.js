@@ -14,7 +14,7 @@ try { notifications = require('./services/notifications'); } catch (e) { console
 try { shopify = require('./services/shopify'); } catch (e) { console.warn('[SHOPIFY] Not configured:', e.message); shopify = {}; }
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 /* ─── MIDDLEWARE ─── */
 app.use(helmet({ contentSecurityPolicy: false }));
