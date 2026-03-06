@@ -72,7 +72,7 @@ async function initializeTypes() {
                     type,
                     name,
                     fieldDefinitions: [
-                        { key: 'data', name: 'Payload', type: { name: 'json' } },
+                        { key: 'data', name: 'Payload', type: 'json' },
                     ],
                 },
             });

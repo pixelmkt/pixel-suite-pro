@@ -307,7 +307,8 @@ app.get('/api/products', async (req, res) => {
         if (!r.ok) return res.json([]);
         const data = await r.json();
         // Read saved eligible products from Shopify Metafields
-        const saved = await readFromShopify('lab_app', 'eligible_products').catch(() => null) || [];
+        let saved = await readFromShopify('lab_app', 'eligible_products').catch(() => null);
+        if (!Array.isArray(saved)) saved = [];
         const activeIds = new Set(saved.filter(p => p.is_active).map(p => String(p.shopify_id)));
         const products = (data.products || []).map(p => ({
             shopify_id: String(p.id),
