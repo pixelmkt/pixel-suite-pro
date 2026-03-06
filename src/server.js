@@ -28,21 +28,25 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 /* ─── MIDDLEWARE ─── */
+// CSP: MUST allow Shopify Admin to embed this app in an iframe
+app.use((req, res, next) => {
+    res.setHeader(
+        'Content-Security-Policy',
+        "frame-ancestors https://admin.shopify.com https://nutrition-lab-cluster.myshopify.com https://*.myshopify.com;"
+    );
+    // Remove any X-Frame-Options that would block the iframe
+    res.removeHeader('X-Frame-Options');
+    next();
+});
+
 app.use(helmet({
     contentSecurityPolicy: false,
-    frameguard: false,            // Allow Shopify Admin to iframe the app
+    frameguard: false,
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: false,
     crossOriginResourcePolicy: false
 }));
-app.use(cors({
-    origin: [
-        'https://nutrition-lab-cluster.myshopify.com',
-        'https://admin.shopify.com',
-        'https://labnutrition.com',
-        'https://www.labnutrition.com'
-    ]
-}));
+app.use(cors({ origin: '*' })); // Allow all origins for embedded app
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -762,15 +766,20 @@ app.post('/api/subscriptions/:id/resume', async (req, res) => {
 /* ── Health check ── */
 app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, ts: new Date() }));
 
-/* ─── START ─── */
-console.log(`[BOOT] PORT env = "${process.env.PORT}" → using ${PORT}`);
-console.log(`[BOOT] NODE_ENV = "${process.env.NODE_ENV}"`);
-console.log(`[BOOT] Binding to 0.0.0.0:${PORT}...`);
+/* ── Catch-all: serve admin.html for Shopify embedded app ── */
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
 
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 LAB NUTRITION Backend running on 0.0.0.0:${PORT}`);
-    console.log(`📊 Admin dashboard: /`);
-    console.log(`🔗 Shopify store: ${process.env.SHOPIFY_SHOP}\n`);
+/* ── START SERVER ── */
+const server = app.listen(PORT, '0.0.0.0', async () => {
+    console.log(`\nLAB NUTRITION Backend running on 0.0.0.0:${PORT}`);
+    console.log(`Admin dashboard: /`);
+    console.log(`Shopify store: ${process.env.SHOPIFY_SHOP}\n`);
+    // Auto-initialize Shopify Metaobject types on boot
+    if (db && db.initializeTypes) {
+        try { await db.initializeTypes(); } catch (e) { console.warn('[DB] Init:', e.message); }
+    }
 });
 
 server.on('error', (err) => {
