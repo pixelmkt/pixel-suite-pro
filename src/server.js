@@ -613,17 +613,60 @@ app.get('/api/shopify/products', async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════
-   ⚙️ SETTINGS API
+   ⚙️ SETTINGS API — persists to file + env fallback
 ═══════════════════════════════════════════════ */
+const fs = require('fs');
+const SETTINGS_FILE = path.join(__dirname, '..', 'settings.json');
+
+function readSettings() {
+    // 1. Try file (Railway filesystem persists between deploys IF volume mounted, else resets on redeploy)
+    let saved = {};
+    try { if (fs.existsSync(SETTINGS_FILE)) saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')); } catch { }
+    // 2. Merge with env vars as base (env always wins if set)
+    return {
+        mp_access_token: process.env.MP_ACCESS_TOKEN || saved.mp_access_token || '',
+        mp_public_key: process.env.MP_PUBLIC_KEY || saved.mp_public_key || '',
+        supabase_url: process.env.SUPABASE_URL || saved.supabase_url || '',
+        supabase_key: process.env.SUPABASE_SERVICE_KEY || saved.supabase_key || '',
+        shopify_shop: process.env.SHOPIFY_SHOP || saved.shopify_shop || '',
+        shopify_access_token: process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken || saved.shopify_access_token || '',
+        smtp_host: process.env.SMTP_HOST || saved.smtp_host || 'smtp.gmail.com',
+        smtp_port: process.env.SMTP_PORT || saved.smtp_port || 587,
+        smtp_user: process.env.SMTP_USER || saved.smtp_user || '',
+        smtp_pass: process.env.SMTP_PASS || saved.smtp_pass || '',
+        email_from: process.env.EMAIL_FROM || saved.email_from || '',
+        widget_enabled: saved.widget_enabled !== undefined ? saved.widget_enabled : true,
+        brand_color: saved.brand_color || '#9d2a23',
+        discount_badge_text: saved.discount_badge_text || 'HASTA -30%',
+    };
+}
+
 app.get('/api/settings', async (req, res) => {
+    // Try Supabase first (if configured), then fall back to file+env
     const { data } = await supabase.from('app_settings').select('*').single();
-    res.json(data || {});
+    if (data && data.id) return res.json(data);
+    res.json(readSettings());
 });
 
 app.put('/api/settings', async (req, res) => {
-    const { data, error } = await supabase.from('app_settings').upsert({ id: 1, ...req.body }).select().single();
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+    const body = req.body;
+    // Update process.env in memory so services work immediately
+    if (body.mp_access_token) process.env.MP_ACCESS_TOKEN = body.mp_access_token;
+    if (body.mp_public_key) process.env.MP_PUBLIC_KEY = body.mp_public_key;
+    if (body.supabase_url) process.env.SUPABASE_URL = body.supabase_url;
+    if (body.supabase_key) process.env.SUPABASE_SERVICE_KEY = body.supabase_key;
+    if (body.shopify_shop) process.env.SHOPIFY_SHOP = body.shopify_shop;
+    if (body.shopify_access_token) { process.env.SHOPIFY_ACCESS_TOKEN = body.shopify_access_token; _shopifyToken = body.shopify_access_token; }
+    if (body.smtp_host) process.env.SMTP_HOST = body.smtp_host;
+    if (body.smtp_port) process.env.SMTP_PORT = String(body.smtp_port);
+    if (body.smtp_user) process.env.SMTP_USER = body.smtp_user;
+    if (body.smtp_pass) process.env.SMTP_PASS = body.smtp_pass;
+    if (body.email_from) process.env.EMAIL_FROM = body.email_from;
+    // Save to file
+    try { fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ ...readSettings(), ...body }, null, 2)); } catch (e) { console.warn('[SETTINGS] Could not write file:', e.message); }
+    // Also try Supabase (if configured)
+    try { await supabase.from('app_settings').upsert({ id: 1, ...body }).select().single(); } catch { }
+    res.json({ success: true, settings: readSettings() });
 });
 
 /* ── Health check ── */
