@@ -1469,30 +1469,28 @@ Equipo LAB"></textarea>
       const el = document.getElementById('prod-list');
       el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">Cargando productos...</div>';
       try {
-        const [shopR, savedR] = await Promise.all([api('/api/shopify/products'), api('/api/products').catch(() => [])]);
-        shopifyProducts = shopR.products || [];
-        const saved = Array.isArray(savedR) ? savedR : [];
-        const activeMap = {};
-        saved.forEach(p => { activeMap[p.shopify_product_id] = p.is_active; });
-        document.getElementById('prod-count').textContent = saved.filter(p => p.is_active).length + ' activos de ' + shopifyProducts.length + ' en catalogo';
+        const data = await api('/api/products');
+        shopifyProducts = Array.isArray(data) ? data : [];
+        const active = shopifyProducts.filter(p => p.subscription_enabled);
+        document.getElementById('prod-count').textContent = active.length + ' activos de ' + shopifyProducts.length + ' en catalogo';
         if (!shopifyProducts.length) {
-          el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">No se encontraron productos.</div>';
+          el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">No se encontraron productos. Verifica que SHOPIFY_ACCESS_TOKEN este configurado en Railway.</div>';
           return;
         }
         const noImg = '<svg style="opacity:.2;display:block;margin:auto" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>';
         let html = '<div class="prod-grid">';
         for (const p of shopifyProducts) {
-          const on = activeMap[p.id] === true;
+          const on = p.subscription_enabled === true;
           const img = p.image ? '<img src="' + p.image + '" style="width:100%;height:100%;object-fit:cover" loading="lazy">' : noImg;
           const btnClass = on ? 'btn-b' : 'btn-g';
           const btnText = on ? 'Activo' : 'Inactivo';
           const safeTitle = (p.title || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-          const safeImg = (p.image || '').replace(/'/g, "\\'");
           html += '<div class="prod-card' + (on ? ' on' : '') + '">';
           html += '<div style="width:100%;aspect-ratio:1;background:#f4f5f7;display:flex;align-items:center;justify-content:center;overflow:hidden">' + img + '</div>';
           html += '<div class="prod-name">' + p.title + '</div>';
           html += '<div style="padding:4px 10px 8px;text-align:center">';
-          html += '<button class="btn btn-sm ' + btnClass + '" onclick="toggleProd(\'' + p.id + '\',' + !on + ',\'' + safeTitle + '\',\'' + safeImg + '\')">' + btnText + '</button>';
+          html += '<button class="btn btn-sm ' + btnClass + '" onclick="toggleProd(\'' + p.shopify_id + '\',' + !on + ',\'' + safeTitle + '\')">'
+            + btnText + '</button>';
           html += '</div><div class="prod-badge">ACTIVO</div></div>';
         }
         html += '</div>';
@@ -1502,37 +1500,49 @@ Equipo LAB"></textarea>
       }
     }
     async function showProductPicker() {
-      document.getElementById('product-picker').style.display = 'flex';
-      const grid = document.getElementById('picker-grid');
-      grid.innerHTML = '<div style="text-align:center;padding:24px;color:var(--mut)">Cargando productos de Shopify...</div>';
+      const existing = document.getElementById('product-picker-overlay');
+      if (existing) existing.remove();
+      const overlay = document.createElement('div');
+      overlay.id = 'product-picker-overlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+      overlay.innerHTML = `<div style="background:#fff;border-radius:12px;width:100%;max-width:700px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column">
+        <div style="padding:16px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:800;font-size:14px;text-transform:uppercase;letter-spacing:1px">Seleccionar productos</div>
+          <button onclick="document.getElementById('product-picker-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#666">\u00d7</button>
+        </div>
+        <div style="padding:12px 20px;border-bottom:1px solid #eee"><input type="text" placeholder="Buscar producto..." oninput="filterPickerResults(this.value)" style="width:100%;border:1.5px solid #e5e7eb;border-radius:6px;padding:8px 12px;font-size:13px;outline:none;box-sizing:border-box"></div>
+        <div id="picker-results" style="padding:16px 20px;overflow-y:auto;flex:1">Cargando...</div>
+      </div>`;
+      document.body.appendChild(overlay);
       try {
-        const r = await api('/api/shopify/products');
-        shopifyProducts = r.products || [];
-        if (!shopifyProducts.length) { grid.innerHTML = '<div style="text-align:center;padding:24px;color:var(--mut)">No se pudieron cargar productos. Verifica las credenciales de Shopify en Configuración.</div>'; return }
-        renderPicker(shopifyProducts);
-      } catch (e) { grid.innerHTML = `<div style="text-align:center;padding:24px;color:#c00">Error: ${e.message}</div>` }
+        const data = await api('/api/products');
+        shopifyProducts = Array.isArray(data) ? data : [];
+        renderPickerResults(shopifyProducts);
+      } catch (e) {
+        document.getElementById('picker-results').innerHTML = '<div style="text-align:center;padding:24px;color:#c00">Error: ' + e.message + '</div>';
+      }
     }
-    function renderPicker(prods) {
-      document.getElementById('picker-grid').innerHTML = prods.map(p => `<div class="prod-card" onclick="pickProduct('${p.id}','${(p.title || '').replace(/'/g, "\\'")}',' ${p.image || ''}')" style="cursor:pointer">
+    function renderPickerResults(prods) {
+      const el = document.getElementById('picker-results');
+      if (!prods.length) { el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--mut)">Sin resultados</div>'; return; }
+      el.innerHTML = '<div class="prod-grid">' + prods.map(p => `<div class="prod-card" onclick="pickProduct('${p.shopify_id}','${(p.title || '').replace(/'/g, "\\'")}',' ${p.image || ''}')" style="cursor:pointer">
         <div style="width:100%;aspect-ratio:1;background:#f4f5f7;display:flex;align-items:center;justify-content:center;overflow:hidden">
-          ${p.image ? `<img src="${p.image}" style="width:100%;height:100%;object-fit:cover">` : '<span style="font-size:40px">📦</span>'}
+          ${p.image ? '<img src="' + p.image + '" style="width:100%;height:100%;object-fit:cover">' : '<span style="color:#ccc;font-size:13px">Sin imagen</span>'}
         </div>
         <div class="prod-name">${p.title}</div>
         <div style="font-size:11px;text-align:center;padding:2px 10px 8px;color:var(--mut)">S/ ${p.price}</div>
-      </div>`).join('');
+      </div>`).join('') + '</div>';
     }
-    function filterPicker(q) {
-      const filtered = shopifyProducts.filter(p => p.title.toLowerCase().includes(q.toLowerCase()));
-      renderPicker(filtered);
+    function filterPickerResults(q) {
+      renderPickerResults(shopifyProducts.filter(p => p.title.toLowerCase().includes(q.toLowerCase())));
     }
-    function closeProductPicker() { document.getElementById('product-picker').style.display = 'none' }
     async function pickProduct(pid, title, image) {
-      await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_product_id: pid, product_title: title.trim(), product_image: image.trim(), is_active: true }) });
-      toast('📦 ' + title + ' agregado'); closeProductPicker(); loadProds();
+      await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_id: pid, product_title: title.trim(), product_image: image.trim(), is_active: true }) });
+      toast('Producto agregado'); const o = document.getElementById('product-picker-overlay'); if (o) o.remove(); loadProds();
     }
     async function toggleProd(pid, active, title) {
-      await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_product_id: pid, product_title: title, is_active: active }) });
-      toast(active ? '✅ Widget activado' : '⭕ Widget desactivado'); loadProds();
+      await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_id: pid, product_title: title, is_active: active }) });
+      toast(active ? 'Widget activado' : 'Widget desactivado'); loadProds();
     }
 
     /* ── ⑤ PLANS ── */
@@ -1600,13 +1610,19 @@ Equipo LAB"></textarea>
     }
     async function saveWidgetSettings() { toast('💾 Configuración del widget guardada (aplica en próximo deploy)') }
     async function saveAllSettings() {
-      // Save env-style settings — in production these would update .env via secure API
-      const settings = { MP_ACCESS_TOKEN: document.getElementById('mp-token').value, MP_PUBLIC_KEY: document.getElementById('mp-pk').value, SUPABASE_URL: document.getElementById('sb-url').value, SUPABASE_SERVICE_KEY: document.getElementById('sb-key').value, SHOPIFY_SHOP: document.getElementById('sh-domain').value, SHOPIFY_ACCESS_TOKEN: document.getElementById('sh-token').value, SMTP_HOST: document.getElementById('sm-host').value, SMTP_PORT: document.getElementById('sm-port').value, SMTP_USER: document.getElementById('sm-user').value, SMTP_PASS: document.getElementById('sm-pass').value, EMAIL_FROM: document.getElementById('sm-from').value };
-      await api('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ env_config: settings, ...{ cancellation_window_open: parseInt(document.getElementById('cfg-open')?.value || 30), cancellation_window_close: parseInt(document.getElementById('cfg-close')?.value || 15), max_pause_months: parseInt(document.getElementById('cfg-pause')?.value || 2) } }) });
-      toast('✅ Configuración guardada. Requiere reinicio del servidor para aplicar credenciales.');
+      const settings = {
+        MP_ACCESS_TOKEN: document.getElementById('mp-token').value,
+        MP_PUBLIC_KEY: document.getElementById('mp-pk').value,
+        SMTP_HOST: document.getElementById('sm-host').value,
+        SMTP_PORT: document.getElementById('sm-port').value,
+        SMTP_USER: document.getElementById('sm-user').value,
+        SMTP_PASS: document.getElementById('sm-pass').value,
+        EMAIL_FROM: document.getElementById('sm-from').value
+      };
+      await api('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ env_config: settings, cancellation_window_open: parseInt(document.getElementById('cfg-open')?.value || 30), cancellation_window_close: parseInt(document.getElementById('cfg-close')?.value || 15), max_pause_months: parseInt(document.getElementById('cfg-pause')?.value || 2) }) });
+      toast('Configuracion guardada');
     }
-    async function testMP() { toast('🔍 Verificando MP... (requiere backend live)', true, 2000) }
-    async function testSupabase() { toast('🔍 Verificando Supabase... (requiere backend live)', true, 2000) }
+    async function testMP() { toast('Verificando Mercado Pago...', true, 2000) }
     async function testEmail() {
       const email = prompt('Email de prueba:'); if (!email) return;
       toast(`📧 Enviando test a ${email}...`, true, 5000);

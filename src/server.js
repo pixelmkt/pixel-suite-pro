@@ -713,38 +713,33 @@ app.put('/api/settings', async (req, res) => {
 app.get('/api/portal/:email', async (req, res) => {
     const email = decodeURIComponent(req.params.email).toLowerCase().trim();
     try {
-        const { data, error } = await supabase
-            .from('subscriptions')
-            .select(`*, subscription_events(event_type, amount, created_at)`)
-            .ilike('customer_email', email)
-            .order('created_at', { ascending: false });
-        if (error) throw error;
-        res.json({ subscriptions: data || [], email });
+        const allSubs = await db.getSubscriptions();
+        const subs = allSubs.filter(s => (s.customer_email || '').toLowerCase() === email);
+        res.json({ subscriptions: subs, email });
     } catch (e) {
-        // Return empty (stub mode) so portal still renders
-        res.json({ subscriptions: [], email, note: 'Database not configured' });
+        res.json({ subscriptions: [], email, note: 'Error: ' + e.message });
     }
 });
 
 /* GET /api/portal/subscription/:id/history */
 app.get('/api/portal/subscription/:id/history', async (req, res) => {
-    const { data } = await supabase.from('subscription_events')
-        .select('*').eq('subscription_id', req.params.id)
-        .order('created_at', { ascending: false }).limit(30);
-    res.json({ events: data || [] });
+    try {
+        const events = await db.getEvents ? await db.getEvents(req.params.id) : [];
+        res.json({ events: events || [] });
+    } catch (e) { res.json({ events: [] }); }
 });
 
 /* POST /api/portal/subscription/:id/pause */
 app.post('/api/portal/subscription/:id/pause', async (req, res) => {
     try {
         const { pauseMonths = 1 } = req.body;
-        const { data: sub } = await supabase.from('subscriptions').select('*').eq('id', req.params.id).single();
+        const sub = await db.getSubscription(req.params.id);
         if (!sub || sub.status !== 'active') return res.status(400).json({ error: 'Cannot pause' });
-        if (mp.pauseSubscription) await mp.pauseSubscription(sub.mp_preapproval_id);
+        if (mp.pauseSubscription) await mp.pauseSubscription(sub.mp_preapproval_id).catch(() => { });
         const pausedUntil = new Date();
         pausedUntil.setMonth(pausedUntil.getMonth() + parseInt(pauseMonths));
-        await supabase.from('subscriptions').update({ status: 'paused', paused_until: pausedUntil.toISOString() }).eq('id', sub.id);
-        await supabase.from('subscription_events').insert({ subscription_id: sub.id, event_type: 'paused', metadata: { pause_months: pauseMonths } });
+        await db.updateSubscription(sub.id, { status: 'paused', paused_until: pausedUntil.toISOString() });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'paused', metadata: JSON.stringify({ pause_months: pauseMonths }) });
         res.json({ success: true, pausedUntil });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -752,12 +747,12 @@ app.post('/api/portal/subscription/:id/pause', async (req, res) => {
 /* POST /api/portal/subscription/:id/skip */
 app.post('/api/portal/subscription/:id/skip', async (req, res) => {
     try {
-        const { data: sub } = await supabase.from('subscriptions').select('*').eq('id', req.params.id).single();
+        const sub = await db.getSubscription(req.params.id);
         if (!sub || sub.status !== 'active') return res.status(400).json({ error: 'Cannot skip' });
         const newNext = new Date(sub.next_charge_at);
         newNext.setMonth(newNext.getMonth() + sub.frequency_months);
-        await supabase.from('subscriptions').update({ next_charge_at: newNext.toISOString() }).eq('id', sub.id);
-        await supabase.from('subscription_events').insert({ subscription_id: sub.id, event_type: 'skipped' });
+        await db.updateSubscription(sub.id, { next_charge_at: newNext.toISOString() });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'skipped' });
         res.json({ success: true, newNextChargeAt: newNext });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -765,11 +760,11 @@ app.post('/api/portal/subscription/:id/skip', async (req, res) => {
 /* POST /api/subscriptions/:id/resume (for portal reactivation) */
 app.post('/api/subscriptions/:id/resume', async (req, res) => {
     try {
-        const { data: sub } = await supabase.from('subscriptions').select('*').eq('id', req.params.id).single();
+        const sub = await db.getSubscription(req.params.id);
         if (!sub || sub.status !== 'paused') return res.status(400).json({ error: 'Not paused' });
-        if (mp.resumeSubscription) await mp.resumeSubscription(sub.mp_preapproval_id);
-        await supabase.from('subscriptions').update({ status: 'active', paused_until: null }).eq('id', sub.id);
-        await supabase.from('subscription_events').insert({ subscription_id: sub.id, event_type: 'resumed' });
+        if (mp.resumeSubscription) await mp.resumeSubscription(sub.mp_preapproval_id).catch(() => { });
+        await db.updateSubscription(sub.id, { status: 'active', paused_until: null });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'resumed' });
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
