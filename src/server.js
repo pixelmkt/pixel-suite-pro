@@ -297,12 +297,28 @@ app.put('/api/plans/:id', async (req, res) => {
     res.json({ ...req.body, id: req.params.id, updated: true });
 });
 
-/* ── ELIGIBLE PRODUCTS — Shopify Metafields ── */
+/* ── ELIGIBLE PRODUCTS — fetch from Shopify Admin API ── */
 app.get('/api/products', async (req, res) => {
     try {
-        const saved = await readFromShopify('lab_app', 'eligible_products');
-        res.json(saved || []);
-    } catch { res.json([]); }
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.json([]);
+        const url = `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,images,variants,status`;
+        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } });
+        if (!r.ok) return res.json([]);
+        const data = await r.json();
+        // Merge with saved eligible list
+        const saved = await readFromShopify('lab_app', 'eligible_products').catch(() => null) || [];
+        const savedIds = new Set(saved.map(p => String(p.shopify_id)));
+        res.json((data.products || []).map(p => ({
+            shopify_id: String(p.id),
+            title: p.title,
+            image: p.images?.[0]?.src || null,
+            price: p.variants?.[0]?.price || '0',
+            status: p.status,
+            subscription_enabled: savedIds.has(String(p.id))
+        })));
+    } catch (e) { res.json([]); }
 });
 
 app.post('/api/products', async (req, res) => {
@@ -375,11 +391,9 @@ app.post('/webhooks/mercadopago', async (req, res) => {
             if (isComplete && notifications.sendRenewalInvite) notifications.sendRenewalInvite(sub).catch(console.error);
 
         } else if (mpSub.status === 'payment_required') {
-            await supabase.from('subscriptions').update({ status: 'payment_failed' }).eq('id', sub.id);
-            await supabase.from('subscription_events').insert({
-                subscription_id: sub.id, event_type: 'charge_failed'
-            });
-            notifications.sendChargeFailed(sub).catch(console.error);
+            await db.updateSubscription(sub.id, { status: 'payment_failed' });
+            await db.createEvent({ subscription_id: sub.id, event_type: 'charge_failed' });
+            if (notifications.sendChargeFailed) notifications.sendChargeFailed(sub).catch(console.error);
         }
     } catch (e) {
         console.error('MP webhook error:', e.message);
@@ -395,38 +409,35 @@ cron.schedule('0 14 * * *', async () => {  // 14:00 UTC = 09:00 PET
     const now = new Date();
 
     try {
-        // Get active subscriptions
-        const { data: subs } = await supabase
-            .from('subscriptions')
-            .select('*')
-            .eq('status', 'active')
-            .not('next_charge_at', 'is', null);
+        // Get active subscriptions from Shopify Metaobjects
+        const allSubs = await db.getSubscriptions({ status: 'active' });
+        const subs = allSubs.filter(s => s.next_charge_at);
 
-        for (const sub of subs || []) {
+        for (const sub of subs) {
             const nextCharge = new Date(sub.next_charge_at);
             const daysUntil = (nextCharge - now) / (1000 * 60 * 60 * 24);
 
             // -7 days: lock warning
-            if (daysUntil >= 6.5 && daysUntil < 7.5) {
+            if (daysUntil >= 6.5 && daysUntil < 7.5 && notifications.sendCancelLockWarning) {
                 await notifications.sendCancelLockWarning(sub).catch(console.error);
             }
 
             // -3 days: charge reminder
-            if (daysUntil >= 2.5 && daysUntil < 3.5) {
+            if (daysUntil >= 2.5 && daysUntil < 3.5 && notifications.sendChargeReminder) {
                 await notifications.sendChargeReminder(sub).catch(console.error);
             }
         }
 
         // Resume paused subscriptions that have expired their pause
-        const { data: paused } = await supabase.from('subscriptions')
-            .select('*').eq('status', 'paused').lt('paused_until', now.toISOString());
+        const pausedSubs = await db.getSubscriptions({ status: 'paused' });
+        const paused = pausedSubs.filter(s => s.paused_until && new Date(s.paused_until) < now);
 
-        for (const sub of paused || []) {
-            await mp.resumeSubscription(sub.mp_preapproval_id).catch(console.error);
-            await supabase.from('subscriptions').update({ status: 'active', paused_until: null }).eq('id', sub.id);
+        for (const sub of paused) {
+            if (mp.resumeSubscription) await mp.resumeSubscription(sub.mp_preapproval_id).catch(console.error);
+            await db.updateSubscription(sub.id, { status: 'active', paused_until: null });
         }
 
-        console.log(`[CRON] Processed ${subs?.length || 0} subs, resumed ${paused?.length || 0} paused`);
+        console.log(`[CRON] Processed ${subs.length} subs, resumed ${paused.length} paused`);
     } catch (e) {
         console.error('[CRON] Error:', e.message);
     }
@@ -483,10 +494,12 @@ app.post('/api/marketing/send', async (req, res) => {
         }
 
         // Log campaign
-        await supabase.from('subscription_events').insert({
-            subscription_id: null, event_type: 'campaign_sent',
-            metadata: { subject, segment, total: unique.length, sent, failed }
-        }).catch(() => { });
+        if (db && db.createEvent) {
+            await db.createEvent({
+                subscription_id: 'campaign', event_type: 'campaign_sent',
+                metadata: JSON.stringify({ subject, segment, total: unique.length, sent, failed })
+            }).catch(() => { });
+        }
 
         res.json({ success: true, sent, failed, total: unique.length });
     } catch (e) {
@@ -497,16 +510,14 @@ app.post('/api/marketing/send', async (req, res) => {
 /* ── Export subscribers as CSV ── */
 app.get('/api/subscribers/export', async (req, res) => {
     const { status } = req.query;
-    let q = supabase.from('subscriptions').select('customer_email,customer_name,customer_phone,product_title,frequency_months,permanence_months,discount_pct,final_price,status,cycles_completed,cycles_required,next_charge_at,created_at');
-    if (status) q = q.eq('status', status);
-    const { data } = await q;
+    let data = await db.getSubscriptions(status ? { status } : {});
 
-    const header = 'Email,Nombre,Teléfono,Producto,Frecuencia,Permanencia,Descuento%,Precio,Estado,Ciclos,ProximoCobro,Inicio\n';
+    const header = 'Email,Nombre,Telefono,Producto,Frecuencia,Permanencia,Descuento%,Precio,Estado,Ciclos,ProximoCobro,Inicio\n';
     const rows = (data || []).map(s => [
         s.customer_email, s.customer_name || '', s.customer_phone || '',
-        `"${s.product_title}"`, s.frequency_months === 1 ? 'Mensual' : 'Bimestral',
-        s.permanence_months + 'm', s.discount_pct + '%', s.final_price,
-        s.status, `${s.cycles_completed}/${s.cycles_required}`,
+        `"${s.product_title || ''}"`, s.frequency_months === 1 ? 'Mensual' : 'Bimestral',
+        (s.permanence_months || '') + 'm', (s.discount_pct || '') + '%', s.final_price || '',
+        s.status, `${s.cycles_completed || 0}/${s.cycles_required || 0}`,
         s.next_charge_at?.split('T')[0] || '', s.created_at?.split('T')[0] || ''
     ].join(',')).join('\n');
 
