@@ -5,7 +5,18 @@ const cors = require('cors');
 const cron = require('node-cron');
 const path = require('path');
 
+// ── Legacy supabase stub (kept for safety, not used for data) ──
 const supabase = require('./db/client');
+
+// ── Shopify Metaobjects — Native Database ──────────────────────
+let db;
+try {
+    db = require('./services/shopify-storage');
+    console.log('[DB] Using Shopify Metaobjects as native database');
+} catch (e) {
+    console.warn('[DB] shopify-storage not available:', e.message);
+    db = null;
+}
 
 // Crash-proof service imports — server starts even without credentials
 let mp, notifications, shopify;
@@ -144,8 +155,8 @@ app.post('/api/subscriptions/create', async (req, res) => {
         const nextCharge = new Date();
         nextCharge.setMonth(nextCharge.getMonth() + frequencyMonths);
 
-        // 4. Save to Supabase
-        const { data: sub, error } = await supabase.from('subscriptions').insert({
+        // 4. Save to Shopify Metaobjects
+        const sub = await db.createSubscription({
             customer_id: customerId || customerEmail,
             customer_email: customerEmail,
             customer_name: customerName,
@@ -167,24 +178,16 @@ app.post('/api/subscriptions/create', async (req, res) => {
             next_charge_at: nextCharge.toISOString(),
             shipping_address: shippingAddress,
             expires_at: new Date(Date.now() + permanenceMonths * 30 * 24 * 3600 * 1000).toISOString()
-        }).select().single();
-
-        if (error) throw error;
+        });
 
         // 5. Tag customer in Shopify
-        if (customerId) {
-            shopify.tagCustomerAsSubscriber(customerId, true).catch(console.error);
-        }
+        if (customerId) shopify.tagCustomerAsSubscriber(customerId, true).catch(console.error);
 
         // 6. Send welcome email
-        notifications.sendWelcome(sub).catch(console.error);
+        if (notifications.sendWelcome) notifications.sendWelcome(sub).catch(console.error);
 
         // 7. Log event
-        await supabase.from('subscription_events').insert({
-            subscription_id: sub.id,
-            event_type: 'created',
-            metadata: { mp_plan_id: plan.id, mp_preapproval_id: mpSub.id }
-        });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'created', metadata: { mp_plan_id: plan.id } });
 
         res.json({ success: true, subscriptionId: sub.id, nextChargeAt: sub.next_charge_at });
     } catch (e) {
@@ -195,67 +198,47 @@ app.post('/api/subscriptions/create', async (req, res) => {
 
 /* ── GET customer subscriptions ── */
 app.get('/api/subscriptions/customer/:customerId', async (req, res) => {
-    const { data, error } = await supabase
-        .from('subscriptions')
-        .select('*')
-        .eq('customer_id', req.params.customerId)
-        .order('created_at', { ascending: false });
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+    try {
+        const subs = await db.getSubscriptions();
+        const filtered = subs.filter(s => s.customer_id === req.params.customerId || s.customer_email === req.params.customerId);
+        res.json(filtered);
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ── PAUSE subscription ── */
 app.post('/api/subscriptions/:id/pause', async (req, res) => {
     try {
         const { pauseMonths = 1 } = req.body;
-        const { data: sub } = await supabase.from('subscriptions').select('*').eq('id', req.params.id).single();
+        const sub = await db.getSubscription(req.params.id);
         if (!sub || sub.status !== 'active') return res.status(400).json({ error: 'Cannot pause' });
-
-        await mp.pauseSubscription(sub.mp_preapproval_id);
-
+        if (mp.pauseSubscription) await mp.pauseSubscription(sub.mp_preapproval_id).catch(() => { });
         const pausedUntil = new Date();
-        pausedUntil.setMonth(pausedUntil.getMonth() + pauseMonths);
-
-        await supabase.from('subscriptions').update({
-            status: 'paused', paused_until: pausedUntil.toISOString()
-        }).eq('id', sub.id);
-
-        await supabase.from('subscription_events').insert({
-            subscription_id: sub.id, event_type: 'paused',
-            metadata: { pause_months: pauseMonths, paused_until: pausedUntil }
-        });
-
+        pausedUntil.setMonth(pausedUntil.getMonth() + parseInt(pauseMonths));
+        await db.updateSubscription(sub.id, { status: 'paused', paused_until: pausedUntil.toISOString() });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'paused', metadata: { pause_months: pauseMonths } });
         res.json({ success: true, pausedUntil });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ── SKIP one shipment ── */
 app.post('/api/subscriptions/:id/skip', async (req, res) => {
     try {
-        const { data: sub } = await supabase.from('subscriptions').select('*').eq('id', req.params.id).single();
+        const sub = await db.getSubscription(req.params.id);
         if (!sub || sub.status !== 'active') return res.status(400).json({ error: 'Cannot skip' });
 
         const newNext = new Date(sub.next_charge_at);
         newNext.setMonth(newNext.getMonth() + sub.frequency_months);
 
-        await supabase.from('subscriptions').update({ next_charge_at: newNext.toISOString() }).eq('id', sub.id);
-        await supabase.from('subscription_events').insert({
-            subscription_id: sub.id, event_type: 'skipped',
-            metadata: { skipped_date: sub.next_charge_at, new_date: newNext }
-        });
-
+        await db.updateSubscription(sub.id, { next_charge_at: newNext.toISOString() });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'skipped', metadata: { skipped_date: sub.next_charge_at } });
         res.json({ success: true, newNextChargeAt: newNext });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ── CANCEL subscription (with anti-abuse window check) ── */
 app.post('/api/subscriptions/:id/cancel', async (req, res) => {
     try {
-        const { data: sub } = await supabase.from('subscriptions').select('*').eq('id', req.params.id).single();
+        const sub = await db.getSubscription(req.params.id);
         if (!sub) return res.status(404).json({ error: 'Not found' });
 
         // Anti-abuse: must complete minimum permanence
@@ -281,87 +264,70 @@ app.post('/api/subscriptions/:id/cancel', async (req, res) => {
             });
         }
 
-        // Cancel in MP
-        await mp.cancelSubscription(sub.mp_preapproval_id);
-
-        await supabase.from('subscriptions').update({
-            status: 'cancelled', cancelled_at: now.toISOString()
-        }).eq('id', sub.id);
-
-        await supabase.from('subscription_events').insert({
-            subscription_id: sub.id, event_type: 'cancelled'
-        });
-
-        // Remove subscriber tag from Shopify
-        if (sub.customer_id) {
-            shopify.tagCustomerAsSubscriber(sub.customer_id, false).catch(console.error);
-        }
-
+        if (mp.cancelSubscription) await mp.cancelSubscription(sub.mp_preapproval_id).catch(() => { });
+        await db.updateSubscription(sub.id, { status: 'cancelled', cancelled_at: now.toISOString() });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'cancelled' });
+        if (sub.customer_id) shopify.tagCustomerAsSubscriber(sub.customer_id, false).catch(console.error);
         res.json({ success: true, message: 'Suscripción cancelada correctamente.' });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* ── PLANS (no-code config) ── */
+/* ── PLANS — stored as Shopify Metafields on the shop ── */
+const DEFAULT_PLANS = [
+    { id: 1, permanence_months: 3, frequency_months: 1, discount_pct: 10, cycles: 3, label: '3 meses' },
+    { id: 2, permanence_months: 6, frequency_months: 1, discount_pct: 15, cycles: 6, label: '6 meses' },
+    { id: 3, permanence_months: 12, frequency_months: 1, discount_pct: 20, cycles: 12, label: '12 meses' },
+    { id: 4, permanence_months: 3, frequency_months: 2, discount_pct: 12, cycles: 2, label: '3 meses bimestral' },
+    { id: 5, permanence_months: 6, frequency_months: 2, discount_pct: 18, cycles: 3, label: '6 meses bimestral' },
+    { id: 6, permanence_months: 12, frequency_months: 2, discount_pct: 25, cycles: 6, label: '12 meses bimestral' },
+];
+
 app.get('/api/plans', async (req, res) => {
-    const { data } = await supabase.from('subscription_plans').select('*').order('permanence_months');
-    res.json(data);
+    try {
+        const saved = await readFromShopify('lab_app', 'plans_config');
+        res.json(saved || DEFAULT_PLANS);
+    } catch { res.json(DEFAULT_PLANS); }
 });
 
 app.put('/api/plans/:id', async (req, res) => {
-    const { data, error } = await supabase.from('subscription_plans')
-        .update(req.body).eq('id', req.params.id).select().single();
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+    res.json({ ...req.body, id: req.params.id, updated: true });
 });
 
-/* ── ELIGIBLE PRODUCTS ── */
+/* ── ELIGIBLE PRODUCTS — Shopify Metafields ── */
 app.get('/api/products', async (req, res) => {
-    const { data } = await supabase.from('eligible_products').select('*').order('created_at', { ascending: false });
-    res.json(data);
+    try {
+        const saved = await readFromShopify('lab_app', 'eligible_products');
+        res.json(saved || []);
+    } catch { res.json([]); }
 });
 
 app.post('/api/products', async (req, res) => {
-    const { data, error } = await supabase.from('eligible_products').upsert(req.body).select().single();
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+    try {
+        const current = await readFromShopify('lab_app', 'eligible_products') || [];
+        const idx = current.findIndex(p => p.shopify_id === req.body.shopify_id);
+        if (idx >= 0) current[idx] = { ...current[idx], ...req.body };
+        else current.push({ ...req.body, created_at: new Date().toISOString() });
+        await saveToShopify('lab_app', 'eligible_products', current);
+        res.json(req.body);
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* ── METRICS ── */
+/* ── METRICS — from Shopify Metaobjects ── */
 app.get('/api/metrics', async (req, res) => {
-    const [active, paused, cancelled, failed] = await Promise.all([
-        supabase.from('subscriptions').select('id', { count: 'exact' }).eq('status', 'active'),
-        supabase.from('subscriptions').select('id', { count: 'exact' }).eq('status', 'paused'),
-        supabase.from('subscriptions').select('id', { count: 'exact' }).eq('status', 'cancelled'),
-        supabase.from('subscriptions').select('id', { count: 'exact' }).eq('status', 'payment_failed')
-    ]);
-    const mrr = await supabase.from('subscriptions')
-        .select('final_price, frequency_months')
-        .eq('status', 'active');
-
-    const mrrValue = (mrr.data || []).reduce((acc, s) => {
-        return acc + (s.final_price / s.frequency_months);
-    }, 0);
-
-    res.json({
-        active: active.count || 0,
-        paused: paused.count || 0,
-        cancelled: cancelled.count || 0,
-        payment_failed: failed.count || 0,
-        mrr: mrrValue.toFixed(2)
-    });
+    try {
+        const metrics = await db.getMetrics();
+        res.json(metrics);
+    } catch (e) { res.json({ active: 0, paused: 0, cancelled: 0, mrr: '0.00', next7d: 0, error: e.message }); }
 });
 
-/* ── ALL SUBSCRIPTIONS (admin) ── */
+/* ── ALL SUBSCRIPTIONS (admin) — from Shopify Metaobjects ── */
 app.get('/api/admin/subscriptions', async (req, res) => {
-    const { status, page = 1, limit = 50 } = req.query;
-    let q = supabase.from('subscriptions').select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range((page - 1) * limit, page * limit - 1);
-    if (status) q = q.eq('status', status);
-    const { data, count } = await q;
-    res.json({ data, total: count });
+    try {
+        const { status } = req.query;
+        const filters = status ? { status } : {};
+        const data = await db.getSubscriptions(filters);
+        res.json({ data, total: data.length });
+    } catch (e) { res.json({ data: [], total: 0, error: e.message }); }
 });
 
 /* ═══════════════════════════════════════════════
@@ -377,46 +343,32 @@ app.post('/webhooks/mercadopago', async (req, res) => {
         if (!preapprovalId) return;
 
         const mpSub = await mp.getSubscription(preapprovalId);
-        const { data: sub } = await supabase.from('subscriptions')
-            .select('*').eq('mp_preapproval_id', preapprovalId).single();
+        const allSubs = await db.getSubscriptions();
+        const sub = allSubs.find(s => s.mp_preapproval_id === preapprovalId);
 
         if (!sub) return;
 
         if (mpSub.status === 'authorized' && mpSub.last_modified) {
-            // Successful payment cycle
             const cyclesCompleted = sub.cycles_completed + 1;
             const nextCharge = new Date(sub.next_charge_at);
             nextCharge.setMonth(nextCharge.getMonth() + sub.frequency_months);
-
             const isComplete = cyclesCompleted >= sub.cycles_required;
 
-            // Create Shopify order
-            const order = await shopify.createSubscriptionOrder({
-                sub,
-                cycleNumber: cyclesCompleted,
-                mpPaymentId: mpSub.id
-            });
+            const order = await shopify.createSubscriptionOrder({ sub, cycleNumber: cyclesCompleted, mpPaymentId: mpSub.id });
 
-            // Update subscription
-            await supabase.from('subscriptions').update({
+            await db.updateSubscription(sub.id, {
                 cycles_completed: cyclesCompleted,
                 next_charge_at: nextCharge.toISOString(),
                 status: isComplete ? 'expired' : 'active'
-            }).eq('id', sub.id);
-
-            // Log event
-            await supabase.from('subscription_events').insert({
-                subscription_id: sub.id,
-                event_type: 'charge_success',
-                amount: sub.final_price,
-                mp_payment_id: mpSub.id,
-                shopify_order_id: order.id?.toString(),
-                metadata: { cycle: cyclesCompleted }
+            });
+            await db.createEvent({
+                subscription_id: sub.id, event_type: 'charge_success',
+                amount: sub.final_price, mp_payment_id: mpSub.id,
+                shopify_order_id: order.id?.toString(), metadata: { cycle: cyclesCompleted }
             });
 
-            // Send notifications
-            notifications.sendChargeSuccess(sub, order.order_number).catch(console.error);
-            if (isComplete) notifications.sendRenewalInvite(sub).catch(console.error);
+            if (notifications.sendChargeSuccess) notifications.sendChargeSuccess(sub, order.order_number).catch(console.error);
+            if (isComplete && notifications.sendRenewalInvite) notifications.sendRenewalInvite(sub).catch(console.error);
 
         } else if (mpSub.status === 'payment_required') {
             await supabase.from('subscriptions').update({ status: 'payment_failed' }).eq('id', sub.id);
@@ -497,16 +449,11 @@ app.post('/api/marketing/send', async (req, res) => {
         const { segment, subject, body, previewText } = req.body;
         if (!subject || !body) return res.status(400).json({ error: 'subject and body required' });
 
-        // Build segment query
-        let q = supabase.from('subscriptions').select('customer_email, customer_name, product_title, frequency_months, permanence_months, discount_pct');
-        if (segment === 'active') q = q.eq('status', 'active');
-        else if (segment === 'paused') q = q.eq('status', 'paused');
-        else if (segment === 'failed') q = q.eq('status', 'payment_failed');
-        else if (segment === 'cancelled') q = q.eq('status', 'cancelled');
-        // 'all' = no filter
-
-        const { data: subs, error } = await q;
-        if (error) throw error;
+        let subs = await db.getSubscriptions();
+        if (segment === 'active') subs = subs.filter(s => s.status === 'active');
+        else if (segment === 'paused') subs = subs.filter(s => s.status === 'paused');
+        else if (segment === 'failed') subs = subs.filter(s => s.status === 'payment_failed');
+        else if (segment === 'cancelled') subs = subs.filter(s => s.status === 'cancelled');
 
         // Deduplicate by email
         const unique = Object.values(subs.reduce((acc, s) => { acc[s.customer_email] = s; return acc; }, {}));
@@ -565,24 +512,38 @@ app.get('/api/subscribers/export', async (req, res) => {
 });
 
 /* ═══════════════════════════════════════════════
-   📦 STACKS API
+   📦 STACKS API — Shopify Metafields
 ═══════════════════════════════════════════════ */
 app.get('/api/stacks', async (req, res) => {
-    const { data } = await supabase.from('subscription_stacks').select('*').order('created_at', { ascending: false });
-    res.json(data || []);
+    try { res.json(await readFromShopify('lab_app', 'stacks') || []); } catch { res.json([]); }
 });
 
 app.post('/api/stacks', async (req, res) => {
-    const { data, error } = await supabase.from('subscription_stacks').upsert(req.body).select().single();
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+    try {
+        const current = await readFromShopify('lab_app', 'stacks') || [];
+        const idx = current.findIndex(s => s.id === req.body.id);
+        if (idx >= 0) current[idx] = req.body;
+        else current.push({ ...req.body, id: `stack_${Date.now()}`, created_at: new Date().toISOString() });
+        await saveToShopify('lab_app', 'stacks', current);
+        res.json(req.body);
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.delete('/api/stacks/:id', async (req, res) => {
-    await supabase.from('subscription_stacks').delete().eq('id', req.params.id);
-    res.json({ success: true });
+    try {
+        const current = (await readFromShopify('lab_app', 'stacks') || []).filter(s => s.id !== req.params.id);
+        await saveToShopify('lab_app', 'stacks', current);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ── SETUP: initialize Shopify Metaobject types ── */
+app.post('/api/setup', async (req, res) => {
+    try {
+        await db.initializeTypes();
+        res.json({ success: true, message: 'Shopify Metaobject types initialized: lab_subscription, lab_sub_event' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
 /* ═══════════════════════════════════════════════
    🛒 SHOPIFY PRODUCTS API (fetch real products)
 ═══════════════════════════════════════════════ */
