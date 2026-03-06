@@ -302,23 +302,30 @@ app.get('/api/products', async (req, res) => {
     try {
         const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
         const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
-        if (!token) return res.json([]);
-        const url = `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,images,variants,status`;
+        console.log('[PRODUCTS] shop=' + shop + ' token=' + (token ? token.substring(0, 8) + '...' : 'NONE'));
+        if (!token) return res.json({ error: 'No token', products: [] });
+        const url = `https://${shop}/admin/api/2025-01/products.json?limit=250&fields=id,title,images,variants,status`;
         const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } });
-        if (!r.ok) return res.json([]);
+        if (!r.ok) {
+            const errText = await r.text();
+            console.log('[PRODUCTS] Shopify API error: ' + r.status + ' ' + errText.substring(0, 200));
+            return res.json({ error: 'Shopify ' + r.status, products: [] });
+        }
         const data = await r.json();
-        // Merge with saved eligible list
-        const saved = await readFromShopify('lab_app', 'eligible_products').catch(() => null) || [];
-        const savedIds = new Set(saved.map(p => String(p.shopify_id)));
-        res.json((data.products || []).map(p => ({
+        const products = (data.products || []).map(p => ({
             shopify_id: String(p.id),
             title: p.title,
             image: p.images?.[0]?.src || null,
             price: p.variants?.[0]?.price || '0',
             status: p.status,
-            subscription_enabled: savedIds.has(String(p.id))
-        })));
-    } catch (e) { res.json([]); }
+            subscription_enabled: false
+        }));
+        console.log('[PRODUCTS] Returned ' + products.length + ' products');
+        res.json(products);
+    } catch (e) {
+        console.error('[PRODUCTS] Error:', e.message);
+        res.json({ error: e.message, products: [] });
+    }
 });
 
 app.post('/api/products', async (req, res) => {
