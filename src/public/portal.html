@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Mi SuscripciÃ³n â€” LAB NUTRITION</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --red: #9d2a23;
+            --red-light: #c0392b;
+            --red-soft: #fdf0f0;
+            --dark: #111;
+            --mid: #444;
+            --mut: #888;
+            --bdr: #e5e5e5;
+            --bg: #f6f6f6;
+            --white: #fff;
+            --green: #16a34a;
+            --orange: #ea580c;
+            --blue: #2563eb;
+            --r: 12px;
+            --shadow: 0 2px 16px rgba(0, 0, 0, .08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--dark);
+            min-height: 100vh;
+        }
+
+        /* â”€â”€ HEADER â”€â”€ */
+        .header {
+            background: var(--red);
+            padding: 20px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header-logo {
+            color: #fff;
+            font-size: 18px;
+            font-weight: 900;
+            letter-spacing: 2px;
+        }
+
+        .header-sub {
+            color: rgba(255, 255, 255, .7);
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        /* â”€â”€ MAIN â”€â”€ */
+        .main {
+            max-width: 480px;
+            margin: 0 auto;
+            padding: 24px 16px 60px;
+        }
+
+        /* â”€â”€ EMAIL GATE â”€â”€ */
+        #gate {
+            background: var(--white);
+            border-radius: var(--r);
+            padding: 40px 28px;
+            box-shadow: var(--shadow);
+            text-align: center;
+        }
+
+        #gate h2 {
+            font-size: 22px;
+            font-weight: 800;
+            margin-bottom: 8px;
+        }
+
+        #gate p {
+            color: var(--mut);
+            font-size: 14px;
+            margin-bottom: 28px;
+            line-height: 1.6;
+        }
+
+        .fi {
+            width: 100%;
+            padding: 13px 16px;
+            border: 1.5px solid var(--bdr);
+            border-radius: 8px;
+            font-size: 15px;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            transition: border-color .2s;
+        }
+
+        .fi:focus {
+            border-color: var(--red);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 13px 24px;
+            border-radius: 8px;
+            font-family: 'Inter', sans-serif;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            transition: opacity .2s, transform .1s;
+        }
+
+        .btn:active {
+            transform: scale(.98);
+        }
+
+        .btn-r {
+            background: var(--red);
+            color: #fff;
+        }
+
+        .btn-r:hover {
+            opacity: .9;
+        }
+
+        .btn-g {
+            background: #f4f5f7;
+            color: var(--dark);
+        }
+
+        .btn-g:hover {
+            background: #eee;
+        }
+
+        .btn-full {
+            width: 100%;
+            margin-top: 16px;
+        }
+
+        /* â”€â”€ SUBSCRIPTION CARD â”€â”€ */
+        .sub-card {
+            background: var(--white);
+            border-radius: var(--r);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            margin-bottom: 20px;
+            animation: fadeUp .3s ease both;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(12px)
+            }
+
+            to {
+                opacity: 1;
+                transform: none
+            }
+        }
+
+        .sub-card-header {
+            display: flex;
+            gap: 16px;
+            padding: 20px;
+            align-items: flex-start;
+        }
+
+        .sub-img {
+            width: 72px;
+            height: 72px;
+            border-radius: 8px;
+            object-fit: cover;
+            background: var(--bg);
+            flex-shrink: 0;
+        }
+
+        .sub-img-placeholder {
+            width: 72px;
+            height: 72px;
+            border-radius: 8px;
+            background: var(--red-soft);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .sub-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .sub-name {
+            font-weight: 700;
+            font-size: 15px;
+            margin-bottom: 6px;
+            line-height: 1.3;
+        }
+
+        .sub-price {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .sub-price-final {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--dark);
+        }
+
+        .sub-price-base {
+            font-size: 13px;
+            color: var(--mut);
+            text-decoration: line-through;
+        }
+
+        .sub-discount {
+            background: var(--red);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 800;
+            padding: 2px 7px;
+            border-radius: 20px;
+            letter-spacing: .5px;
+        }
+
+        /* â”€â”€ STATUS BADGE â”€â”€ */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .3px;
+        }
+
+        .badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        .badge-active {
+            background: #dcfce7;
+            color: var(--green);
+        }
+
+        .badge-active::before {
+            background: var(--green);
+        }
+
+        .badge-paused {
+            background: #fff7ed;
+            color: var(--orange);
+        }
+
+        .badge-paused::before {
+            background: var(--orange);
+        }
+
+        .badge-cancelled {
+            background: #f1f1f1;
+            color: var(--mut);
+        }
+
+        .badge-cancelled::before {
+            background: var(--mut);
+        }
+
+        .badge-expiring {
+            background: #fff7ed;
+            color: var(--orange);
+        }
+
+        .badge-expiring::before {
+            background: var(--orange);
+        }
+
+        /* â”€â”€ INFO GRID â”€â”€ */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            padding: 0 20px 20px;
+        }
+
+        .info-item {
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 12px 14px;
+        }
+
+        .info-label {
+            font-size: 10px;
+            color: var(--mut);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        /* â”€â”€ PROGRESS BAR â”€â”€ */
+        .progress-section {
+            padding: 0 20px 20px;
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .progress-label span:first-child {
+            color: var(--mut);
+            font-weight: 500;
+        }
+
+        .progress-label span:last-child {
+            font-weight: 700;
+            color: var(--dark);
+        }
+
+        .progress-track {
+            height: 8px;
+            background: var(--bg);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--red), #e74c3c);
+            border-radius: 20px;
+            transition: width .8s cubic-bezier(.4, 0, .2, 1);
+        }
+
+        .progress-dots {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+        }
+
+        .pdot {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: 800;
+        }
+
+        .pdot-done {
+            background: var(--red);
+            color: #fff;
+        }
+
+        .pdot-current {
+            background: var(--red-soft);
+            border: 2px solid var(--red);
+            color: var(--red);
+        }
+
+        .pdot-pending {
+            background: var(--bg);
+            color: var(--mut);
+            border: 2px solid var(--bdr);
+        }
+
+        .pdot-gift {
+            background: #fef9c3;
+            border: 2px solid #f59e0b;
+            color: #d97706;
+        }
+
+        /* â”€â”€ BENEFITS â”€â”€ */
+        .benefits {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 0 20px 20px;
+        }
+
+        .benefit-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--bg);
+            border-radius: 20px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .benefit-chip svg {
+            flex-shrink: 0;
+        }
+
+        /* â”€â”€ ACTIONS â”€â”€ */
+        .actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            padding: 0 20px 20px;
+        }
+
+        .btn-action {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 14px 8px;
+            border-radius: 10px;
+            border: 1.5px solid var(--bdr);
+            background: var(--white);
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            transition: all .2s;
+        }
+
+        .btn-action:hover {
+            border-color: var(--red);
+            background: var(--red-soft);
+        }
+
+        .btn-action svg {
+            color: var(--red);
+        }
+
+        .btn-action-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--dark);
+        }
+
+        .btn-action-sub {
+            font-size: 10px;
+            color: var(--mut);
+        }
+
+        .btn-action.danger:hover {
+            border-color: #dc2626;
+            background: #fef2f2;
+        }
+
+        .btn-action.danger svg {
+            color: #dc2626;
+        }
+
+        /* â”€â”€ HISTORY â”€â”€ */
+        .history-section {
+            padding: 0 20px 20px;
+        }
+
+        .history-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--mut);
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 12px;
+        }
+
+        .history-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--bg);
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+        }
+
+        .history-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .hi-success {
+            background: #dcfce7;
+        }
+
+        .hi-failed {
+            background: #fee2e2;
+        }
+
+        .hi-pause {
+            background: #fff7ed;
+        }
+
+        .history-text {
+            flex: 1;
+        }
+
+        .history-main {
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .history-date {
+            font-size: 11px;
+            color: var(--mut);
+            margin-top: 2px;
+        }
+
+        .history-amount {
+            font-size: 14px;
+            font-weight: 800;
+            color: var(--green);
+        }
+
+        /* â”€â”€ MODAL â”€â”€ */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .5);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            display: none;
+            align-items: flex-end;
+            justify-content: center;
+        }
+
+        .overlay.open {
+            display: flex;
+            animation: fadeIn .2s;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0
+            }
+
+            to {
+                opacity: 1
+            }
+        }
+
+        .modal {
+            background: var(--white);
+            border-radius: 20px 20px 0 0;
+            padding: 24px;
+            width: 100%;
+            max-width: 480px;
+            animation: slideUp .25s;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(100%)
+            }
+
+            to {
+                transform: none
+            }
+        }
+
+        .modal-handle {
+            width: 36px;
+            height: 4px;
+            background: var(--bdr);
+            border-radius: 2px;
+            margin: 0 auto 20px;
+        }
+
+        .modal h3 {
+            font-size: 18px;
+            font-weight: 800;
+            margin-bottom: 8px;
+        }
+
+        .modal p {
+            color: var(--mut);
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .pause-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .pause-opt {
+            border: 2px solid var(--bdr);
+            border-radius: 10px;
+            padding: 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all .2s;
+        }
+
+        .pause-opt.selected {
+            border-color: var(--red);
+            background: var(--red-soft);
+        }
+
+        .pause-opt-val {
+            font-size: 22px;
+            font-weight: 900;
+            color: var(--red);
+        }
+
+        .pause-opt-label {
+            font-size: 12px;
+            color: var(--mut);
+            margin-top: 2px;
+        }
+
+        /* â”€â”€ EMPTY / LOADING â”€â”€ */
+        .empty-state {
+            text-align: center;
+            padding: 60px 24px;
+            color: var(--mut);
+        }
+
+        .empty-state h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--dark);
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--bdr);
+            border-top-color: var(--red);
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+            margin: 60px auto;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg)
+            }
+        }
+
+        /* â”€â”€ TOAST â”€â”€ */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: var(--dark);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            transition: transform .3s;
+            z-index: 200;
+            white-space: nowrap;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* â”€â”€ CANCEL POLICY â”€â”€ */
+        .policy-box {
+            background: #fff7ed;
+            border: 1px solid #fed7aa;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin: 0 20px 20px;
+        }
+
+        .policy-box p {
+            font-size: 12px;
+            color: #9a3412;
+            line-height: 1.6;
+        }
+
+        .policy-box strong {
+            font-weight: 700;
+        }
+
+        /* â”€â”€ UPGRADE â”€â”€ */
+        .upgrade-banner {
+            background: linear-gradient(135deg, #1a1a1a, #2d2d2d);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            color: #fff;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upgrade-banner::before {
+            content: '';
+            position: absolute;
+            top: -20px;
+            right: -20px;
+            width: 120px;
+            height: 120px;
+            background: radial-gradient(circle, rgba(157, 42, 35, .4), transparent);
+            border-radius: 50%;
+        }
+
+        .upgrade-title {
+            font-size: 15px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .upgrade-sub {
+            font-size: 12px;
+            color: rgba(255, 255, 255, .6);
+            line-height: 1.5;
+            margin-bottom: 14px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header class="header">
+        <div>
+            <div class="header-logo">ðŸ§¬ LAB NUTRITION</div>
+            <div class="header-sub">Portal de SuscripciÃ³n</div>
+        </div>
+    </header>
+
+    <main class="main">
+
+        <!-- EMAIL GATE -->
+        <div id="gate">
+            <div
+                style="width:56px;height:56px;background:#fdf0f0;border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9d2a23" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                </svg>
+            </div>
+            <h2>Gestiona tu suscripciÃ³n</h2>
+            <p>Ingresa tu email para acceder a tu panel personalizado y gestionar tus suscripciones activas.</p>
+            <input type="email" class="fi" id="email-input" placeholder="tu@email.com" autocomplete="email">
+            <button class="btn btn-r btn-full" onclick="lookup()">Ver mis suscripciones â†’</button>
+        </div>
+
+        <!-- LOADING -->
+        <div id="loading" style="display:none">
+            <div class="spinner"></div>
+        </div>
+
+        <!-- SUBSCRIPTIONS CONTAINER -->
+        <div id="subs-container" style="display:none"></div>
+
+    </main>
+
+    <!-- PAUSE MODAL -->
+    <div class="overlay" id="pause-modal">
+        <div class="modal">
+            <div class="modal-handle"></div>
+            <h3>Pausar suscripciÃ³n</h3>
+            <p>Elige cuÃ¡ntos meses quieres pausar. Tu permanencia no avanza durante la pausa y puedes reactivar cuando
+                quieras.</p>
+            <div class="pause-options">
+                <div class="pause-opt selected" onclick="selectPause(1)">
+                    <div class="pause-opt-val">1</div>
+                    <div class="pause-opt-label">mes</div>
+                </div>
+                <div class="pause-opt" onclick="selectPause(2)">
+                    <div class="pause-opt-val">2</div>
+                    <div class="pause-opt-label">meses</div>
+                </div>
+            </div>
+            <button class="btn btn-r btn-full" onclick="confirmPause()">Confirmar pausa</button>
+            <button class="btn btn-g btn-full" style="margin-top:8px"
+                onclick="closeModal('pause-modal')">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- SKIP MODAL -->
+    <div class="overlay" id="skip-modal">
+        <div class="modal">
+            <div class="modal-handle"></div>
+            <h3>Saltar un envÃ­o</h3>
+            <p>Tu prÃ³ximo envÃ­o se moverÃ¡ un ciclo hacia adelante. Tu descuento y permanencia se mantienen igual.</p>
+            <button class="btn btn-r btn-full" onclick="confirmSkip()">Confirmar salto</button>
+            <button class="btn btn-g btn-full" style="margin-top:8px"
+                onclick="closeModal('skip-modal')">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- HISTORY MODAL -->
+    <div class="overlay" id="history-modal">
+        <div class="modal" style="max-height:70vh;overflow-y:auto">
+            <div class="modal-handle"></div>
+            <h3 style="margin-bottom:20px">Historial de pagos</h3>
+            <div id="history-content"></div>
+            <button class="btn btn-g btn-full" style="margin-top:16px"
+                onclick="closeModal('history-modal')">Cerrar</button>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const API = '';  // same origin
+        let currentSubId = null;
+        let selectedPause = 1;
+        let customerEmail = '';
+
+        /* â”€â”€ UTILS â”€â”€ */
+        function toast(msg, dur = 3000) {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), dur);
+        }
+
+        function fmtDate(iso) {
+            if (!iso) return 'â€”';
+            return new Date(iso).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' });
+        }
+
+        function fmtCurrency(n) {
+            return 'S/ ' + parseFloat(n).toFixed(2);
+        }
+
+        function statusBadge(status, pausedUntil) {
+            if (status === 'paused') return `<span class="badge badge-paused">Pausada hasta ${fmtDate(pausedUntil)}</span>`;
+            if (status === 'active') return `<span class="badge badge-active">Activa</span>`;
+            if (status === 'cancelled') return `<span class="badge badge-cancelled">Cancelada</span>`;
+            if (status === 'expired') return `<span class="badge badge-cancelled">Completada</span>`;
+            if (status === 'payment_failed') return `<span class="badge badge-expiring">âš  Pago fallido</span>`;
+            return `<span class="badge badge-cancelled">${status}</span>`;
+        }
+
+        /* â”€â”€ LOOK UP SUBSCRIPTIONS â”€â”€ */
+        async function lookup() {
+            const email = document.getElementById('email-input').value.trim();
+            if (!email || !email.includes('@')) { toast('Ingresa un email vÃ¡lido'); return; }
+            customerEmail = email;
+            document.getElementById('gate').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+            try {
+                const r = await fetch(`${API}/api/portal/${encodeURIComponent(email)}`);
+                const data = await r.json();
+                document.getElementById('loading').style.display = 'none';
+                renderSubs(data.subscriptions || []);
+            } catch {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('gate').style.display = 'block';
+                toast('Error al conectar. Intenta nuevamente.');
+            }
+        }
+
+        /* â”€â”€ RENDER SUBSCRIPTIONS â”€â”€ */
+        function renderSubs(subs) {
+            const el = document.getElementById('subs-container');
+            el.style.display = 'block';
+            if (!subs.length) {
+                el.innerHTML = `<div class="empty-state">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ddd" stroke-width="1.5" style="margin-bottom:16px"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      <h3>Sin suscripciones activas</h3>
+      <p>No encontramos suscripciones activas para <strong>${customerEmail}</strong>.<br>Si crees que hay un error, contÃ¡ctanos.</p>
+    </div>`;
+                return;
+            }
+            el.innerHTML = '';
+            subs.forEach(sub => {
+                const pct = Math.min(100, Math.round((sub.cycles_completed / sub.cycles_required) * 100));
+                const totalCycles = sub.cycles_required;
+                const done = sub.cycles_completed;
+                const freq = sub.frequency_months === 1 ? 'Mensual' : 'Bimestral';
+                const perm = sub.permanence_months + ' meses';
+                const daysUntil = sub.next_charge_at ? Math.ceil((new Date(sub.next_charge_at) - new Date()) / 86400000) : null;
+                const canCancel = done >= sub.cycles_required;
+                const cancelWindowOpen = daysUntil !== null && daysUntil >= 15 && daysUntil <= 30;
+
+                /* dots */
+                let dotsHtml = '';
+                const maxDots = Math.min(totalCycles, 12);
+                for (let i = 1; i <= maxDots; i++) {
+                    const isGift = sub.gift_cycle && i === sub.gift_cycle;
+                    if (isGift) {
+                        dotsHtml += `<div class="pdot pdot-gift" title="Ciclo ${i} â€” Regalo">ðŸŽ</div>`;
+                    } else if (i < done) {
+                        dotsHtml += `<div class="pdot pdot-done">${i}</div>`;
+                    } else if (i === done) {
+                        dotsHtml += `<div class="pdot pdot-current">${i}</div>`;
+                    } else {
+                        dotsHtml += `<div class="pdot pdot-pending">${i}</div>`;
+                    }
+                }
+                if (totalCycles > maxDots) dotsHtml += `<div class="pdot pdot-pending" style="font-size:11px">+${totalCycles - maxDots}</div>`;
+
+                /* benefits chips */
+                let chips = '';
+                chips += `<span class="benefit-chip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9d2a23" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>${sub.discount_pct}% descuento</span>`;
+                if (sub.extra_points) chips += `<span class="benefit-chip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Puntos extra</span>`;
+                if (sub.gift_cycle) chips += `<span class="benefit-chip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>Regalo ciclo ${sub.gift_cycle}</span>`;
+
+                /* cancel policy */
+                let policyHtml = '';
+                if (!canCancel) {
+                    policyHtml = `<div class="policy-box"><p>âš  <strong>Permanencia activa:</strong> Para cancelar necesitas completar ${sub.cycles_required - done} ciclo(s) mÃ¡s (hasta ${fmtDate(sub.expires_at)}).</p></div>`;
+                } else if (cancelWindowOpen) {
+                    policyHtml = `<div class="policy-box" style="background:#f0fdf4;border-color:#bbf7d0"><p style="color:#14532d">âœ… <strong>Ventana de cancelaciÃ³n abierta</strong> (${daysUntil} dÃ­as antes del prÃ³ximo cobro). Puedes cancelar ahora.</p></div>`;
+                }
+
+                const card = document.createElement('div');
+                card.className = 'sub-card';
+                card.innerHTML = `
+      <div class="sub-card-header">
+        ${sub.product_image
+                        ? `<img class="sub-img" src="${sub.product_image}" alt="${sub.product_title}" onerror="this.style.display='none'">`
+                        : `<div class="sub-img-placeholder"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9d2a23" stroke-width="1.5"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div>`
+                    }
+        <div class="sub-info">
+          <div class="sub-name">${sub.product_title}</div>
+          <div class="sub-price">
+            <span class="sub-price-final">${fmtCurrency(sub.final_price)}</span>
+            <span class="sub-price-base">${fmtCurrency(sub.base_price)}</span>
+            <span class="sub-discount">-${sub.discount_pct}%</span>
+          </div>
+          ${statusBadge(sub.status, sub.paused_until)}
+        </div>
+      </div>
+
+      <div class="info-grid">
+        <div class="info-item">
+          <div class="info-label">Frecuencia</div>
+          <div class="info-value">${freq}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Permanencia</div>
+          <div class="info-value">${perm}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">PrÃ³ximo cobro</div>
+          <div class="info-value" style="${daysUntil !== null && daysUntil <= 7 ? 'color:var(--orange)' : ''}">${daysUntil !== null ? `en ${daysUntil}d` : fmtDate(sub.next_charge_at)}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Inicio</div>
+          <div class="info-value">${fmtDate(sub.started_at)}</div>
+        </div>
+      </div>
+
+      <div class="progress-section">
+        <div class="progress-label">
+          <span>Progreso de permanencia</span>
+          <span>${done} / ${totalCycles} ciclos${done >= totalCycles ? ' âœ…' : ''}</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <div class="progress-dots" style="margin-top:10px;flex-wrap:wrap;gap:4px">${dotsHtml}</div>
+      </div>
+
+      <div class="benefits">${chips}</div>
+
+      ${policyHtml}
+
+      ${sub.status === 'active' ? `
+      <div class="actions">
+        <button class="btn-action" onclick="openPause('${sub.id}')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          <span class="btn-action-label">Pausar</span>
+          <span class="btn-action-sub">1 o 2 meses</span>
+        </button>
+        <button class="btn-action" onclick="openSkip('${sub.id}')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+          <span class="btn-action-label">Saltar envÃ­o</span>
+          <span class="btn-action-sub">Mover al siguiente</span>
+        </button>
+        <button class="btn-action" onclick="openHistory('${sub.id}')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span class="btn-action-label">Historial</span>
+          <span class="btn-action-sub">Pagos realizados</span>
+        </button>
+        ${canCancel && cancelWindowOpen ? `
+        <button class="btn-action danger" onclick="openCancel('${sub.id}')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          <span class="btn-action-label">Cancelar</span>
+          <span class="btn-action-sub">Ventana abierta</span>
+        </button>` : `
+        <button class="btn-action" onclick="openHistory('${sub.id}')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="btn-action-label">Soporte</span>
+          <span class="btn-action-sub">ContÃ¡ctanos</span>
+        </button>`}
+      </div>` : sub.status === 'paused' ? `
+      <div style="padding:0 20px 20px">
+        <button class="btn btn-r btn-full" onclick="resumeSub('${sub.id}')">Reactivar suscripciÃ³n</button>
+      </div>` : ''}
+    `;
+                el.appendChild(card);
+            });
+
+            // Upgrade banner at bottom
+            const upgrade = document.createElement('div');
+            upgrade.className = 'upgrade-banner';
+            upgrade.innerHTML = `
+    <div class="upgrade-title">Â¿Listo para ir al siguiente nivel?</div>
+    <div class="upgrade-sub">Explora nuestro catÃ¡logo completo y personaliza tu stack de nutriciÃ³n.</div>
+    <a href="https://nutrition-lab-cluster.myshopify.com" target="_blank" class="btn btn-r" style="font-size:13px;padding:10px 18px">Ver catÃ¡logo â†’</a>
+  `;
+            el.appendChild(upgrade);
+        }
+
+        /* â”€â”€ ACTIONS â”€â”€ */
+        function openPause(id) { currentSubId = id; selectPause(1); document.getElementById('pause-modal').classList.add('open'); }
+        function openSkip(id) { currentSubId = id; document.getElementById('skip-modal').classList.add('open'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+        function selectPause(n) {
+            selectedPause = n;
+            document.querySelectorAll('.pause-opt').forEach((el, i) => el.classList.toggle('selected', i + 1 === n));
+        }
+
+        async function confirmPause() {
+            try {
+                await fetch(`${API}/api/portal/subscription/${currentSubId}/pause`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pauseMonths: selectedPause })
+                });
+                closeModal('pause-modal');
+                toast(`SuscripciÃ³n pausada por ${selectedPause} mes(es)`);
+                setTimeout(() => lookup(), 500);
+            } catch { toast('Error al pausar. Intenta de nuevo.'); }
+        }
+
+        async function confirmSkip() {
+            try {
+                await fetch(`${API}/api/portal/subscription/${currentSubId}/skip`, { method: 'POST' });
+                closeModal('skip-modal');
+                toast('EnvÃ­o saltado correctamente');
+                setTimeout(() => lookup(), 500);
+            } catch { toast('Error al saltar. Intenta de nuevo.'); }
+        }
+
+        async function resumeSub(id) {
+            try {
+                await fetch(`${API}/api/subscriptions/${id}/resume`, { method: 'POST' });
+                toast('SuscripciÃ³n reactivada');
+                setTimeout(() => lookup(), 500);
+            } catch { toast('Error. Intenta de nuevo.'); }
+        }
+
+        async function openHistory(id) {
+            document.getElementById('history-content').innerHTML = '<div class="spinner" style="margin:20px auto;width:30px;height:30px"></div>';
+            document.getElementById('history-modal').classList.add('open');
+            try {
+                const r = await fetch(`${API}/api/portal/subscription/${id}/history`);
+                const data = await r.json();
+                const events = data.events || [];
+                const iconMap = {
+                    charge_success: `<div class="history-icon hi-success"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div>`,
+                    charge_failed: `<div class="history-icon hi-failed"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>`,
+                    paused: `<div class="history-icon hi-pause"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></div>`,
+                };
+                const labelMap = { charge_success: 'Cobro exitoso', charge_failed: 'Cobro fallido', paused: 'Pausada', skipped: 'EnvÃ­o saltado', created: 'SuscripciÃ³n creada', cancelled: 'Cancelada', resumed: 'Reactivada' };
+                document.getElementById('history-content').innerHTML = events.length ? events.map(e => `
+      <div class="history-item">
+        ${iconMap[e.event_type] || `<div class="history-icon" style="background:var(--bg)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg></div>`}
+        <div class="history-text">
+          <div class="history-main">${labelMap[e.event_type] || e.event_type}</div>
+          <div class="history-date">${fmtDate(e.created_at)}</div>
+        </div>
+        ${e.amount ? `<div class="history-amount">${fmtCurrency(e.amount)}</div>` : ''}
+      </div>`).join('')
+                    : '<div class="empty-state" style="padding:20px"><p>Sin eventos registrados aÃºn</p></div>';
+            } catch { document.getElementById('history-content').innerHTML = '<p style="color:var(--mut);text-align:center;padding:20px">Error al cargar historial</p>'; }
+        }
+
+        /* â”€â”€ INIT â€” check URL email param â”€â”€ */
+        window.addEventListener('load', () => {
+            const params = new URLSearchParams(location.search);
+            const emailParam = params.get('email') || params.get('e');
+            if (emailParam) {
+                document.getElementById('email-input').value = emailParam;
+                lookup();
+            }
+        });
+
+        // Close modal on overlay click
+        document.querySelectorAll('.overlay').forEach(el => {
+            el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+        });
+    </script>
+</body>
+
+</html>
