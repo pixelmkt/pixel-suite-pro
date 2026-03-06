@@ -12,7 +12,7 @@
  * ╚══════════════════════════════════════════════════════════╝
  */
 
-const SHOPIFY_API_VERSION = '2025-01';
+const SHOPIFY_API_VERSION = '2024-01';
 const SUBSCRIPTION_TYPE = 'lab_subscription';
 const EVENT_TYPE = 'lab_sub_event';
 
