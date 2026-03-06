@@ -48,7 +48,21 @@ app.use(helmet({
 app.use(cors({ origin: '*' })); // Allow all origins for embedded app
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+// Static assets (CSS, JS, etc) but NOT index fallback
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+
+// ── ROOT: Shopify loads the app at / with ?shop=&hmac=&host= params ──
+// Always serve admin.html regardless of query params
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+app.get('/admin.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
 
 /* ═══════════════════════════════════════════════
    🔐 SHOPIFY OAUTH — captures Admin API token
