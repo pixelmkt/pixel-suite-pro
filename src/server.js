@@ -7,7 +7,7 @@ const path = require('path');
 
 const supabase = require('./db/client');
 
-// Crash-proof service imports â€” server starts even without credentials
+// Crash-proof service imports — server starts even without credentials
 let mp, notifications, shopify;
 try { mp = require('./services/mercadopago'); } catch (e) { console.warn('[MP] Not configured:', e.message); mp = {}; }
 try { notifications = require('./services/notifications'); } catch (e) { console.warn('[EMAIL] Not configured:', e.message); notifications = {}; }
@@ -16,7 +16,7 @@ try { shopify = require('./services/shopify'); } catch (e) { console.warn('[SHOP
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-/* â”€â”€â”€ MIDDLEWARE â”€â”€â”€ */
+/* ─── MIDDLEWARE ─── */
 app.use(helmet({
     contentSecurityPolicy: false,
     frameguard: false,            // Allow Shopify Admin to iframe the app
@@ -36,9 +36,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   ðŸ” SHOPIFY OAUTH â€” captures Admin API token
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════
+   🔐 SHOPIFY OAUTH — captures Admin API token
+═══════════════════════════════════════════════ */
 const SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY || 'fc20b3f68f1c8e854a3dca30788acd48';
 const SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET || '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';
 const SCOPES = 'read_products,read_orders,write_orders,read_customers,write_customers';
@@ -49,9 +49,9 @@ const HOST = process.env.RAILWAY_PUBLIC_DOMAIN
 // In-memory token store (persists while server runs)
 let _shopifyToken = process.env.SHOPIFY_ACCESS_TOKEN || null;
 let _shopifyShop = process.env.SHOPIFY_SHOP || null;
-if (_shopifyToken) console.log(`[OAUTH] Token loaded from env â€” shop: ${_shopifyShop}`);
+if (_shopifyToken) console.log(`[OAUTH] Token loaded from env — shop: ${_shopifyShop}`);
 
-// Start OAuth â€” redirect to Shopify
+// Start OAuth — redirect to Shopify
 app.get('/auth', (req, res) => {
     const shop = req.query.shop || _shopifyShop || process.env.SHOPIFY_SHOP;
     if (!shop) return res.status(400).send('Missing shop parameter');
@@ -63,7 +63,7 @@ app.get('/auth', (req, res) => {
     res.redirect(authUrl);
 });
 
-// OAuth callback â€” exchange code for token
+// OAuth callback — exchange code for token
 app.get('/auth/callback', async (req, res) => {
     const { shop, code } = req.query;
     if (!shop || !code) return res.status(400).send('Missing shop or code');
@@ -79,18 +79,18 @@ app.get('/auth/callback', async (req, res) => {
         _shopifyShop = shop;
         process.env.SHOPIFY_ACCESS_TOKEN = _shopifyToken;
         process.env.SHOPIFY_SHOP = shop;
-        console.log(`\nâœ… [OAUTH] ACCESS TOKEN CAPTURED!`);
+        console.log(`\n✅ [OAUTH] ACCESS TOKEN CAPTURED!`);
         console.log(`   Shop: ${shop}`);
         console.log(`   Token: ${_shopifyToken}`);
-        console.log(`   â†’ Copy this to Railway Variables as SHOPIFY_ACCESS_TOKEN\n`);
+        console.log(`   → Copy this to Railway Variables as SHOPIFY_ACCESS_TOKEN\n`);
         res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">
-            <h2>âœ… AutorizaciÃ³n exitosa</h2>
+            <h2>✅ Autorización exitosa</h2>
             <p>Token capturado correctamente.</p>
             <p style="background:#f4f5f7;padding:12px;border-radius:8px;font-family:monospace;font-size:12px">
                 SHOPIFY_ACCESS_TOKEN = ${_shopifyToken}
             </p>
-            <p style="color:#888;font-size:12px">Copia este token en Railway â†’ Variables â†’ SHOPIFY_ACCESS_TOKEN</p>
-            <p><a href="/">â† Volver al dashboard</a></p>
+            <p style="color:#888;font-size:12px">Copia este token en Railway → Variables → SHOPIFY_ACCESS_TOKEN</p>
+            <p><a href="/">← Volver al dashboard</a></p>
         </body></html>`);
     } catch (e) {
         console.error(`[OAUTH] Error: ${e.message}`);
@@ -104,11 +104,11 @@ function getShopifyShop() { return _shopifyShop; }
 
 
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   ðŸ›’ SUBSCRIPTION API
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════
+   🛒 SUBSCRIPTION API
+═══════════════════════════════════════════════ */
 
-/* â”€â”€ CREATE subscription â”€â”€ */
+/* ── CREATE subscription ── */
 app.post('/api/subscriptions/create', async (req, res) => {
     try {
         const {
@@ -193,7 +193,7 @@ app.post('/api/subscriptions/create', async (req, res) => {
     }
 });
 
-/* â”€â”€ GET customer subscriptions â”€â”€ */
+/* ── GET customer subscriptions ── */
 app.get('/api/subscriptions/customer/:customerId', async (req, res) => {
     const { data, error } = await supabase
         .from('subscriptions')
@@ -204,7 +204,7 @@ app.get('/api/subscriptions/customer/:customerId', async (req, res) => {
     res.json(data);
 });
 
-/* â”€â”€ PAUSE subscription â”€â”€ */
+/* ── PAUSE subscription ── */
 app.post('/api/subscriptions/:id/pause', async (req, res) => {
     try {
         const { pauseMonths = 1 } = req.body;
@@ -231,7 +231,7 @@ app.post('/api/subscriptions/:id/pause', async (req, res) => {
     }
 });
 
-/* â”€â”€ SKIP one shipment â”€â”€ */
+/* ── SKIP one shipment ── */
 app.post('/api/subscriptions/:id/skip', async (req, res) => {
     try {
         const { data: sub } = await supabase.from('subscriptions').select('*').eq('id', req.params.id).single();
@@ -252,7 +252,7 @@ app.post('/api/subscriptions/:id/skip', async (req, res) => {
     }
 });
 
-/* â”€â”€ CANCEL subscription (with anti-abuse window check) â”€â”€ */
+/* ── CANCEL subscription (with anti-abuse window check) ── */
 app.post('/api/subscriptions/:id/cancel', async (req, res) => {
     try {
         const { data: sub } = await supabase.from('subscriptions').select('*').eq('id', req.params.id).single();
@@ -264,7 +264,7 @@ app.post('/api/subscriptions/:id/cancel', async (req, res) => {
                 error: 'Permanencia incompleta',
                 cyclesCompleted: sub.cycles_completed,
                 cyclesRequired: sub.cycles_required,
-                message: `Debes completar ${sub.cycles_required - sub.cycles_completed} ciclos mÃ¡s antes de cancelar.`
+                message: `Debes completar ${sub.cycles_required - sub.cycles_completed} ciclos más antes de cancelar.`
             });
         }
 
@@ -277,7 +277,7 @@ app.post('/api/subscriptions/:id/cancel', async (req, res) => {
             return res.status(403).json({
                 error: 'Ventana cerrada',
                 daysUntil: Math.round(daysUntil),
-                message: `La ventana de cancelaciÃ³n estÃ¡ cerrada. El prÃ³ximo envÃ­o es en ${Math.round(daysUntil)} dÃ­as. PodrÃ¡s cancelar desde ${new Date(nextCharge.getTime() + (daysUntil + sub.frequency_months * 30 - 30) * 86400000).toLocaleDateString('es-PE')}.`
+                message: `La ventana de cancelación está cerrada. El próximo envío es en ${Math.round(daysUntil)} días. Podrás cancelar desde ${new Date(nextCharge.getTime() + (daysUntil + sub.frequency_months * 30 - 30) * 86400000).toLocaleDateString('es-PE')}.`
             });
         }
 
@@ -297,13 +297,13 @@ app.post('/api/subscriptions/:id/cancel', async (req, res) => {
             shopify.tagCustomerAsSubscriber(sub.customer_id, false).catch(console.error);
         }
 
-        res.json({ success: true, message: 'SuscripciÃ³n cancelada correctamente.' });
+        res.json({ success: true, message: 'Suscripción cancelada correctamente.' });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
 });
 
-/* â”€â”€ PLANS (no-code config) â”€â”€ */
+/* ── PLANS (no-code config) ── */
 app.get('/api/plans', async (req, res) => {
     const { data } = await supabase.from('subscription_plans').select('*').order('permanence_months');
     res.json(data);
@@ -316,7 +316,7 @@ app.put('/api/plans/:id', async (req, res) => {
     res.json(data);
 });
 
-/* â”€â”€ ELIGIBLE PRODUCTS â”€â”€ */
+/* ── ELIGIBLE PRODUCTS ── */
 app.get('/api/products', async (req, res) => {
     const { data } = await supabase.from('eligible_products').select('*').order('created_at', { ascending: false });
     res.json(data);
@@ -328,7 +328,7 @@ app.post('/api/products', async (req, res) => {
     res.json(data);
 });
 
-/* â”€â”€ METRICS â”€â”€ */
+/* ── METRICS ── */
 app.get('/api/metrics', async (req, res) => {
     const [active, paused, cancelled, failed] = await Promise.all([
         supabase.from('subscriptions').select('id', { count: 'exact' }).eq('status', 'active'),
@@ -353,7 +353,7 @@ app.get('/api/metrics', async (req, res) => {
     });
 });
 
-/* â”€â”€ ALL SUBSCRIPTIONS (admin) â”€â”€ */
+/* ── ALL SUBSCRIPTIONS (admin) ── */
 app.get('/api/admin/subscriptions', async (req, res) => {
     const { status, page = 1, limit = 50 } = req.query;
     let q = supabase.from('subscriptions').select('*', { count: 'exact' })
@@ -364,9 +364,9 @@ app.get('/api/admin/subscriptions', async (req, res) => {
     res.json({ data, total: count });
 });
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   ðŸ”” MERCADO PAGO WEBHOOK
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════
+   🔔 MERCADO PAGO WEBHOOK
+═══════════════════════════════════════════════ */
 app.post('/webhooks/mercadopago', async (req, res) => {
     res.sendStatus(200); // Acknowledge immediately
     const { type, data } = req.body;
@@ -430,9 +430,9 @@ app.post('/webhooks/mercadopago', async (req, res) => {
     }
 });
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   â° SCHEDULED NOTIFICATIONS (cron)
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════
+   ⏰ SCHEDULED NOTIFICATIONS (cron)
+═══════════════════════════════════════════════ */
 // Runs daily at 9:00 AM Lima time
 cron.schedule('0 14 * * *', async () => {  // 14:00 UTC = 09:00 PET
     console.log('[CRON] Running daily notification check...');
@@ -476,9 +476,9 @@ cron.schedule('0 14 * * *', async () => {  // 14:00 UTC = 09:00 PET
     }
 }, { timezone: 'America/Lima' });
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   ðŸ“Š ADMIN DASHBOARD (served as HTML)
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════
+   📊 ADMIN DASHBOARD (served as HTML)
+═══════════════════════════════════════════════ */
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
@@ -487,9 +487,9 @@ app.get('/portal/:customerId', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'portal.html'));
 });
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   ðŸ“£ MARKETING API
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════
+   📣 MARKETING API
+═══════════════════════════════════════════════ */
 
 /* Send email campaign to a subscriber segment */
 app.post('/api/marketing/send', async (req, res) => {
@@ -519,9 +519,9 @@ app.post('/api/marketing/send', async (req, res) => {
         .h{background:#9d2a23;padding:24px 32px;color:#fff;font-size:20px;font-weight:900;letter-spacing:2px}
         .b{padding:28px 32px;line-height:1.6} .f{background:#f2f2f2;padding:14px 32px;text-align:center;font-size:11px;color:#aaa}
       </style></head><body><div class="w">
-        <div class="h">ðŸ§¬ LAB NUTRITION</div>
+        <div class="h">🧬 LAB NUTRITION</div>
         <div class="b">${body.replace(/\n/g, '<br>')}</div>
-        <div class="f">LAB NUTRITION Â· <a href="${process.env.BACKEND_URL}/portal/${sub.customer_email}" style="color:#9d2a23">Gestionar suscripciÃ³n</a></div>
+        <div class="f">LAB NUTRITION · <a href="${process.env.BACKEND_URL}/portal/${sub.customer_email}" style="color:#9d2a23">Gestionar suscripción</a></div>
       </div></body></html>`;
             try {
                 const nodemailer = require('nodemailer');
@@ -543,14 +543,14 @@ app.post('/api/marketing/send', async (req, res) => {
     }
 });
 
-/* â”€â”€ Export subscribers as CSV â”€â”€ */
+/* ── Export subscribers as CSV ── */
 app.get('/api/subscribers/export', async (req, res) => {
     const { status } = req.query;
     let q = supabase.from('subscriptions').select('customer_email,customer_name,customer_phone,product_title,frequency_months,permanence_months,discount_pct,final_price,status,cycles_completed,cycles_required,next_charge_at,created_at');
     if (status) q = q.eq('status', status);
     const { data } = await q;
 
-    const header = 'Email,Nombre,TelÃ©fono,Producto,Frecuencia,Permanencia,Descuento%,Precio,Estado,Ciclos,ProximoCobro,Inicio\n';
+    const header = 'Email,Nombre,Teléfono,Producto,Frecuencia,Permanencia,Descuento%,Precio,Estado,Ciclos,ProximoCobro,Inicio\n';
     const rows = (data || []).map(s => [
         s.customer_email, s.customer_name || '', s.customer_phone || '',
         `"${s.product_title}"`, s.frequency_months === 1 ? 'Mensual' : 'Bimestral',
@@ -564,9 +564,9 @@ app.get('/api/subscribers/export', async (req, res) => {
     res.send(header + rows);
 });
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   ðŸ“¦ STACKS API
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════
+   📦 STACKS API
+═══════════════════════════════════════════════ */
 app.get('/api/stacks', async (req, res) => {
     const { data } = await supabase.from('subscription_stacks').select('*').order('created_at', { ascending: false });
     res.json(data || []);
@@ -583,9 +583,9 @@ app.delete('/api/stacks/:id', async (req, res) => {
     res.json({ success: true });
 });
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   ðŸ›’ SHOPIFY PRODUCTS API (fetch real products)
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════
+   🛒 SHOPIFY PRODUCTS API (fetch real products)
+═══════════════════════════════════════════════ */
 app.get('/api/shopify/products', async (req, res) => {
     try {
         const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
@@ -612,12 +612,12 @@ app.get('/api/shopify/products', async (req, res) => {
     } catch (e) { res.json({ products: [], error: e.message }) }
 });
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   âš™ï¸ SETTINGS API â€” Shopify Metafields as native storage
+/* ═══════════════════════════════════════════════
+   ⚙️ SETTINGS API — Shopify Metafields as native storage
    Settings are stored in Shopify Shop Metafields (namespace: lab_app)
    This is the correct 2025/2026 Shopify embedded app pattern.
-   No Supabase, no files â€” Shopify IS the database.
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   No Supabase, no files — Shopify IS the database.
+═══════════════════════════════════════════════ */
 const fs = require('fs');
 const SETTINGS_FILE = path.join(__dirname, '..', 'settings.json');
 const METAFIELD_NAMESPACE = 'lab_app';
@@ -729,11 +729,11 @@ app.put('/api/settings', async (req, res) => {
     res.json({ success: true, storage: shopifySaved ? 'shopify_metafields' : 'local_file', settings: { ...getEnvDefaults(), ...merged } });
 });
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   ðŸ‘¤ PORTAL DEL SUSCRIPTOR (customer self-service)
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════
+   👤 PORTAL DEL SUSCRIPTOR (customer self-service)
+═══════════════════════════════════════════════ */
 
-/* GET /api/portal/:email â€” all subscriptions for a customer */
+/* GET /api/portal/:email — all subscriptions for a customer */
 app.get('/api/portal/:email', async (req, res) => {
     const email = decodeURIComponent(req.params.email).toLowerCase().trim();
     try {
@@ -798,18 +798,18 @@ app.post('/api/subscriptions/:id/resume', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* â”€â”€ Health check â”€â”€ */
+/* ── Health check ── */
 app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, ts: new Date() }));
 
-/* â”€â”€â”€ START â”€â”€â”€ */
-console.log(`[BOOT] PORT env = "${process.env.PORT}" â†’ using ${PORT}`);
+/* ─── START ─── */
+console.log(`[BOOT] PORT env = "${process.env.PORT}" → using ${PORT}`);
 console.log(`[BOOT] NODE_ENV = "${process.env.NODE_ENV}"`);
 console.log(`[BOOT] Binding to 0.0.0.0:${PORT}...`);
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\nðŸš€ LAB NUTRITION Backend running on 0.0.0.0:${PORT}`);
-    console.log(`ðŸ“Š Admin dashboard: /`);
-    console.log(`ðŸ”— Shopify store: ${process.env.SHOPIFY_SHOP}\n`);
+    console.log(`\n🚀 LAB NUTRITION Backend running on 0.0.0.0:${PORT}`);
+    console.log(`📊 Admin dashboard: /`);
+    console.log(`🔗 Shopify store: ${process.env.SHOPIFY_SHOP}\n`);
 });
 
 server.on('error', (err) => {

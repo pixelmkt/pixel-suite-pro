@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Mi SuscripciÃ³n â€” LAB NUTRITION</title>
+    <title>Mi Suscripción — LAB NUTRITION</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
         rel="stylesheet">
@@ -39,7 +39,7 @@
             min-height: 100vh;
         }
 
-        /* â”€â”€ HEADER â”€â”€ */
+        /* ── HEADER ── */
         .header {
             background: var(--red);
             padding: 20px 24px;
@@ -63,14 +63,14 @@
             text-transform: uppercase;
         }
 
-        /* â”€â”€ MAIN â”€â”€ */
+        /* ── MAIN ── */
         .main {
             max-width: 480px;
             margin: 0 auto;
             padding: 24px 16px 60px;
         }
 
-        /* â”€â”€ EMAIL GATE â”€â”€ */
+        /* ── EMAIL GATE ── */
         #gate {
             background: var(--white);
             border-radius: var(--r);
@@ -149,7 +149,7 @@
             margin-top: 16px;
         }
 
-        /* â”€â”€ SUBSCRIPTION CARD â”€â”€ */
+        /* ── SUBSCRIPTION CARD ── */
         .sub-card {
             background: var(--white);
             border-radius: var(--r);
@@ -239,7 +239,7 @@
             letter-spacing: .5px;
         }
 
-        /* â”€â”€ STATUS BADGE â”€â”€ */
+        /* ── STATUS BADGE ── */
         .badge {
             display: inline-flex;
             align-items: center;
@@ -294,7 +294,7 @@
             background: var(--orange);
         }
 
-        /* â”€â”€ INFO GRID â”€â”€ */
+        /* ── INFO GRID ── */
         .info-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -322,7 +322,7 @@
             font-weight: 700;
         }
 
-        /* â”€â”€ PROGRESS BAR â”€â”€ */
+        /* ── PROGRESS BAR ── */
         .progress-section {
             padding: 0 20px 20px;
         }
@@ -398,7 +398,7 @@
             color: #d97706;
         }
 
-        /* â”€â”€ BENEFITS â”€â”€ */
+        /* ── BENEFITS ── */
         .benefits {
             display: flex;
             flex-wrap: wrap;
@@ -421,7 +421,7 @@
             flex-shrink: 0;
         }
 
-        /* â”€â”€ ACTIONS â”€â”€ */
+        /* ── ACTIONS ── */
         .actions {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -473,7 +473,7 @@
             color: #dc2626;
         }
 
-        /* â”€â”€ HISTORY â”€â”€ */
+        /* ── HISTORY ── */
         .history-section {
             padding: 0 20px 20px;
         }
@@ -542,7 +542,7 @@
             color: var(--green);
         }
 
-        /* â”€â”€ MODAL â”€â”€ */
+        /* ── MODAL ── */
         .overlay {
             position: fixed;
             inset: 0;
@@ -642,7 +642,7 @@
             margin-top: 2px;
         }
 
-        /* â”€â”€ EMPTY / LOADING â”€â”€ */
+        /* ── EMPTY / LOADING ── */
         .empty-state {
             text-align: center;
             padding: 60px 24px;
@@ -677,7 +677,7 @@
             }
         }
 
-        /* â”€â”€ TOAST â”€â”€ */
+        /* ── TOAST ── */
         .toast {
             position: fixed;
             bottom: 24px;
@@ -698,7 +698,7 @@
             transform: translateX(-50%) translateY(0);
         }
 
-        /* â”€â”€ CANCEL POLICY â”€â”€ */
+        /* ── CANCEL POLICY ── */
         .policy-box {
             background: #fff7ed;
             border: 1px solid #fed7aa;
@@ -717,7 +717,7 @@
             font-weight: 700;
         }
 
-        /* â”€â”€ UPGRADE â”€â”€ */
+        /* ── UPGRADE ── */
         .upgrade-banner {
             background: linear-gradient(135deg, #1a1a1a, #2d2d2d);
             border-radius: 12px;
@@ -758,8 +758,8 @@
 
     <header class="header">
         <div>
-            <div class="header-logo">ðŸ§¬ LAB NUTRITION</div>
-            <div class="header-sub">Portal de SuscripciÃ³n</div>
+            <div class="header-logo">🧬 LAB NUTRITION</div>
+            <div class="header-sub">Portal de Suscripción</div>
         </div>
     </header>
 
@@ -775,10 +775,10 @@
                     <circle cx="12" cy="7" r="4" />
                 </svg>
             </div>
-            <h2>Gestiona tu suscripciÃ³n</h2>
+            <h2>Gestiona tu suscripción</h2>
             <p>Ingresa tu email para acceder a tu panel personalizado y gestionar tus suscripciones activas.</p>
             <input type="email" class="fi" id="email-input" placeholder="tu@email.com" autocomplete="email">
-            <button class="btn btn-r btn-full" onclick="lookup()">Ver mis suscripciones â†’</button>
+            <button class="btn btn-r btn-full" onclick="lookup()">Ver mis suscripciones →</button>
         </div>
 
         <!-- LOADING -->
@@ -795,8 +795,8 @@
     <div class="overlay" id="pause-modal">
         <div class="modal">
             <div class="modal-handle"></div>
-            <h3>Pausar suscripciÃ³n</h3>
-            <p>Elige cuÃ¡ntos meses quieres pausar. Tu permanencia no avanza durante la pausa y puedes reactivar cuando
+            <h3>Pausar suscripción</h3>
+            <p>Elige cuántos meses quieres pausar. Tu permanencia no avanza durante la pausa y puedes reactivar cuando
                 quieras.</p>
             <div class="pause-options">
                 <div class="pause-opt selected" onclick="selectPause(1)">
@@ -818,8 +818,8 @@
     <div class="overlay" id="skip-modal">
         <div class="modal">
             <div class="modal-handle"></div>
-            <h3>Saltar un envÃ­o</h3>
-            <p>Tu prÃ³ximo envÃ­o se moverÃ¡ un ciclo hacia adelante. Tu descuento y permanencia se mantienen igual.</p>
+            <h3>Saltar un envío</h3>
+            <p>Tu próximo envío se moverá un ciclo hacia adelante. Tu descuento y permanencia se mantienen igual.</p>
             <button class="btn btn-r btn-full" onclick="confirmSkip()">Confirmar salto</button>
             <button class="btn btn-g btn-full" style="margin-top:8px"
                 onclick="closeModal('skip-modal')">Cancelar</button>
@@ -845,7 +845,7 @@
         let selectedPause = 1;
         let customerEmail = '';
 
-        /* â”€â”€ UTILS â”€â”€ */
+        /* ── UTILS ── */
         function toast(msg, dur = 3000) {
             const el = document.getElementById('toast');
             el.textContent = msg;
@@ -854,7 +854,7 @@
         }
 
         function fmtDate(iso) {
-            if (!iso) return 'â€”';
+            if (!iso) return '—';
             return new Date(iso).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' });
         }
 
@@ -867,14 +867,14 @@
             if (status === 'active') return `<span class="badge badge-active">Activa</span>`;
             if (status === 'cancelled') return `<span class="badge badge-cancelled">Cancelada</span>`;
             if (status === 'expired') return `<span class="badge badge-cancelled">Completada</span>`;
-            if (status === 'payment_failed') return `<span class="badge badge-expiring">âš  Pago fallido</span>`;
+            if (status === 'payment_failed') return `<span class="badge badge-expiring">⚠ Pago fallido</span>`;
             return `<span class="badge badge-cancelled">${status}</span>`;
         }
 
-        /* â”€â”€ LOOK UP SUBSCRIPTIONS â”€â”€ */
+        /* ── LOOK UP SUBSCRIPTIONS ── */
         async function lookup() {
             const email = document.getElementById('email-input').value.trim();
-            if (!email || !email.includes('@')) { toast('Ingresa un email vÃ¡lido'); return; }
+            if (!email || !email.includes('@')) { toast('Ingresa un email válido'); return; }
             customerEmail = email;
             document.getElementById('gate').style.display = 'none';
             document.getElementById('loading').style.display = 'block';
@@ -890,7 +890,7 @@
             }
         }
 
-        /* â”€â”€ RENDER SUBSCRIPTIONS â”€â”€ */
+        /* ── RENDER SUBSCRIPTIONS ── */
         function renderSubs(subs) {
             const el = document.getElementById('subs-container');
             el.style.display = 'block';
@@ -898,7 +898,7 @@
                 el.innerHTML = `<div class="empty-state">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ddd" stroke-width="1.5" style="margin-bottom:16px"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
       <h3>Sin suscripciones activas</h3>
-      <p>No encontramos suscripciones activas para <strong>${customerEmail}</strong>.<br>Si crees que hay un error, contÃ¡ctanos.</p>
+      <p>No encontramos suscripciones activas para <strong>${customerEmail}</strong>.<br>Si crees que hay un error, contáctanos.</p>
     </div>`;
                 return;
             }
@@ -919,7 +919,7 @@
                 for (let i = 1; i <= maxDots; i++) {
                     const isGift = sub.gift_cycle && i === sub.gift_cycle;
                     if (isGift) {
-                        dotsHtml += `<div class="pdot pdot-gift" title="Ciclo ${i} â€” Regalo">ðŸŽ</div>`;
+                        dotsHtml += `<div class="pdot pdot-gift" title="Ciclo ${i} — Regalo">🎁</div>`;
                     } else if (i < done) {
                         dotsHtml += `<div class="pdot pdot-done">${i}</div>`;
                     } else if (i === done) {
@@ -939,9 +939,9 @@
                 /* cancel policy */
                 let policyHtml = '';
                 if (!canCancel) {
-                    policyHtml = `<div class="policy-box"><p>âš  <strong>Permanencia activa:</strong> Para cancelar necesitas completar ${sub.cycles_required - done} ciclo(s) mÃ¡s (hasta ${fmtDate(sub.expires_at)}).</p></div>`;
+                    policyHtml = `<div class="policy-box"><p>⚠ <strong>Permanencia activa:</strong> Para cancelar necesitas completar ${sub.cycles_required - done} ciclo(s) más (hasta ${fmtDate(sub.expires_at)}).</p></div>`;
                 } else if (cancelWindowOpen) {
-                    policyHtml = `<div class="policy-box" style="background:#f0fdf4;border-color:#bbf7d0"><p style="color:#14532d">âœ… <strong>Ventana de cancelaciÃ³n abierta</strong> (${daysUntil} dÃ­as antes del prÃ³ximo cobro). Puedes cancelar ahora.</p></div>`;
+                    policyHtml = `<div class="policy-box" style="background:#f0fdf4;border-color:#bbf7d0"><p style="color:#14532d">✅ <strong>Ventana de cancelación abierta</strong> (${daysUntil} días antes del próximo cobro). Puedes cancelar ahora.</p></div>`;
                 }
 
                 const card = document.createElement('div');
@@ -973,7 +973,7 @@
           <div class="info-value">${perm}</div>
         </div>
         <div class="info-item">
-          <div class="info-label">PrÃ³ximo cobro</div>
+          <div class="info-label">Próximo cobro</div>
           <div class="info-value" style="${daysUntil !== null && daysUntil <= 7 ? 'color:var(--orange)' : ''}">${daysUntil !== null ? `en ${daysUntil}d` : fmtDate(sub.next_charge_at)}</div>
         </div>
         <div class="info-item">
@@ -985,7 +985,7 @@
       <div class="progress-section">
         <div class="progress-label">
           <span>Progreso de permanencia</span>
-          <span>${done} / ${totalCycles} ciclos${done >= totalCycles ? ' âœ…' : ''}</span>
+          <span>${done} / ${totalCycles} ciclos${done >= totalCycles ? ' ✅' : ''}</span>
         </div>
         <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
         <div class="progress-dots" style="margin-top:10px;flex-wrap:wrap;gap:4px">${dotsHtml}</div>
@@ -1004,7 +1004,7 @@
         </button>
         <button class="btn-action" onclick="openSkip('${sub.id}')">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
-          <span class="btn-action-label">Saltar envÃ­o</span>
+          <span class="btn-action-label">Saltar envío</span>
           <span class="btn-action-sub">Mover al siguiente</span>
         </button>
         <button class="btn-action" onclick="openHistory('${sub.id}')">
@@ -1021,11 +1021,11 @@
         <button class="btn-action" onclick="openHistory('${sub.id}')">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span class="btn-action-label">Soporte</span>
-          <span class="btn-action-sub">ContÃ¡ctanos</span>
+          <span class="btn-action-sub">Contáctanos</span>
         </button>`}
       </div>` : sub.status === 'paused' ? `
       <div style="padding:0 20px 20px">
-        <button class="btn btn-r btn-full" onclick="resumeSub('${sub.id}')">Reactivar suscripciÃ³n</button>
+        <button class="btn btn-r btn-full" onclick="resumeSub('${sub.id}')">Reactivar suscripción</button>
       </div>` : ''}
     `;
                 el.appendChild(card);
@@ -1035,14 +1035,14 @@
             const upgrade = document.createElement('div');
             upgrade.className = 'upgrade-banner';
             upgrade.innerHTML = `
-    <div class="upgrade-title">Â¿Listo para ir al siguiente nivel?</div>
-    <div class="upgrade-sub">Explora nuestro catÃ¡logo completo y personaliza tu stack de nutriciÃ³n.</div>
-    <a href="https://nutrition-lab-cluster.myshopify.com" target="_blank" class="btn btn-r" style="font-size:13px;padding:10px 18px">Ver catÃ¡logo â†’</a>
+    <div class="upgrade-title">¿Listo para ir al siguiente nivel?</div>
+    <div class="upgrade-sub">Explora nuestro catálogo completo y personaliza tu stack de nutrición.</div>
+    <a href="https://nutrition-lab-cluster.myshopify.com" target="_blank" class="btn btn-r" style="font-size:13px;padding:10px 18px">Ver catálogo →</a>
   `;
             el.appendChild(upgrade);
         }
 
-        /* â”€â”€ ACTIONS â”€â”€ */
+        /* ── ACTIONS ── */
         function openPause(id) { currentSubId = id; selectPause(1); document.getElementById('pause-modal').classList.add('open'); }
         function openSkip(id) { currentSubId = id; document.getElementById('skip-modal').classList.add('open'); }
         function closeModal(id) { document.getElementById(id).classList.remove('open'); }
@@ -1058,7 +1058,7 @@
                     body: JSON.stringify({ pauseMonths: selectedPause })
                 });
                 closeModal('pause-modal');
-                toast(`SuscripciÃ³n pausada por ${selectedPause} mes(es)`);
+                toast(`Suscripción pausada por ${selectedPause} mes(es)`);
                 setTimeout(() => lookup(), 500);
             } catch { toast('Error al pausar. Intenta de nuevo.'); }
         }
@@ -1067,7 +1067,7 @@
             try {
                 await fetch(`${API}/api/portal/subscription/${currentSubId}/skip`, { method: 'POST' });
                 closeModal('skip-modal');
-                toast('EnvÃ­o saltado correctamente');
+                toast('Envío saltado correctamente');
                 setTimeout(() => lookup(), 500);
             } catch { toast('Error al saltar. Intenta de nuevo.'); }
         }
@@ -1075,7 +1075,7 @@
         async function resumeSub(id) {
             try {
                 await fetch(`${API}/api/subscriptions/${id}/resume`, { method: 'POST' });
-                toast('SuscripciÃ³n reactivada');
+                toast('Suscripción reactivada');
                 setTimeout(() => lookup(), 500);
             } catch { toast('Error. Intenta de nuevo.'); }
         }
@@ -1092,7 +1092,7 @@
                     charge_failed: `<div class="history-icon hi-failed"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>`,
                     paused: `<div class="history-icon hi-pause"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></div>`,
                 };
-                const labelMap = { charge_success: 'Cobro exitoso', charge_failed: 'Cobro fallido', paused: 'Pausada', skipped: 'EnvÃ­o saltado', created: 'SuscripciÃ³n creada', cancelled: 'Cancelada', resumed: 'Reactivada' };
+                const labelMap = { charge_success: 'Cobro exitoso', charge_failed: 'Cobro fallido', paused: 'Pausada', skipped: 'Envío saltado', created: 'Suscripción creada', cancelled: 'Cancelada', resumed: 'Reactivada' };
                 document.getElementById('history-content').innerHTML = events.length ? events.map(e => `
       <div class="history-item">
         ${iconMap[e.event_type] || `<div class="history-icon" style="background:var(--bg)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg></div>`}
@@ -1102,11 +1102,11 @@
         </div>
         ${e.amount ? `<div class="history-amount">${fmtCurrency(e.amount)}</div>` : ''}
       </div>`).join('')
-                    : '<div class="empty-state" style="padding:20px"><p>Sin eventos registrados aÃºn</p></div>';
+                    : '<div class="empty-state" style="padding:20px"><p>Sin eventos registrados aún</p></div>';
             } catch { document.getElementById('history-content').innerHTML = '<p style="color:var(--mut);text-align:center;padding:20px">Error al cargar historial</p>'; }
         }
 
-        /* â”€â”€ INIT â€” check URL email param â”€â”€ */
+        /* ── INIT — check URL email param ── */
         window.addEventListener('load', () => {
             const params = new URLSearchParams(location.search);
             const emailParam = params.get('email') || params.get('e');
