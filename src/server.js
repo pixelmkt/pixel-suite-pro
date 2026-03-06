@@ -5,8 +5,7 @@ const cors = require('cors');
 const cron = require('node-cron');
 const path = require('path');
 
-// ── Legacy supabase stub (kept for safety, not used for data) ──
-const supabase = require('./db/client');
+// ── Database layer (Supabase removed — using Shopify Metaobjects) ──
 
 // ── Shopify Metaobjects — Native Database ──────────────────────
 let db;
@@ -56,7 +55,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 ═══════════════════════════════════════════════ */
 const SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY || 'fc20b3f68f1c8e854a3dca30788acd48';
 const SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET || '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';
-const SCOPES = 'read_products,read_orders,write_orders,read_customers,write_customers';
+const SCOPES = 'read_products,write_products,read_orders,write_orders,read_customers,write_customers,read_own_subscription_contracts,write_own_subscription_contracts,read_purchase_options,write_purchase_options';
 const HOST = process.env.RAILWAY_PUBLIC_DOMAIN
     ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
     : 'https://pixel-suite-pro-production.up.railway.app';
@@ -303,7 +302,7 @@ app.get('/api/products', async (req, res) => {
         const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
         const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
         if (!token) return res.json([]);
-        const url = `https://${shop}/admin/api/2025-01/products.json?limit=250&fields=id,title,images,variants,status`;
+        const url = `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,images,variants,status`;
         const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } });
         if (!r.ok) return res.json([]);
         const data = await r.json();
@@ -550,7 +549,7 @@ app.post('/api/stacks', async (req, res) => {
         const idx = current.findIndex(s => s.id === req.body.id);
         if (idx >= 0) current[idx] = req.body;
         else current.push({ ...req.body, id: `stack_${Date.now()}`, created_at: new Date().toISOString() });
-        await saveToShopify('lab_app', 'stacks', current);
+        await saveToShopify(current, 'lab_app', 'stacks');
         res.json(req.body);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -558,7 +557,7 @@ app.post('/api/stacks', async (req, res) => {
 app.delete('/api/stacks/:id', async (req, res) => {
     try {
         const current = (await readFromShopify('lab_app', 'stacks') || []).filter(s => s.id !== req.params.id);
-        await saveToShopify('lab_app', 'stacks', current);
+        await saveToShopify(current, 'lab_app', 'stacks');
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -614,12 +613,10 @@ const METAFIELD_KEY = 'settings';
 // (they come from Railway). Other settings can come from Shopify Metafields.
 function getEnvDefaults() {
     return {
-        shopify_shop: process.env.SHOPIFY_SHOP || '',
+        shopify_shop: process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com',
         shopify_access_token: process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken || '',
         mp_access_token: process.env.MP_ACCESS_TOKEN || '',
         mp_public_key: process.env.MP_PUBLIC_KEY || '',
-        supabase_url: process.env.SUPABASE_URL || '',
-        supabase_key: process.env.SUPABASE_SERVICE_KEY || '',
         smtp_host: process.env.SMTP_HOST || 'smtp.gmail.com',
         smtp_port: process.env.SMTP_PORT || '587',
         smtp_user: process.env.SMTP_USER || '',
@@ -640,7 +637,7 @@ async function readFromShopify(ns, key) {
     const mfKey = key || METAFIELD_KEY;
     try {
         const r = await fetch(
-            `https://${shop}/admin/api/2025-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${namespace}&metafield[key]=${mfKey}`,
+            `https://${shop}/admin/api/2024-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${namespace}&metafield[key]=${mfKey}`,
             { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } }
         );
         if (!r.ok) return null;
@@ -670,8 +667,8 @@ async function saveToShopify(settings, ns, key) {
             : { metafield: { namespace, key: mfKey, value: JSON.stringify(settings), type: 'json', owner_resource: 'shop' } };
         const method = existing ? 'PUT' : 'POST';
         const url = existing
-            ? `https://${shop}/admin/api/2025-01/metafields/${existing.id}.json`
-            : `https://${shop}/admin/api/2025-01/metafields.json`;
+            ? `https://${shop}/admin/api/2024-01/metafields/${existing.id}.json`
+            : `https://${shop}/admin/api/2024-01/metafields.json`;
         await fetch(url, { method, headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         return true;
     } catch (e) { console.warn('[SETTINGS] Shopify metafield save error:', e.message); return false; }
