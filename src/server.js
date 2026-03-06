@@ -302,41 +302,45 @@ app.get('/api/products', async (req, res) => {
     try {
         const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
         const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
-        console.log('[PRODUCTS] shop=' + shop + ' token=' + (token ? token.substring(0, 8) + '...' : 'NONE'));
-        if (!token) return res.json({ error: 'No token', products: [] });
+        if (!token) return res.json([]);
         const url = `https://${shop}/admin/api/2025-01/products.json?limit=250&fields=id,title,images,variants,status`;
         const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } });
-        if (!r.ok) {
-            const errText = await r.text();
-            console.log('[PRODUCTS] Shopify API error: ' + r.status + ' ' + errText.substring(0, 200));
-            return res.json({ error: 'Shopify ' + r.status, products: [] });
-        }
+        if (!r.ok) return res.json([]);
         const data = await r.json();
+        // Read saved eligible products from Shopify Metafields
+        const saved = await readFromShopify('lab_app', 'eligible_products').catch(() => null) || [];
+        const activeIds = new Set(saved.filter(p => p.is_active).map(p => String(p.shopify_id)));
         const products = (data.products || []).map(p => ({
             shopify_id: String(p.id),
             title: p.title,
             image: p.images?.[0]?.src || null,
             price: p.variants?.[0]?.price || '0',
             status: p.status,
-            subscription_enabled: false
+            subscription_enabled: activeIds.has(String(p.id))
         }));
-        console.log('[PRODUCTS] Returned ' + products.length + ' products');
+        console.log('[PRODUCTS] ' + products.length + ' total, ' + activeIds.size + ' active');
         res.json(products);
     } catch (e) {
         console.error('[PRODUCTS] Error:', e.message);
-        res.json({ error: e.message, products: [] });
+        res.json([]);
     }
 });
 
 app.post('/api/products', async (req, res) => {
     try {
         const current = await readFromShopify('lab_app', 'eligible_products') || [];
-        const idx = current.findIndex(p => p.shopify_id === req.body.shopify_id);
-        if (idx >= 0) current[idx] = { ...current[idx], ...req.body };
-        else current.push({ ...req.body, created_at: new Date().toISOString() });
-        await saveToShopify('lab_app', 'eligible_products', current);
-        res.json(req.body);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+        const pid = req.body.shopify_id || req.body.shopify_product_id;
+        const idx = current.findIndex(p => (p.shopify_id || p.shopify_product_id) === pid);
+        const entry = { shopify_id: pid, product_title: req.body.product_title, is_active: req.body.is_active !== false, updated_at: new Date().toISOString() };
+        if (idx >= 0) current[idx] = { ...current[idx], ...entry };
+        else current.push({ ...entry, created_at: new Date().toISOString() });
+        await saveToShopify(current, 'lab_app', 'eligible_products');
+        console.log('[PRODUCTS] Saved ' + current.length + ' eligible products, toggled ' + pid);
+        res.json({ success: true, product: entry });
+    } catch (e) {
+        console.error('[PRODUCTS] Save error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 /* ── METRICS — from Shopify Metaobjects ── */
@@ -628,13 +632,15 @@ function getEnvDefaults() {
 }
 
 // Read from Shopify Shop Metafields
-async function readFromShopify() {
+async function readFromShopify(ns, key) {
     const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
     const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
     if (!token) return null;
+    const namespace = ns || METAFIELD_NAMESPACE;
+    const mfKey = key || METAFIELD_KEY;
     try {
         const r = await fetch(
-            `https://${shop}/admin/api/2025-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${METAFIELD_NAMESPACE}&metafield[key]=${METAFIELD_KEY}`,
+            `https://${shop}/admin/api/2025-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${namespace}&metafield[key]=${mfKey}`,
             { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } }
         );
         if (!r.ok) return null;
@@ -646,21 +652,22 @@ async function readFromShopify() {
 }
 
 // Save to Shopify Shop Metafields
-async function saveToShopify(settings) {
+async function saveToShopify(settings, ns, key) {
     const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
     const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
     if (!token) return false;
+    const namespace = ns || METAFIELD_NAMESPACE;
+    const mfKey = key || METAFIELD_KEY;
     try {
-        // First check if metafield exists
         const checkR = await fetch(
-            `https://${shop}/admin/api/2025-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${METAFIELD_NAMESPACE}&metafield[key]=${METAFIELD_KEY}`,
+            `https://${shop}/admin/api/2025-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${namespace}&metafield[key]=${mfKey}`,
             { headers: { 'X-Shopify-Access-Token': token } }
         );
         const checkData = await checkR.json();
         const existing = checkData.metafields?.[0];
         const body = existing
             ? { metafield: { id: existing.id, value: JSON.stringify(settings), type: 'json' } }
-            : { metafield: { namespace: METAFIELD_NAMESPACE, key: METAFIELD_KEY, value: JSON.stringify(settings), type: 'json', owner_resource: 'shop' } };
+            : { metafield: { namespace, key: mfKey, value: JSON.stringify(settings), type: 'json', owner_resource: 'shop' } };
         const method = existing ? 'PUT' : 'POST';
         const url = existing
             ? `https://${shop}/admin/api/2025-01/metafields/${existing.id}.json`
