@@ -1079,15 +1079,12 @@ Equipo LAB"></textarea>
               <th>Frecuencia</th>
               <th>Permanencia</th>
               <th>% Descuento</th>
-              <th>Puntos LAB x2</th>
-              <th>Ciclo regalo</th>
-              <th>Descripción regalo</th>
               <th>Activo</th>
             </tr>
           </thead>
           <tbody id="plans-table">
             <tr>
-              <td colspan="7" style="text-align:center;padding:32px;color:var(--mut)">Cargando...</td>
+              <td colspan="4" style="text-align:center;padding:32px;color:var(--mut)">Cargando...</td>
             </tr>
           </tbody>
         </table>
@@ -1547,24 +1544,31 @@ Equipo LAB"></textarea>
 
     /* ── ⑤ PLANS ── */
     async function loadPlans() {
-      const data = await api('/api/plans');
+      const data = await api('/api/plans').catch(() => []);
+      if (!Array.isArray(data) || !data.length) {
+        document.getElementById('plans-table').innerHTML = '<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--mut)">Sin planes configurados</td></tr>';
+        return;
+      }
       document.getElementById('plans-table').innerHTML = data.map(p => `<tr data-id="${p.id}">
     <td>${p.frequency_months === 1 ? '📦 Mensual' : '📦 Bimestral'}</td>
     <td>${p.permanence_months} meses</td>
     <td><input type="number" class="fi" style="width:70px" value="${p.discount_pct}" data-f="discount_pct" min="0" max="60"></td>
-    <td style="text-align:center"><label class="toggle-wrap"><span class="toggle"><input type="checkbox" ${p.extra_points ? 'checked' : ''} data-f="extra_points"><span class="toggle-slider"></span></span></label></td>
-    <td><input type="number" class="fi" style="width:65px" value="${p.gift_cycle || ''}" placeholder="—" data-f="gift_cycle"></td>
-    <td><input type="text" class="fi" value="${p.gift_description || ''}" placeholder="Descripción del regalo" data-f="gift_description"></td>
     <td style="text-align:center"><label class="toggle-wrap"><span class="toggle"><input type="checkbox" ${p.is_active !== false ? 'checked' : ''} data-f="is_active"><span class="toggle-slider"></span></span></label></td>
   </tr>`).join('');
     }
     async function savePlans() {
       const rows = document.querySelectorAll('#plans-table tr[data-id]');
-      const ok = await Promise.all([...rows].map(row => {
-        const id = row.dataset.id; const body = {};
-        row.querySelectorAll('[data-f]').forEach(el => { const f = el.dataset.f; if (el.type === 'checkbox') body[f] = el.checked; else if (el.type === 'number') body[f] = el.value ? parseInt(el.value) : null; else body[f] = el.value || null });
-        return api(`/api/plans/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      }));
+      const plans = [...rows].map(row => {
+        const id = row.dataset.id; const body = { id };
+        row.querySelectorAll('[data-f]').forEach(el => {
+          const f = el.dataset.f;
+          if (el.type === 'checkbox') body[f] = el.checked;
+          else if (el.type === 'number') body[f] = el.value ? parseInt(el.value) : 0;
+          else body[f] = el.value || null;
+        });
+        return body;
+      });
+      await api('/api/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(plans) });
       toast('💾 Matriz guardada correctamente');
     }
 
