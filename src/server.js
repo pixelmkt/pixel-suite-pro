@@ -287,13 +287,33 @@ const DEFAULT_PLANS = [
 
 app.get('/api/plans', async (req, res) => {
     try {
-        const saved = await readFromShopify('lab_app', 'plans_config');
+        let saved = await readFromShopify('lab_app', 'plans_config');
+        if (!Array.isArray(saved)) saved = null;
         res.json(saved || DEFAULT_PLANS);
     } catch { res.json(DEFAULT_PLANS); }
 });
 
+/* Guardar TODOS los planes (botón Guardar cambios en admin) */
+app.post('/api/plans', async (req, res) => {
+    try {
+        const plans = Array.isArray(req.body) ? req.body : req.body.plans;
+        if (!plans) return res.status(400).json({ error: 'Expected array of plans' });
+        await saveToShopify(plans, 'lab_app', 'plans_config');
+        res.json({ success: true, plans });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* Guardar un plan individual por ID */
 app.put('/api/plans/:id', async (req, res) => {
-    res.json({ ...req.body, id: req.params.id, updated: true });
+    try {
+        let current = await readFromShopify('lab_app', 'plans_config');
+        if (!Array.isArray(current)) current = [...DEFAULT_PLANS];
+        const idx = current.findIndex(p => String(p.id) === String(req.params.id));
+        if (idx >= 0) current[idx] = { ...current[idx], ...req.body, id: req.params.id };
+        else current.push({ ...req.body, id: req.params.id });
+        await saveToShopify(current, 'lab_app', 'plans_config');
+        res.json({ success: true, plan: current[idx] || req.body });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ── ELIGIBLE PRODUCTS — fetch from Shopify Admin API ── */
