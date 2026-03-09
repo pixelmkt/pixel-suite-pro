@@ -853,7 +853,7 @@
         <div class="frow">
           <div class="fg"><label class="fl">Descuento base (%)</label>
             <input type="number" class="fi" id="plan-disc" value="10" min="0" max="80" placeholder="Ej: 10">
-            <div class="fin">% que se aplica si el producto no tiene config propia</div>
+            <div class="fin">% de descuento aplicado al precio base del producto</div>
           </div>
           <div class="fg"><label class="fl">Descripción (opcional)</label>
             <input type="text" class="fi" id="plan-desc" placeholder="Ej: Plan estrella">
@@ -894,21 +894,6 @@
             </div>
             <button class="btn btn-r" onclick="saveWidgetConfig()" style="margin-top:8px">💾 Guardar configuración
               widget</button>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-head"><span class="card-title">Deploy del widget a Shopify</span></div>
-          <div style="padding:20px">
-            <div class="info-box warn">⚠️ Para que el widget aparezca en tu tienda, debes desplegarlo una vez desde tu
-              terminal.</div>
-            <div
-              style="background:#1a1a1a;border-radius:8px;padding:14px;font-family:monospace;font-size:12px;color:#00ff88;margin-bottom:12px">
-              cd C:\Users\usuario\Downloads\lab-nutrition-app\antigravity-dev<br>
-              npx shopify app deploy
-            </div>
-            <div style="font-size:12px;color:var(--mut)">Después en Shopify Admin &rarr; Tienda online &rarr; Temas
-              &rarr; Personalizar &rarr; página de producto &rarr; Agregar bloque &rarr; LAB NUTRITION Subscriptions
-            </div>
           </div>
         </div>
       </div>
