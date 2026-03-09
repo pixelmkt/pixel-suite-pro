@@ -875,8 +875,6 @@
         </div>
       </div>
       <div class="content">
-        <div class="info-box">🎨 El widget aparece en la página del producto cuando el producto está activo. Personaliza
-          colores y textos.</div>
         <div class="card">
           <div class="card-head"><span class="card-title">Configuración del widget</span></div>
           <div style="padding:20px">
@@ -887,13 +885,62 @@
                   value="Compra única"></div>
             </div>
             <div class="frow">
-              <div class="fg"><label class="fl">Color principal (hex)</label><input class="fi" id="w-color"
-                  value="#c0392b" type="color"></div>
-              <div class="fg"><label class="fl">Texto ahorro (ej: " Ahorras {pct}%")</label><input class="fi"
+              <div class="fg"><label class="fl">Color principal</label><input class="fi" id="w-color" value="#c0392b"
+                  type="color"></div>
+              <div class="fg"><label class="fl">Texto ahorro (usa {pct} para el %)</label><input class="fi"
                   id="w-save-txt" value="Ahorras {pct}%"></div>
             </div>
-            <button class="btn btn-r" onclick="saveWidgetConfig()" style="margin-top:8px">💾 Guardar configuración
-              widget</button>
+            <button class="btn btn-r" onclick="saveWidgetConfig()" style="margin-top:8px">💾 Guardar
+              configuración</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="card-title">✅ Activar en tu tienda Shopify</span></div>
+          <div style="padding:20px">
+            <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:18px">
+              <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:14px;flex:1">
+                <div style="font-weight:700;font-size:13px;color:#15803d;margin-bottom:6px">🎉 Widget desplegado
+                  correctamente</div>
+                <div style="font-size:12px;color:#166534">El bloque "LAB NUTRITION Subscriptions" está disponible en tu
+                  tema de Shopify. Solo necesitas activarlo en la página de producto.</div>
+              </div>
+            </div>
+            <div style="font-weight:600;font-size:13px;margin-bottom:12px">Pasos para activar:</div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">
+              <div
+                style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+                <div
+                  style="background:#9d2a23;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0">
+                  1</div>
+                <div style="font-size:13px">Haz clic en <strong>"Abrir editor de temas"</strong></div>
+              </div>
+              <div
+                style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+                <div
+                  style="background:#9d2a23;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0">
+                  2</div>
+                <div style="font-size:13px">Selecciona <strong>Página de producto</strong> en el menú superior</div>
+              </div>
+              <div
+                style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+                <div
+                  style="background:#9d2a23;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0">
+                  3</div>
+                <div style="font-size:13px">Panel izquierdo → <strong>"Agregar bloque"</strong> → <strong>"LAB NUTRITION
+                    Subscriptions"</strong></div>
+              </div>
+              <div
+                style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+                <div
+                  style="background:#9d2a23;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0">
+                  4</div>
+                <div style="font-size:13px">Haz clic en <strong>Guardar</strong></div>
+              </div>
+            </div>
+            <button class="btn btn-r" onclick="openThemeEditor()" style="width:100%;padding:14px;font-size:14px">
+              🎨 Abrir editor de temas en Shopify →
+            </button>
           </div>
         </div>
       </div>
@@ -1400,6 +1447,25 @@
         await api('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         toast('💾 Configuración del widget guardada');
       } catch (e) { toast('Error: ' + e.message, 'err'); }
+    }
+
+    function openThemeEditor() {
+      try {
+        const params = new URLSearchParams(location.search);
+        const shop = params.get('shop') || 'nutrition-lab-cluster.myshopify.com';
+        const host = params.get('host');
+        if (host && window['app-bridge']) {
+          const AB = window['app-bridge'];
+          const app = AB.default({ apiKey: 'fc20b3f68f1c8e854a3dca30788acd48', host });
+          const { Redirect } = AB;
+          Redirect.create(app).dispatch(Redirect.Action.ADMIN_PATH, '/themes/current/editor?context=apps');
+        } else {
+          // Fallback: open directly
+          window.open('https://' + shop + '/admin/themes/current/editor?context=apps', '_blank');
+        }
+      } catch (e) {
+        window.open('https://admin.shopify.com/store/nutrition-lab-cluster/themes', '_blank');
+      }
     }
 
     // ──── PORTAL CLIENTE ────
