@@ -5,23 +5,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Suscriptions MP — Admin</title>
-  <!-- Shopify App Bridge 2.x — soporta NavigationMenu en vanilla JS -->
+  <!-- Shopify App Bridge 2.x -->
   <script src="https://unpkg.com/@shopify/app-bridge@2/umd/index.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Brand fonts: Playfair Display (titles) + DM Sans (body) -->
+  <link
+    href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
   <style>
     :root {
-      --red: #c0392b;
-      --red2: #96281b;
-      --blk: #111;
+      --red: #C33118;
+      --red2: #9E270F;
+      --blk: #1A1209;
       --wht: #fff;
-      --bg: #f4f6f8;
-      --card: #fff;
-      --bdr: #e5e7eb;
-      --mut: #9ca3af;
-      --grn: #16a34a;
-      --amber: #d97706;
+      --bg: #F0E8DB;
+      --card: #FDFAF6;
+      --bdr: #E2D5C3;
+      --mut: #9A8672;
+      --grn: #2D7A3A;
+      --amber: #C07A1A;
       --r: 10px;
-      --sh: 0 1px 3px rgba(0, 0, 0, .08)
+      --sh: 0 1px 4px rgba(30, 15, 0, .07)
     }
 
     * {
@@ -31,7 +34,7 @@
     }
 
     body {
-      font-family: 'Inter', -apple-system, sans-serif;
+      font-family: 'DM Sans', -apple-system, sans-serif;
       background: var(--bg);
       color: var(--blk);
       display: flex;
@@ -42,9 +45,9 @@
 
     /* SIDEBAR */
     .sb {
-      width: 220px;
+      width: 224px;
       min-height: 100vh;
-      background: #0e0e0e;
+      background: #120D07;
       color: #fff;
       display: flex;
       flex-direction: column;
@@ -52,57 +55,57 @@
     }
 
     .sb-brand {
-      padding: 20px 18px 14px;
-      border-bottom: 1px solid #1e1e1e
+      padding: 22px 18px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, .07)
     }
 
     .sb-name {
-      font-size: 14px;
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 16px;
       font-weight: 900;
-      letter-spacing: .5px;
+      letter-spacing: .2px;
       color: #fff;
-      text-transform: uppercase
     }
 
     .sb-role {
       font-size: 10px;
-      font-weight: 700;
-      color: var(--red);
-      letter-spacing: 1px;
+      font-weight: 600;
+      color: #C97A68;
+      letter-spacing: 1.2px;
       text-transform: uppercase;
-      margin-top: 2px
+      margin-top: 3px
     }
 
     .sb-section {
-      padding: 16px 10px 4px;
-      font-size: 10px;
+      padding: 18px 12px 5px;
+      font-size: 9.5px;
       font-weight: 700;
-      letter-spacing: 1px;
+      letter-spacing: 1.2px;
       text-transform: uppercase;
-      color: #555
+      color: #5A4A3A
     }
 
     .nav-item {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 9px 12px;
-      border-radius: 6px;
-      margin: 1px 6px;
+      padding: 9px 13px;
+      border-radius: 7px;
+      margin: 1px 7px;
       cursor: pointer;
-      color: #aaa;
+      color: #B0977E;
       font-weight: 500;
       transition: .15s;
       font-size: 12.5px
     }
 
     .nav-item:hover {
-      background: #1a1a1a;
-      color: #fff
+      background: #2A1D12;
+      color: #EDD9C0
     }
 
     .nav-item.active {
-      background: #c0392b;
+      background: var(--red);
       color: #fff
     }
 
@@ -142,16 +145,19 @@
     }
 
     .pt {
-      font-size: 20px;
-      font-weight: 800;
-      color: #111;
-      letter-spacing: -.3px
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--blk);
+      letter-spacing: -.2px;
+      line-height: 1.2
     }
 
     .ps {
       font-size: 12px;
       color: var(--mut);
-      margin-top: 2px
+      margin-top: 3px;
+      font-weight: 400
     }
 
     .content {
@@ -210,8 +216,10 @@
     }
 
     .card-title {
+      font-family: 'DM Sans', sans-serif;
       font-weight: 700;
-      font-size: 13px
+      font-size: 13px;
+      color: var(--blk)
     }
 
     /* TABLE */
