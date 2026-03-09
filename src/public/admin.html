@@ -17,9 +17,9 @@
       --red2: #9E270F;
       --blk: #1A1209;
       --wht: #fff;
-      --bg: #F0E8DB;
-      --card: #FDFAF6;
-      --bdr: #E2D5C3;
+      --bg: #F8F4EF;
+      --card: #FFFFFF;
+      --bdr: #E6DDD3;
       --mut: #9A8672;
       --grn: #2D7A3A;
       --amber: #C07A1A;
@@ -1497,11 +1497,11 @@
           api('/api/metrics').catch(() => ({})),
           api('/api/subscriptions?limit=10').catch(() => [])
         ]);
-        document.getElementById('st-mrr').textContent = 'S/ ' + (metrics.mrr || 0).toFixed(2);
-        document.getElementById('st-active').textContent = metrics.active || 0;
-        document.getElementById('st-paused').textContent = metrics.paused || 0;
-        document.getElementById('st-cancelled').textContent = metrics.cancelled || 0;
-        document.getElementById('st-next7').textContent = metrics.next7d || 0;
+        document.getElementById('st-mrr').textContent = 'S/ ' + parseFloat(metrics.mrr || 0).toFixed(2);
+        document.getElementById('st-active').textContent = parseInt(metrics.active) || 0;
+        document.getElementById('st-paused').textContent = parseInt(metrics.paused) || 0;
+        document.getElementById('st-cancelled').textContent = parseInt(metrics.cancelled) || 0;
+        document.getElementById('st-next7').textContent = parseInt(metrics.next7d) || 0;
         const subs = Array.isArray(recent) ? recent : [];
         document.getElementById('dash-table').innerHTML = subs.length
           ? subs.slice(0, 10).map(s => `<tr>
