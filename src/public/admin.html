@@ -5,9 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Suscriptions MP — Admin</title>
-  <!-- Shopify App Bridge v3 — allows iframe to work inside Shopify Admin (2026) -->
-  <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"
-    data-api-key="fc20b3f68f1c8e854a3dca30788acd48"></script>
+  <!-- Shopify App Bridge 2.x — soporta NavigationMenu en vanilla JS -->
+  <script src="https://unpkg.com/@shopify/app-bridge@2/umd/index.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -938,7 +937,7 @@
                     Ajustes)</div>
                 </div>
                 <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-pause" checked><span
-                      class="tslide"></span></span></label>
+                      class="tslide"></span></label>
               </label>
               <label
                 style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
@@ -948,7 +947,7 @@
                   </div>
                 </div>
                 <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-cancel" checked><span
-                      class="tslide"></span></span></label>
+                      class="tslide"></span></label>
               </label>
               <label
                 style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
@@ -958,7 +957,7 @@
                     viceversa</div>
                 </div>
                 <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-freq"><span
-                      class="tslide"></span></span></label>
+                      class="tslide"></span></label>
               </label>
             </div>
             <button class="btn btn-r" onclick="savePortalConfig()" style="margin-top:16px">💾 Guardar permisos</button>
@@ -1239,16 +1238,17 @@
     const BASE = '';
     let _subFilter = 'all', _subSearch = '', _allSubs = [], _shopifyProds = [], _currentProdId = null;
 
-    // ── Shopify App Bridge: register navigation in Shopify's left sidebar ──
+    // ── Shopify App Bridge 2.x: menú en sidebar izquierdo de Shopify ──
     (function initAppBridge() {
       try {
         const params = new URLSearchParams(location.search);
         const host = params.get('host');
-        if (!host) return; // not embedded, skip
-        const AppBridge = window['app-bridge'];
-        if (!AppBridge) return;
-        const app = AppBridge.createApp({ apiKey: 'fc20b3f68f1c8e854a3dca30788acd48', host });
-        const NavigationMenu = AppBridge.actions.NavigationMenu;
+        if (!host) return;
+        const AB = window['app-bridge'];
+        if (!AB) return;
+        const createApp = AB.default;
+        const { NavigationMenu } = AB;
+        const app = createApp({ apiKey: 'fc20b3f68f1c8e854a3dca30788acd48', host });
         const origin = location.origin;
         const qs = '?shop=' + (params.get('shop') || '') + '&host=' + host;
         const items = [
@@ -1263,10 +1263,7 @@
         const page = params.get('page') || 'dash';
         const active = items.find(i => i.destination.includes('page=' + page)) || items[0];
         NavigationMenu.create(app, { items, active });
-        // navigate to the correct panel based on ?page= param
-        if (page && page !== 'dash') {
-          document.addEventListener('DOMContentLoaded', () => { setTimeout(() => nav(page), 100); });
-        }
+        if (page && page !== 'dash') setTimeout(() => nav(page), 150);
       } catch (e) { console.warn('[AppBridge nav]', e); }
     })();
 
@@ -1317,17 +1314,25 @@
         document.getElementById('plans-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:28px;color:var(--mut)">Sin planes. Crea tu primer plan con el botón + Nuevo plan.</td></tr>';
         return;
       }
-      document.getElementById('plans-tbody').innerHTML = _plans.map((p, i) => `<tr>
-        <td><strong>${FREQ_LABELS[String(p.frequency)] || p.frequency + ' meses'}</strong></td>
-        <td>${p.permanence} meses</td>
-        <td><span style="font-size:15px;font-weight:800;color:${p.discount > 0 ? 'var(--grn)' : 'var(--mut)'}">${p.discount || 0}%</span></td>
-        <td style="color:var(--mut);font-size:12px">${p.description || '—'}</td>
+      document.getElementById('plans-tbody').innerHTML = _plans.map((p, i) => {
+        // normalize: support both new keys (frequency/permanence) and old (freq_months/permanence_months/name)
+        const freq = p.frequency || p.freq_months || null;
+        const perm = p.permanence || p.permanence_months || null;
+        const disc = p.discount !== undefined ? p.discount : (p.discount_pct || 0);
+        const freqLabel = freq ? (FREQ_LABELS[String(freq)] || freq + ' meses') : (p.name || '—');
+        const permLabel = perm ? perm + ' meses' : '—';
+        return `<tr>
+        <td><strong>${freqLabel}</strong></td>
+        <td>${permLabel}</td>
+        <td><span style="font-size:15px;font-weight:800;color:${disc > 0 ? 'var(--grn)' : 'var(--mut)'}">${disc}%</span></td>
+        <td style="color:var(--mut);font-size:12px">${p.description || p.desc || '—'}</td>
         <td><label class="toggle-wrap"><span class="toggle"><input type="checkbox" ${p.active !== false ? 'checked' : ''} onchange="togglePlanActive(${i},this.checked)"><span class="tslide"></span></span></label></td>
         <td style="white-space:nowrap">
           <button class="btn btn-g btn-sm" onclick="editPlan(${i})">✏️ Editar</button>
           <button class="btn btn-sm" style="background:#fee2e2;color:#991b1b;margin-left:4px" onclick="deletePlan(${i})">🗑</button>
         </td>
-      </tr>`).join('');
+      </tr>`;
+      }).join('');
     }
 
     function openNewPlanModal() {
