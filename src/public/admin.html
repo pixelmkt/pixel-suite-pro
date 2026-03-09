@@ -5,24 +5,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Suscriptions MP — Admin</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
-    rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
       --red: #c0392b;
       --red2: #96281b;
-      --rl: rgba(192, 57, 43, .10);
       --blk: #111;
       --wht: #fff;
-      --bg: #f7f8fa;
+      --bg: #f4f6f8;
       --card: #fff;
-      --bdr: #eaecf0;
+      --bdr: #e5e7eb;
       --mut: #9ca3af;
       --grn: #16a34a;
-      --gld: #d97706;
+      --amber: #d97706;
       --r: 10px;
-      --rs: 7px;
-      --sh: 0 1px 4px rgba(0, 0, 0, .07), 0 1px 2px rgba(0, 0, 0, .04)
+      --sh: 0 1px 3px rgba(0, 0, 0, .08)
     }
 
     * {
@@ -32,270 +29,211 @@
     }
 
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: 'Inter', -apple-system, sans-serif;
       background: var(--bg);
       color: var(--blk);
       display: flex;
-      min-height: 100vh;
-      font-size: 13px;
-      -webkit-font-smoothing: antialiased
+      height: 100vh;
+      overflow: hidden;
+      font-size: 13px
     }
 
-    /* ─ SIDEBAR ─ */
+    /* SIDEBAR */
     .sb {
       width: 220px;
       min-height: 100vh;
       background: #0e0e0e;
-      color: var(--wht);
+      color: #fff;
       display: flex;
       flex-direction: column;
-      position: fixed;
-      top: 0;
-      left: 0;
-      z-index: 100;
-      border-right: 1px solid rgba(255, 255, 255, .04)
-    }
-
-    .sb-logo {
-      padding: 22px 18px 16px;
-      border-bottom: 1px solid rgba(255, 255, 255, .08)
-    }
-
-    .sb-brand {
-      font-size: 12px;
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: 2px
-    }
-
-    .sb-sub {
-      font-size: 9px;
-      color: var(--red);
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-top: 3px
-    }
-
-    .sb-nav {
-      flex: 1;
-      padding: 12px 0;
-      overflow-y: auto
-    }
-
-    .sb-sep {
-      font-size: 9px;
-      font-weight: 800;
-      color: rgba(255, 255, 255, .3);
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      padding: 14px 18px 6px
-    }
-
-    .ic svg {
-      width: 16px;
-      height: 16px;
-      stroke: currentColor;
-      fill: none;
-      stroke-width: 1.8;
-      stroke-linecap: round;
-      stroke-linejoin: round
-    }
-
-    .ni {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      padding: 9px 18px;
-      font-size: 11px;
-      font-weight: 600;
-      color: rgba(255, 255, 255, .5);
-      cursor: pointer;
-      transition: .15s;
-      border-left: 3px solid transparent;
-      text-transform: uppercase;
-      letter-spacing: .4px
-    }
-
-    .ni:hover {
-      color: var(--wht);
-      background: rgba(255, 255, 255, .06)
-    }
-
-    .ni.active {
-      color: var(--wht);
-      border-left-color: var(--red);
-      background: rgba(157, 42, 35, .2)
-    }
-
-    .ni .ic {
-      width: 18px;
-      text-align: center;
-      font-size: 14px;
       flex-shrink: 0
     }
 
-    .sb-footer {
-      padding: 12px 18px;
-      border-top: 1px solid rgba(255, 255, 255, .08);
-      font-size: 10px;
-      color: rgba(255, 255, 255, .3)
+    .sb-brand {
+      padding: 20px 18px 14px;
+      border-bottom: 1px solid #1e1e1e
     }
 
+    .sb-name {
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: .5px;
+      color: #fff;
+      text-transform: uppercase
+    }
+
+    .sb-role {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--red);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-top: 2px
+    }
+
+    .sb-section {
+      padding: 16px 10px 4px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #555
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 6px;
+      margin: 1px 6px;
+      cursor: pointer;
+      color: #aaa;
+      font-weight: 500;
+      transition: .15s;
+      font-size: 12.5px
+    }
+
+    .nav-item:hover {
+      background: #1a1a1a;
+      color: #fff
+    }
+
+    .nav-item.active {
+      background: #c0392b;
+      color: #fff
+    }
+
+    .nav-item svg {
+      flex-shrink: 0;
+      opacity: .7
+    }
+
+    .nav-item.active svg {
+      opacity: 1
+    }
+
+    /* MAIN */
     .main {
-      margin-left: 220px;
       flex: 1;
-      padding: 28px 28px 28px 28px;
-      min-height: 100vh
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column
+    }
+
+    .panel {
+      display: none;
+      flex-direction: column;
+      flex: 1
+    }
+
+    .panel.show {
+      display: flex
     }
 
     .ph {
-      margin-bottom: 20px;
       display: flex;
-      align-items: flex-start;
       justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap
+      align-items: center;
+      padding: 22px 28px 0;
+      flex-shrink: 0
     }
 
     .pt {
       font-size: 20px;
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: .4px
+      font-weight: 800;
+      color: #111;
+      letter-spacing: -.3px
     }
 
     .ps {
       font-size: 12px;
       color: var(--mut);
-      margin-top: 3px
+      margin-top: 2px
     }
 
-    .panel {
-      display: none
+    .content {
+      padding: 20px 28px;
+      flex: 1;
+      overflow-y: auto
     }
 
-    .panel.active {
-      display: block
+    /* CARDS / STATS */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px
+    }
+
+    .stat {
+      background: #fff;
+      border-radius: var(--r);
+      padding: 18px 20px;
+      box-shadow: var(--sh);
+      border: 1px solid var(--bdr)
+    }
+
+    .stat-val {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -.5px;
+      line-height: 1
+    }
+
+    .stat-lbl {
+      font-size: 11px;
+      color: var(--mut);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      margin-top: 4px
     }
 
     .card {
       background: var(--card);
-      border: 1px solid var(--bdr);
       border-radius: var(--r);
+      box-shadow: var(--sh);
+      border: 1px solid var(--bdr);
       overflow: hidden;
-      margin-bottom: 16px;
-      box-shadow: var(--sh)
+      margin-bottom: 16px
     }
 
-    .ch {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+    .card-head {
       padding: 14px 18px;
       border-bottom: 1px solid var(--bdr);
-      gap: 12px
+      display: flex;
+      justify-content: space-between;
+      align-items: center
     }
 
-    .ct {
-      font-size: 11px;
+    .card-title {
       font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .8px;
-      color: #444
+      font-size: 13px
     }
 
-    .cp {
-      padding: 18px
-    }
-
-    .grid2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px
-    }
-
-    .grid3 {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 14px
-    }
-
-    .grid5 {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 14px;
-      margin-bottom: 24px
-    }
-
-    .mc {
-      background: var(--card);
-      border: 1px solid var(--bdr);
-      border-radius: var(--r);
-      padding: 20px 22px;
-      box-shadow: var(--sh)
-    }
-
-    .mc.hi {
-      background: #111;
-      border-color: #111
-    }
-
-    .ml {
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: .9px;
-      color: var(--mut);
-      margin-bottom: 8px
-    }
-
-    .mc.hi .ml {
-      color: rgba(255, 255, 255, .5)
-    }
-
-    .mv {
-      font-size: 30px;
-      font-weight: 800;
-      letter-spacing: -1.5px;
-      line-height: 1
-    }
-
-    .mc.hi .mv {
-      color: #fff
-    }
-
-    .md {
-      font-size: 11px;
-      color: var(--mut);
-      margin-top: 6px
-    }
-
-    .mc.hi .md {
-      color: rgba(255, 255, 255, .4)
-    }
-
+    /* TABLE */
     table {
       width: 100%;
       border-collapse: collapse
     }
 
     th {
-      font-size: 10px;
+      text-align: left;
+      padding: 10px 14px;
+      font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: .8px;
+      letter-spacing: .5px;
       color: var(--mut);
-      padding: 11px 16px;
-      text-align: left;
       background: #fafafa;
       border-bottom: 1px solid var(--bdr)
     }
 
     td {
-      padding: 12px 16px;
+      padding: 11px 14px;
+      border-bottom: 1px solid #f1f1f1;
       font-size: 12.5px;
-      border-bottom: 1px solid var(--bdr);
       vertical-align: middle
     }
 
@@ -307,14 +245,16 @@
       background: #fafbfc
     }
 
+    /* BADGES */
     .badge {
       display: inline-flex;
       align-items: center;
-      padding: 3px 9px;
+      padding: 3px 8px;
       border-radius: 20px;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: .2px
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .3px
     }
 
     .b-active {
@@ -327,136 +267,144 @@
       color: #92400e
     }
 
-    .b-cancel {
+    .b-cancelled {
       background: #fee2e2;
-      color: #b91c1c
+      color: #991b1b
     }
 
-    .b-failed {
-      background: #fee2e2;
-      color: #b91c1c
-    }
-
+    /* BUTTONS */
     .btn {
-      padding: 8px 16px;
-      border: none;
-      border-radius: var(--rs);
-      font-size: 11.5px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 7px;
+      font-size: 12.5px;
       font-weight: 600;
-      letter-spacing: .2px;
       cursor: pointer;
+      border: none;
       transition: .15s;
-      white-space: nowrap;
-      font-family: inherit
+      white-space: nowrap
     }
 
     .btn-r {
-      background: var(--blk);
-      color: var(--wht)
+      background: var(--red);
+      color: #fff
     }
 
     .btn-r:hover {
-      background: #333
-    }
-
-    .btn-b {
-      background: var(--blk);
-      color: var(--wht)
-    }
-
-    .btn-b:hover {
-      opacity: .8
+      background: var(--red2)
     }
 
     .btn-g {
-      background: transparent;
-      color: #555;
+      background: #f4f4f5;
+      color: #444;
       border: 1px solid var(--bdr)
     }
 
     .btn-g:hover {
-      color: var(--blk);
-      border-color: var(--blk)
+      background: #eee
     }
 
-    .btn-grn {
-      background: var(--grn);
-      color: var(--wht)
+    .btn-b {
+      background: #3b82f6;
+      color: #fff
+    }
+
+    .btn-b:hover {
+      background: #2563eb
     }
 
     .btn-sm {
-      padding: 5px 11px;
-      font-size: 10.5px
+      padding: 5px 10px;
+      font-size: 11.5px
     }
 
-    /* ─ FORM ─ */
-    .fg {
-      margin-bottom: 14px
+    /* INFO BOX */
+    .info-box {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #1e40af;
+      margin-bottom: 16px
     }
 
-    .fl {
-      font-size: 10px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: .7px;
-      color: var(--mut);
-      display: block;
-      margin-bottom: 5px
+    .info-box.warn {
+      background: #fffbeb;
+      border-color: #fde68a;
+      color: #92400e
     }
 
-    .fi,
-    .fsl,
-    .fta {
-      width: 100%;
-      padding: 9px 11px;
-      border: 1.5px solid var(--bdr);
-      border-radius: var(--rs);
-      font-size: 13px;
-      outline: none;
-      transition: .15s;
-      font-family: inherit;
-      background: var(--wht)
-    }
-
-    .fi:focus,
-    .fsl:focus,
-    .fta:focus {
-      border-color: var(--red)
-    }
-
-    .fta {
-      min-height: 100px;
-      resize: vertical
-    }
-
-    .fin {
-      font-size: 11px;
-      color: var(--mut);
-      margin-top: 4px
-    }
-
-    .frow {
-      display: flex;
+    /* PRODUCTS GRID */
+    .prod-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
       gap: 12px
     }
 
-    .frow .fg {
-      flex: 1
+    .prod-card {
+      background: #fff;
+      border-radius: var(--r);
+      border: 2px solid var(--bdr);
+      overflow: hidden;
+      transition: .15s;
+      cursor: pointer;
+      position: relative
     }
 
-    /* ─ TOGGLE SWITCH ─ */
-    .toggle-wrap {
+    .prod-card:hover {
+      border-color: #aaa;
+      box-shadow: var(--sh)
+    }
+
+    .prod-card.on {
+      border-color: var(--grn)
+    }
+
+    .prod-img {
+      width: 100%;
+      aspect-ratio: 1;
+      background: #f4f5f7;
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: center;
+      overflow: hidden
+    }
+
+    .prod-img img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover
+    }
+
+    .prod-name {
+      padding: 8px 8px 4px;
+      font-size: 11.5px;
+      font-weight: 600;
+      line-height: 1.3;
+      min-height: 36px
+    }
+
+    .prod-actions {
+      padding: 4px 8px 8px;
+      display: flex;
+      gap: 6px;
+      align-items: center
+    }
+
+    .toggle-wrap {
+      display: inline-flex;
+      align-items: center;
       cursor: pointer
     }
 
     .toggle {
       position: relative;
-      width: 38px;
-      height: 22px;
-      flex-shrink: 0
+      display: inline-block;
+      width: 36px;
+      height: 20px
     }
 
     .toggle input {
@@ -465,1171 +413,870 @@
       height: 0
     }
 
-    .toggle-slider {
+    .tslide {
       position: absolute;
       inset: 0;
-      background: var(--bdr);
+      background: #ddd;
       border-radius: 20px;
       transition: .2s;
       cursor: pointer
     }
 
-    .toggle-slider:before {
+    .tslide:before {
       content: '';
       position: absolute;
-      width: 16px;
-      height: 16px;
+      width: 14px;
+      height: 14px;
       left: 3px;
       bottom: 3px;
-      background: var(--wht);
+      background: #fff;
       border-radius: 50%;
       transition: .2s
     }
 
-    .toggle input:checked+.toggle-slider {
-      background: var(--red)
+    input:checked+.tslide {
+      background: var(--grn)
     }
 
-    .toggle input:checked+.toggle-slider:before {
+    input:checked+.tslide:before {
       transform: translateX(16px)
     }
 
-    .toggle-label {
-      font-size: 12px;
-      font-weight: 600
+    /* PRODUCT CONFIG DRAWER */
+    .drawer-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .35);
+      z-index: 800
     }
 
-    /* ─ FILTERS / CHIPS ─ */
-    .filters {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap
-    }
-
-    .fc {
-      padding: 5px 12px;
-      border: 1.5px solid var(--bdr);
-      border-radius: 20px;
-      background: var(--wht);
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .4px;
-      cursor: pointer;
-      transition: .15s
-    }
-
-    .fc.active {
-      background: var(--blk);
-      border-color: var(--blk);
-      color: var(--wht)
-    }
-
-    /* ─ SEARCH ─ */
-    .search-row {
-      display: flex;
-      gap: 8px;
-      align-items: center
-    }
-
-    .search {
-      padding: 7px 12px;
-      border: 1.5px solid var(--bdr);
-      border-radius: var(--rs);
-      font-size: 12px;
-      width: 220px;
-      outline: none
-    }
-
-    .search:focus {
-      border-color: var(--red)
-    }
-
-    /* ─ PRODUCT GRID (picker) ─ */
-    .prod-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 12px;
-      padding: 18px
-    }
-
-    .prod-card {
-      border: 2px solid var(--bdr);
-      border-radius: var(--r);
-      overflow: hidden;
-      cursor: pointer;
-      transition: .2s;
-      position: relative
-    }
-
-    .prod-card:hover {
-      border-color: var(--red)
-    }
-
-    .prod-card.on {
-      border-color: var(--red);
-      box-shadow: 0 0 0 3px var(--rl)
-    }
-
-    .prod-img {
-      width: 100%;
-      aspect-ratio: 1;
-      object-fit: cover;
-      background: #f4f5f7
-    }
-
-    .prod-name {
-      font-size: 11px;
-      font-weight: 700;
-      padding: 8px 10px 4px;
-      text-align: center;
-      text-overflow: ellipsis;
-      overflow: hidden;
-      white-space: nowrap
-    }
-
-    .prod-badge {
-      position: absolute;
-      top: 6px;
-      right: 6px;
-      background: var(--red);
-      color: var(--wht);
-      font-size: 9px;
-      font-weight: 900;
-      padding: 2px 7px;
-      border-radius: 3px;
-      text-transform: uppercase;
-      display: none
-    }
-
-    .prod-card.on .prod-badge {
+    .drawer-overlay.open {
       display: block
     }
 
-    /* ─ STACK CARD ─ */
-    .stack-card {
-      border: 1.5px solid var(--bdr);
-      border-radius: var(--r);
-      padding: 14px;
-      transition: .15s
-    }
-
-    .stack-card:hover {
-      border-color: var(--red)
-    }
-
-    .stack-name {
-      font-size: 14px;
-      font-weight: 800
-    }
-
-    .stack-desc {
-      font-size: 11px;
-      color: var(--mut);
-      margin: 3px 0 8px
-    }
-
-    .stack-pills {
+    .drawer {
+      position: fixed;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 380px;
+      background: #fff;
+      box-shadow: -4px 0 24px rgba(0, 0, 0, .12);
+      z-index: 900;
+      transform: translateX(100%);
+      transition: .25s cubic-bezier(.4, 0, .2, 1);
       display: flex;
-      gap: 4px;
-      flex-wrap: wrap;
-      margin-bottom: 8px
+      flex-direction: column
     }
 
-    .stack-pill {
-      background: #f4f5f7;
-      border-radius: 4px;
-      padding: 3px 8px;
-      font-size: 10px;
-      font-weight: 700
+    .drawer.open {
+      transform: translateX(0)
     }
 
-    /* ─ ALERT / INFO BOX ─ */
-    .info-box {
-      background: #f0f4ff;
-      border: 1px solid #c2d0f8;
-      border-left: 4px solid #3b5de7;
-      border-radius: var(--rs);
-      padding: 12px 14px;
-      font-size: 12px;
+    .drawer-head {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--bdr);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0
+    }
+
+    .drawer-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1
+    }
+
+    .drawer-foot {
+      padding: 16px 20px;
+      border-top: 1px solid var(--bdr);
+      flex-shrink: 0
+    }
+
+    .fg {
       margin-bottom: 14px
     }
 
-    .info-box.warn {
-      background: #fff8e1;
-      border-color: #ffe082;
-      border-left-color: var(--gld)
+    .fl {
+      display: block;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: .4px
     }
 
-    .info-box.success {
-      background: #e6f4ec;
-      border-color: #a8d5b5;
-      border-left-color: var(--grn)
+    .fi {
+      width: 100%;
+      border: 1.5px solid var(--bdr);
+      border-radius: 7px;
+      padding: 8px 11px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: .15s
     }
 
-    .info-box.danger {
-      background: #fce8e8;
-      border-color: #f5c0c0;
-      border-left-color: var(--red)
+    .fi:focus {
+      border-color: var(--red);
+      box-shadow: 0 0 0 3px rgba(192, 57, 43, .1)
     }
 
-    /* ─ SETTINGS SECTION ─ */
+    .fsl {
+      width: 100%;
+      border: 1.5px solid var(--bdr);
+      border-radius: 7px;
+      padding: 8px 11px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      background: #fff
+    }
+
+    .frow {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px
+    }
+
+    .fin {
+      font-size: 11px;
+      color: var(--mut);
+      margin-top: 4px
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--bdr);
+      margin: 16px 0
+    }
+
+    /* DISCOUNT MATRIX */
+    .disc-matrix {
+      background: #f9fafb;
+      border-radius: 8px;
+      padding: 14px;
+      border: 1px solid var(--bdr)
+    }
+
+    .disc-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #eee
+    }
+
+    .disc-row:last-child {
+      border-bottom: none
+    }
+
+    .disc-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #555
+    }
+
+    .disc-sublabel {
+      font-size: 10.5px;
+      color: var(--mut)
+    }
+
+    .disc-input {
+      width: 70px;
+      border: 1.5px solid var(--bdr);
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 13px;
+      font-family: inherit;
+      text-align: right
+    }
+
+    .disc-pct {
+      font-size: 12px;
+      color: var(--mut);
+      margin-left: 4px
+    }
+
+    /* SETTINGS */
     .settings-section {
-      border: 1px solid var(--bdr);
-      border-radius: var(--r);
-      margin-bottom: 16px;
-      overflow: hidden
+      margin-bottom: 24px
     }
 
-    .settings-header {
-      padding: 12px 16px;
-      background: #fafafa;
-      border-bottom: 1px solid var(--bdr);
+    .settings-title {
       font-size: 12px;
       font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: .6px;
+      letter-spacing: .8px;
+      color: var(--mut);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--bdr)
+    }
+
+    .conn-ok {
       display: flex;
       align-items: center;
-      gap: 8px
+      gap: 8px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #15803d;
+      font-weight: 600;
+      margin-bottom: 12px
     }
 
-    .settings-body {
-      padding: 16px
+    .conn-ok::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--grn);
+      flex-shrink: 0
     }
 
-    /* ─ ACTIONS ROW ─ */
-    .act {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-      flex-wrap: nowrap
-    }
-
-    /* ─ TOAST ─ */
-    .toast {
+    /* TOAST */
+    #toast {
       position: fixed;
       bottom: 24px;
       right: 24px;
-      background: var(--blk);
-      color: var(--wht);
+      background: #111;
+      color: #fff;
       padding: 12px 18px;
-      border-radius: var(--r);
-      font-size: 12px;
-      font-weight: 700;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: .25s;
+      pointer-events: none;
       z-index: 9999;
-      display: none;
-      animation: su .25s ease;
-      max-width: 320px
+      max-width: 300px
     }
 
-    @keyframes su {
-      from {
-        transform: translateY(12px);
-        opacity: 0
-      }
+    #toast.show {
+      opacity: 1;
+      transform: translateY(0)
+    }
 
-      to {
-        transform: translateY(0);
-        opacity: 1
-      }
+    #toast.ok {
+      background: #15803d
+    }
+
+    #toast.err {
+      background: #991b1b
+    }
+
+    /* SEARCH */
+    .search-box {
+      position: relative;
+      margin-bottom: 16px
+    }
+
+    .search-box input {
+      width: 100%;
+      border: 1.5px solid var(--bdr);
+      border-radius: 8px;
+      padding: 9px 12px 9px 36px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      background: #fff
+    }
+
+    .search-box input:focus {
+      border-color: var(--red)
+    }
+
+    .search-box::before {
+      content: '🔍';
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 13px;
+      opacity: .5
+    }
+
+    /* FILTER PILLS */
+    .filter-pills {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+      flex-wrap: wrap
+    }
+
+    .pill {
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1.5px solid var(--bdr);
+      background: #fff;
+      color: #555;
+      transition: .15s
+    }
+
+    .pill.active {
+      background: #111;
+      color: #fff;
+      border-color: #111
     }
   </style>
-  <!-- Shopify App Bridge — makes app embed inside Shopify Admin correctly -->
-  <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
 </head>
 
 <body>
 
-  <!-- ═══ SIDEBAR ═══ -->
-  <div class="sb">
-    <div class="sb-logo">
-      <div class="sb-brand">Suscriptions MP</div>
-      <div class="sb-sub">Admin</div>
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sb">
+    <div class="sb-brand">
+      <div class="sb-name">Suscriptions MP</div>
+      <div class="sb-role">Admin Panel</div>
     </div>
-    <nav class="sb-nav">
-      <div class="sb-sep">Principal</div>
-      <div class="ni active" onclick="show('dashboard')"><span class="ic"><svg viewBox="0 0 24 24">
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <rect x="14" y="14" width="7" height="7" rx="1" />
-          </svg></span>Dashboard</div>
-      <div class="ni" onclick="show('subscribers')"><span class="ic"><svg viewBox="0 0 24 24">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-            <circle cx="9" cy="7" r="4" />
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-          </svg></span>Suscriptores</div>
-      <div class="ni" onclick="show('marketing')"><span class="ic"><svg viewBox="0 0 24 24">
-            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-            <polyline points="22,6 12,13 2,6" />
-          </svg></span>Marketing</div>
-      <div class="sb-sep">Configuración</div>
-      <div class="ni" onclick="show('products')"><span class="ic"><svg viewBox="0 0 24 24">
-            <path
-              d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-            <line x1="12" y1="22.08" x2="12" y2="12" />
-          </svg></span>Productos</div>
-      <div class="ni" onclick="show('plans')"><span class="ic"><svg viewBox="0 0 24 24">
-            <line x1="8" y1="6" x2="21" y2="6" />
-            <line x1="8" y1="12" x2="21" y2="12" />
-            <line x1="8" y1="18" x2="21" y2="18" />
-            <line x1="3" y1="6" x2="3.01" y2="6" />
-            <line x1="3" y1="12" x2="3.01" y2="12" />
-            <line x1="3" y1="18" x2="3.01" y2="18" />
-          </svg></span>Planes</div>
-      <div class="ni" onclick="show('stacks')"><span class="ic"><svg viewBox="0 0 24 24">
-            <polyline points="12 2 2 7 12 12 22 7 12 2" />
-            <polyline points="2 17 12 22 22 17" />
-            <polyline points="2 12 12 17 22 12" />
-          </svg></span>Stacks</div>
-      <div class="ni" onclick="show('widget')"><span class="ic"><svg viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="3" />
-            <path
-              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg></span>Widget</div>
-      <div class="ni" onclick="show('settings')"><span class="ic"><svg viewBox="0 0 24 24">
-            <polyline points="4 17 10 11 4 5" />
-            <line x1="12" y1="19" x2="20" y2="19" />
-          </svg></span>Ajustes</div>
-    </nav>
-    <div class="sb-footer">v2.1</div>
-  </div>
+    <div class="sb-section">Principal</div>
+    <div class="nav-item active" onclick="nav('dash')" id="n-dash">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="7" height="7" />
+        <rect x="14" y="3" width="7" height="7" />
+        <rect x="14" y="14" width="7" height="7" />
+        <rect x="3" y="14" width="7" height="7" />
+      </svg>Dashboard
+    </div>
+    <div class="nav-item" onclick="nav('subs')" id="n-subs">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>Suscriptores
+    </div>
+    <div class="sb-section">Configuración</div>
+    <div class="nav-item" onclick="nav('prods')" id="n-prods">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path
+          d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      </svg>Productos
+    </div>
+    <div class="nav-item" onclick="nav('ajustes')" id="n-ajustes">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3" />
+        <path
+          d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      </svg>Ajustes
+    </div>
+    <div style="margin-top:auto;padding:16px;font-size:10px;color:#333">v3.0 · LAB NUTRITION</div>
+  </aside>
 
-  <!-- ═══ MAIN CONTENT ═══ -->
-  <div class="main">
+  <!-- ===== MAIN ===== -->
+  <main class="main">
 
     <!-- ① DASHBOARD -->
-    <div id="p-dashboard" class="panel active">
+    <div id="p-dash" class="panel show">
       <div class="ph">
         <div>
           <div class="pt">Dashboard</div>
-          <div class="ps">Resumen en tiempo real</div>
-        </div>
-        <div style="display:flex;gap:8px"><button class="btn btn-g btn-sm"
-            onclick="location.reload()">Actualizar</button><a class="btn btn-r btn-sm" href="/api/subscribers/export"
-            target="_blank">Exportar CSV</a></div>
-      </div>
-      <div class="grid5" id="metrics-grid">
-        <div class="mc hi">
-          <div class="ml">MRR Mensual</div>
-          <div class="mv" id="m-mrr">S/ —</div>
-          <div class="md">Ingresos recurrentes</div>
-        </div>
-        <div class="mc">
-          <div class="ml">Activas</div>
-          <div class="mv" id="m-active">—</div>
-          <div class="md">Suscripciones vigentes</div>
-        </div>
-        <div class="mc">
-          <div class="ml">Pausadas</div>
-          <div class="mv" id="m-paused">—</div>
-          <div class="md">Temporal</div>
-        </div>
-        <div class="mc">
-          <div class="ml">Canceladas</div>
-          <div class="mv" id="m-cancelled">—</div>
-        </div>
-        <div class="mc">
-          <div class="ml">Pago fallido</div>
-          <div class="mv" id="m-failed">—</div>
-          <div class="md" style="color:#c00">Acción requerida</div>
+          <div class="ps">Resumen de suscripciones activas</div>
         </div>
       </div>
-      <div class="card">
-        <div class="ch"><span class="ct">Suscripciones recientes</span><button class="btn btn-g btn-sm"
-            onclick="show('subscribers')">Ver todas →</button></div>
-        <table>
-          <thead>
-            <tr>
-              <th>Cliente</th>
-              <th>Producto</th>
-              <th>Plan</th>
-              <th>Precio</th>
-              <th>Estado</th>
-              <th>Próximo cobro</th>
-            </tr>
-          </thead>
-          <tbody id="dash-table">
-            <tr>
-              <td colspan="6" style="text-align:center;padding:32px;color:var(--mut)">Cargando...</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="content">
+        <div class="stats-grid" id="stats-grid">
+          <div class="stat">
+            <div class="stat-val" id="st-mrr">—</div>
+            <div class="stat-lbl">MRR (S/)</div>
+          </div>
+          <div class="stat">
+            <div class="stat-val" id="st-active" style="color:var(--grn)">—</div>
+            <div class="stat-lbl">Activas</div>
+          </div>
+          <div class="stat">
+            <div class="stat-val" id="st-paused" style="color:var(--amber)">—</div>
+            <div class="stat-lbl">Pausadas</div>
+          </div>
+          <div class="stat">
+            <div class="stat-val" id="st-cancelled" style="color:var(--red)">—</div>
+            <div class="stat-lbl">Canceladas</div>
+          </div>
+          <div class="stat">
+            <div class="stat-val" id="st-next7">—</div>
+            <div class="stat-lbl">Cobros próx. 7d</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span class="card-title">Suscripciones recientes</span></div>
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Producto</th>
+                <th>Plan</th>
+                <th>Estado</th>
+                <th>Próx. cobro</th>
+              </tr>
+            </thead>
+            <tbody id="dash-table">
+              <tr>
+                <td colspan="5" style="text-align:center;padding:28px;color:var(--mut)">Cargando...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
-    <!-- ② SUBSCRIBERS -->
-    <div id="p-subscribers" class="panel">
+    <!-- ② SUSCRIPTORES -->
+    <div id="p-subs" class="panel">
       <div class="ph">
         <div>
           <div class="pt">Suscriptores</div>
-          <div class="ps">Gestión individual de cada suscripción</div>
+          <div class="ps">Gestiona todas las suscripciones</div>
         </div>
-        <div style="display:flex;gap:8px"><a class="btn btn-g btn-sm" href="/api/subscribers/export" target="_blank">⬇
-            CSV</a><button class="btn btn-r btn-sm" onclick="show('marketing')">📣 Campaign</button></div>
+        <button class="btn btn-g btn-sm" onclick="loadSubs()">↻ Actualizar</button>
       </div>
-      <div class="card">
-        <div class="ch">
-          <div class="filters">
-            <button class="fc active" onclick="fsub('all',this)">Todas</button>
-            <button class="fc" onclick="fsub('active',this)">Activas</button>
-            <button class="fc" onclick="fsub('paused',this)">Pausadas</button>
-            <button class="fc" onclick="fsub('payment_failed',this)">Pago fallido</button>
-            <button class="fc" onclick="fsub('cancelled',this)">Canceladas</button>
-          </div>
-          <div class="search-row"><input class="search" placeholder="Buscar email o producto..."
-              oninput="qsub(this.value)"></div>
+      <div class="content">
+        <div class="search-box"><input id="sub-search" placeholder="Buscar por email o producto..."
+            oninput="filterSubs(this.value)"></div>
+        <div class="filter-pills">
+          <span class="pill active" onclick="setSubFilter('all',this)">Todos</span>
+          <span class="pill" onclick="setSubFilter('active',this)">Activos</span>
+          <span class="pill" onclick="setSubFilter('paused',this)">Pausados</span>
+          <span class="pill" onclick="setSubFilter('cancelled',this)">Cancelados</span>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Cliente</th>
-              <th>Producto</th>
-              <th>Frecuencia</th>
-              <th>Ciclos</th>
-              <th>Precio</th>
-              <th>Estado</th>
-              <th>Próx. cobro</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody id="sub-table">
-            <tr>
-              <td colspan="8" style="text-align:center;padding:32px;color:var(--mut)">Cargando...</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- ③ MARKETING -->
-    <div id="p-marketing" class="panel">
-      <div class="ph">
-        <div>
-          <div class="pt">Marketing</div>
-          <div class="ps">Envía emails segmentados a tus suscriptores</div>
-        </div>
-      </div>
-      <div class="grid2">
-        <div>
-          <div class="card">
-            <div class="ch"><span class="ct">Nueva Campaña</span></div>
-            <div class="cp">
-              <div class="fg"><label class="fl">Segmento destinatario</label>
-                <select class="fsl" id="mk-seg">
-                  <option value="all">Todos los suscriptores</option>
-                  <option value="active">Solo activos</option>
-                  <option value="paused">Solo pausados</option>
-                  <option value="failed">Pago fallido (recuperación)</option>
-                  <option value="cancelled">Cancelados (reactivar)</option>
-                </select>
-              </div>
-              <div class="fg"><label class="fl">Asunto del email</label><input class="fi" id="mk-subject"
-                  placeholder="¡Oferta exclusiva para suscriptores LAB!"></div>
-              <div class="fg"><label class="fl">Cuerpo del mensaje</label>
-                <textarea class="fta" id="mk-body" style="min-height:180px" placeholder="Hola {{nombre}},
-
-Gracias por ser parte de la familia LAB NUTRITION...
-
-Usa el código LABSUB para obtener un 10% adicional en tu próxima renovación.
-
-¡Salud! 💪
-Equipo LAB"></textarea>
-                <div class="fin">Variables disponibles: usa texto libre — los emails van personalizados por destinatario
-                </div>
-              </div>
-              <button class="btn btn-r" style="width:100%" onclick="sendCampaign()">Enviar campaña</button>
-            </div>
-          </div>
-        </div>
-        <div>
-          <div class="card">
-            <div class="ch"><span class="ct">Flows automáticos</span></div>
-            <div style="padding:4px 0">
-              <div
-                style="display:flex;gap:10px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--bdr)">
-                <span style="width:6px;height:6px;border-radius:50%;background:var(--grn);flex-shrink:0"></span>
-                <div style="flex:1">
-                  <div style="font-weight:600;font-size:12px">Alta suscripción</div>
-                  <div style="font-size:11px;color:var(--mut)">Bienvenida + plan + política</div>
-                </div>
-                <span class="badge b-active">Inmediato</span>
-              </div>
-              <div
-                style="display:flex;gap:10px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--bdr)">
-                <span style="width:6px;height:6px;border-radius:50%;background:var(--gld);flex-shrink:0"></span>
-                <div style="flex:1">
-                  <div style="font-weight:600;font-size:12px">Ventana (-7 días)</div>
-                  <div style="font-size:11px;color:var(--mut)">Últimos días para cancelar</div>
-                </div>
-                <span class="badge b-paused">Cron 9AM</span>
-              </div>
-              <div
-                style="display:flex;gap:10px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--bdr)">
-                <span style="width:6px;height:6px;border-radius:50%;background:var(--gld);flex-shrink:0"></span>
-                <div style="flex:1">
-                  <div style="font-weight:600;font-size:12px">Cobro (-3 días)</div>
-                  <div style="font-size:11px;color:var(--mut)">Confirmación cargo próximo</div>
-                </div>
-                <span class="badge b-paused">Cron 9AM</span>
-              </div>
-              <div
-                style="display:flex;gap:10px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--bdr)">
-                <span style="width:6px;height:6px;border-radius:50%;background:var(--grn);flex-shrink:0"></span>
-                <div style="flex:1">
-                  <div style="font-weight:600;font-size:12px">Cobro exitoso</div>
-                  <div style="font-size:11px;color:var(--mut)">Recibo + beneficio + regalo</div>
-                </div>
-                <span class="badge b-active">Webhook</span>
-              </div>
-              <div
-                style="display:flex;gap:10px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--bdr)">
-                <span style="width:6px;height:6px;border-radius:50%;background:var(--red);flex-shrink:0"></span>
-                <div style="flex:1">
-                  <div style="font-weight:600;font-size:12px">Cobro fallido</div>
-                  <div style="font-size:11px;color:var(--mut)">Actualizar tarjeta</div>
-                </div>
-                <span class="badge b-failed">Webhook</span>
-              </div>
-              <div style="display:flex;gap:10px;align-items:center;padding:11px 18px">
-                <span style="width:6px;height:6px;border-radius:50%;background:var(--grn);flex-shrink:0"></span>
-                <div style="flex:1">
-                  <div style="font-weight:600;font-size:12px">Fin permanencia</div>
-                  <div style="font-size:11px;color:var(--mut)">Renueva y mantén descuento</div>
-                </div>
-                <span class="badge b-active">Auto</span>
-              </div>
-            </div>
-          </div>
-          <div class="card" style="margin-top:14px">
-            <div class="ch"><span class="ct">Test de email</span></div>
-            <div class="cp">
-              <div class="frow">
-                <div class="fg"><label class="fl">Email prueba</label><input class="fi" id="te-email"
-                    placeholder="tu@email.com"></div>
-                <div class="fg"><label class="fl">Tipo</label><select class="fsl" id="te-type">
-                    <option value="welcome">Bienvenida</option>
-                    <option value="lock">Ventana -7d</option>
-                    <option value="reminder">Reminder -3d</option>
-                    <option value="success">Cobro OK</option>
-                    <option value="failed">Cobro fallido</option>
-                    <option value="renewal">Renovación</option>
-                  </select></div>
-              </div>
-              <button class="btn btn-b" style="width:100%" onclick="sendTest()">Enviar test</button>
-            </div>
-          </div>
+        <div class="card">
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Producto</th>
+                <th>Frecuencia</th>
+                <th>Descuento</th>
+                <th>Estado</th>
+                <th>Próx. cobro</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="subs-table">
+              <tr>
+                <td colspan="7" style="text-align:center;padding:28px;color:var(--mut)">Cargando...</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
 
-    <!-- ④ PRODUCTS -->
-    <div id="p-products" class="panel">
+    <!-- ③ PRODUCTOS -->
+    <div id="p-prods" class="panel">
       <div class="ph">
         <div>
           <div class="pt">Productos con suscripción</div>
-          <div class="ps">Activa el widget en los productos que elijas</div>
-        </div>
-        <button class="btn btn-r" onclick="showProductPicker()">+ Seleccionar productos</button>
-      </div>
-      <div class="info-box">ℹ️ El widget de suscripción aparece automáticamente en los productos que actives aquí.
-        Desactivarlo no afecta suscripciones en curso.</div>
-      <div class="card">
-        <div class="ch"><span class="ct">Catálogo activado</span><span id="prod-count"
-            style="font-size:12px;color:var(--mut)"></span></div>
-        <div id="prod-list" style="padding:18px">
-          <div style="text-align:center;padding:32px;color:var(--mut)">Cargando...</div>
+          <div class="ps">Activa el widget y configura descuento por producto</div>
         </div>
       </div>
-      <!-- PRODUCT PICKER MODAL -->
-      <div id="product-picker"
-        style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;align-items:center;justify-content:center">
-        <div
-          style="background:var(--wht);border-radius:var(--r);padding:24px;width:680px;max-height:85vh;overflow-y:auto;position:relative">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-            <div style="font-size:16px;font-weight:900;text-transform:uppercase">Seleccionar productos</div>
-            <button class="btn btn-g btn-sm" onclick="closeProductPicker()">✕ Cerrar</button>
-          </div>
-          <input class="fi" id="picker-search" placeholder="Buscar producto..." oninput="filterPicker(this.value)"
-            style="margin-bottom:14px">
-          <div id="picker-grid" class="prod-grid">Cargando productos de Shopify...</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ⑤ PLANS & DISCOUNTS -->
-    <div id="p-plans" class="panel">
-      <div class="ph">
-        <div>
-          <div class="pt">Planes & Descuentos</div>
-          <div class="ps">Edita la matriz de beneficios sin código</div>
-        </div>
-        <button class="btn btn-r" onclick="savePlans()">💾 Guardar cambios</button>
-      </div>
-      <div class="info-box warn">⚠️ Los cambios aplican a nuevas suscripciones. Las existentes mantienen su descuento
-        original.</div>
-      <div class="card">
-        <div class="ch"><span class="ct">Matriz de beneficios</span></div>
-        <table>
-          <thead>
-            <tr>
-              <th>Frecuencia</th>
-              <th>Permanencia</th>
-              <th>% Descuento</th>
-              <th>Activo</th>
-            </tr>
-          </thead>
-          <tbody id="plans-table">
-            <tr>
-              <td colspan="4" style="text-align:center;padding:32px;color:var(--mut)">Cargando...</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="card" style="margin-top:14px">
-        <div class="ch"><span class="ct">Reglas anti-abuso</span></div>
-        <div class="cp">
-          <div class="frow">
-            <div class="fg"><label class="fl">Ventana de cancelación — ABRE (días antes del cobro)</label><input
-                type="number" class="fi" id="cfg-open" value="30">
-              <div class="fin">Desde cuántos días antes el cliente puede cancelar</div>
-            </div>
-            <div class="fg"><label class="fl">Ventana de cancelación — CIERRA (días antes del cobro)</label><input
-                type="number" class="fi" id="cfg-close" value="15">
-              <div class="fin">Cuántos días antes se bloquea la cancelación</div>
-            </div>
-            <div class="fg"><label class="fl">Pausa máxima (meses)</label><input type="number" class="fi" id="cfg-pause"
-                value="2">
-              <div class="fin">Máximo meses que puede pausarse una suscripción</div>
-            </div>
-          </div>
-          <button class="btn btn-b" onclick="saveSettings()">💾 Guardar reglas</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ⑥ STACKS -->
-    <div id="p-stacks" class="panel">
-      <div class="ph">
-        <div>
-          <div class="pt">Stacks de productos</div>
-          <div class="ps">Combina productos en packs con descuento especial</div>
-        </div>
-        <button class="btn btn-r" onclick="openStackModal()">+ Nuevo stack</button>
-      </div>
-      <div class="info-box">💡 Los stacks se muestran como recomendación en el widget. Define tu stack ideal (Proteína +
-        Creatina + Objetivo) y ofrece descuento de paquete.</div>
-      <div id="stacks-grid" class="grid3">
-        <div style="text-align:center;padding:40px;color:var(--mut)">Cargando stacks...</div>
-      </div>
-
-      <!-- STACK MODAL -->
-      <div id="stack-modal"
-        style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;display:flex;align-items:center;justify-content:center">
-        <div
-          style="background:var(--wht);border-radius:var(--r);padding:24px;width:540px;max-height:90vh;overflow-y:auto;position:relative">
-          <div style="font-size:16px;font-weight:900;text-transform:uppercase;margin-bottom:18px">Nuevo Stack</div>
-          <div class="fg"><label class="fl">Nombre del stack</label><input class="fi" id="st-name"
-              placeholder="ej: Stack Volumen Extremo"></div>
-          <div class="fg"><label class="fl">Descripción</label><input class="fi" id="st-desc"
-              placeholder="Proteína + Creatina + Pre-Workout"></div>
-          <div class="fg"><label class="fl">Objetivo</label>
-            <select class="fsl" id="st-goal">
-              <option value="volumen">Volumen / Masa muscular</option>
-              <option value="definicion">Definición / Fat loss</option>
-              <option value="rendimiento">Rendimiento atlético</option>
-              <option value="salud">Salud general</option>
-            </select>
-          </div>
-          <div class="fg"><label class="fl">Descuento del stack (%)</label><input type="number" class="fi" id="st-disc"
-              value="30" min="0" max="50"></div>
-          <div class="fg"><label class="fl">Productos (1 por línea: ID Shopify | Nombre | Rol)</label>
-            <textarea class="fta" id="st-products"
-              placeholder="8234567890 | Proteína Hydrolyzed | Base&#10;8234567891 | Creatine Micronized | Complemento&#10;8234567892 | Pre-Workout | Bonus"></textarea>
-            <div class="fin">Formato: ProductID | Nombre | Rol (Base/Complemento/Bonus)</div>
-          </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end">
-            <button class="btn btn-g" onclick="closeStackModal()">Cancelar</button>
-            <button class="btn btn-r" onclick="saveStack()">💾 Guardar stack</button>
+      <div class="content">
+        <div class="info-box">💡 <strong>Click en ⚙ Configurar</strong> para definir los descuentos específicos de cada
+          producto. El widget mostrará automáticamente los porcentajes configurados.</div>
+        <div class="card">
+          <div class="card-head"><span class="card-title" id="prod-count">Cargando productos...</span></div>
+          <div style="padding:16px" id="prod-list">
+            <div style="text-align:center;padding:32px;color:var(--mut)">Cargando...</div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ⑦ WIDGET -->
-    <div id="p-widget" class="panel">
+    <!-- ④ AJUSTES -->
+    <div id="p-ajustes" class="panel">
       <div class="ph">
         <div>
-          <div class="pt">Widget de suscripción</div>
-          <div class="ps">Personaliza apariencia y textos sin código</div>
-        </div>
-        <button class="btn btn-r" onclick="saveWidgetSettings()">💾 Guardar & publicar</button>
-      </div>
-      <div class="grid2">
-        <div>
-          <div class="settings-section">
-            <div class="settings-header">🎨 Apariencia</div>
-            <div class="settings-body">
-              <div class="frow">
-                <div class="fg"><label class="fl">Color primario (hex)</label><input class="fi" id="w-color"
-                    value="#9d2a23" type="color"></div>
-                <div class="fg"><label class="fl">Color de fondo</label><input class="fi" id="w-bg" value="#ffffff"
-                    type="color"></div>
-              </div>
-              <div class="fg"><label class="fl">Border radius (px)</label><input class="fi" id="w-radius" value="10"
-                  type="number" min="0" max="24"></div>
-              <div class="fg"><label class="fl">Fuente</label>
-                <select class="fsl" id="w-font">
-                  <option>Montserrat</option>
-                  <option>Roboto</option>
-                  <option>Inter</option>
-                  <option>Open Sans</option>
-                  <option selected>inherit (tema)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          <div class="settings-section">
-            <div class="settings-header">📝 Textos del widget</div>
-            <div class="settings-body">
-              <div class="fg"><label class="fl">Texto botón "Compra única"</label><input class="fi" id="w-once"
-                  value="Compra única"></div>
-              <div class="fg"><label class="fl">Texto botón "Suscripción"</label><input class="fi" id="w-sub"
-                  value="Suscripción"></div>
-              <div class="fg"><label class="fl">Badge de descuento</label><input class="fi" id="w-badge"
-                  value="HASTA -30%"></div>
-              <div class="fg"><label class="fl">Texto CTA suscripción</label><input class="fi" id="w-cta"
-                  value="Suscribirme — {pct}% OFF cada pedido"></div>
-              <div class="fg"><label class="fl">Aviso legal (cancelación)</label>
-                <textarea class="fta" id="w-legal"
-                  style="min-height:60px">Cancelación disponible entre los días 30 y 15 antes de cada envío, una vez completada la permanencia.</textarea>
-              </div>
-            </div>
-          </div>
-          <div class="settings-section">
-            <div class="settings-header">⚙️ Comportamiento</div>
-            <div class="settings-body">
-              <div class="fg"><label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="w-enabled"
-                      checked><span class="toggle-slider"></span></span><span class="toggle-label">Widget habilitado
-                    globalmente</span></label></div>
-              <div class="fg"><label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="w-social"
-                      checked><span class="toggle-slider"></span></span><span class="toggle-label">Mostrar contador
-                    social en vivo</span></label></div>
-              <div class="fg"><label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="w-loyalty"
-                      checked><span class="toggle-slider"></span></span><span class="toggle-label">Mostrar barra de
-                    progreso regalo</span></label></div>
-            </div>
-          </div>
-        </div>
-        <div>
-          <div class="card">
-            <div class="ch"><span class="ct">Vista previa del widget</span></div>
-            <div style="padding:18px">
-              <div id="widget-preview"
-                style="border:2px dashed var(--bdr);border-radius:10px;padding:14px;background:#f9f9f9;font-size:12px;color:var(--mut);text-align:center;min-height:300px;display:flex;align-items:center;justify-content:center">
-                <div>
-                  <div style="font-size:32px;margin-bottom:8px">🎨</div>
-                  <div style="font-weight:700">Vista previa disponible<br>una vez desplegado el backend</div>
-                </div>
-              </div>
-              <div class="info-box" style="margin-top:12px;margin-bottom:0">El widget se personaliza desde aquí y se
-                aplica automáticamente en la tienda mediante la extensión de Shopify.</div>
-            </div>
-          </div>
-          <div class="card" style="margin-top:14px">
-            <div class="ch"><span class="ct">Cómo activar en productos</span></div>
-            <div class="cp">
-              <div style="counter-reset:steps">
-                ${[
-                'Ve a <strong>Shopify Admin → Tienda online → Personalizar</strong>',
-                'Selecciona una plantilla de <strong>Producto</strong>',
-                'Haz clic en <strong>"Agregar bloque"</strong> en la sección de producto',
-                'Busca <strong>"LAB Subscription Widget"</strong> y agrégalo donde quieras',
-                'Ajusta posición arrastrando (antes/después del precio, del botón, etc.)',
-                '<strong>Guarda</strong> y activa los productos en el panel "Productos" de aquí'
-                ].map(s=>`<div
-                  style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--bdr);font-size:12px"><span
-                    style="background:var(--red);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;flex-shrink:0;counter-increment:steps">${[1,2,3,4,5,6].shift()}</span><span>${s}</span>
-                </div>`).join('')}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ⑧ SETTINGS / CREDENCIALES -->
-    <div id="p-settings" class="panel">
-      <div class="ph">
-        <div>
-          <div class="pt">Configuración</div>
-          <div class="ps">Credenciales de APIs y ajustes del sistema</div>
+          <div class="pt">Ajustes</div>
+          <div class="ps">Credenciales y reglas de la app</div>
         </div>
         <button class="btn btn-r" onclick="saveAllSettings()">💾 Guardar todo</button>
       </div>
-      <div class="info-box warn">⚠️ Las credenciales se guardan cifradas en el servidor. Nunca se exponen al navegador
-        del cliente.</div>
+      <div class="content">
+        <div class="info-box warn">⚠️ Las credenciales se guardan en el servidor. Nunca se exponen al navegador del
+          cliente.</div>
 
-      <div class="settings-section">
-        <div class="settings-header">Mercado Pago</div>
-        <div class="settings-body">
+        <div class="settings-section">
+          <div class="settings-title">Mercado Pago</div>
+          <div id="mp-status" style="display:none" class="conn-ok">Conexión verificada con Mercado Pago</div>
           <div class="frow">
             <div class="fg"><label class="fl">Access Token (Producción)</label><input class="fi" id="mp-token"
-                type="password" placeholder="APP_USR-xxxxxxxxxxxxxxxxxxxx">
-              <div class="fin">Encontrado en: MercadoPago Developers → Credenciales de producción</div>
+                placeholder="APP_USR-...">
+              <div class="fin">En MP → Credenciales → Producción</div>
             </div>
             <div class="fg"><label class="fl">Public Key (Producción)</label><input class="fi" id="mp-pk"
-                type="password" placeholder="APP_USR-xxxxxxxxxxxxxxxxxxxx">
-              <div class="fin">Necesario para el formulario de tarjetas del cliente</div>
-            </div>
+                placeholder="APP_USR-..."></div>
           </div>
-          <button class="btn btn-g btn-sm" onclick="testMP()">🔍 Verificar conexión MP</button>
+          <button class="btn btn-g btn-sm" onclick="testMP()">🔗 Verificar conexión MP</button>
         </div>
-      </div>
 
-      <div class="settings-section">
-        <div class="settings-header">Shopify — Base de datos</div>
-        <div class="settings-body">
-          <div
-            style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:12px 14px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0">
-            <span style="width:10px;height:10px;border-radius:50%;background:#16a34a;flex-shrink:0"></span>
-            <div>
-              <div style="font-weight:700;font-size:12px;color:#14532d">Conectado a Shopify</div>
-              <div style="font-size:11px;color:#166534">Suscripciones y eventos guardados en Shopify Metaobjects. Sin
-                Supabase.</div>
-            </div>
-          </div>
-          <div class="frow">
-            <div class="fg">
-              <label class="fl">Tipo — Suscripciones</label>
-              <input class="fi" value="lab_subscription" readonly style="background:#f9fafb;color:var(--mut)">
-              <div class="fin">Metaobject type en tu tienda Shopify</div>
-            </div>
-            <div class="fg">
-              <label class="fl">Tipo — Eventos / Historial</label>
-              <input class="fi" value="lab_sub_event" readonly style="background:#f9fafb;color:var(--mut)">
-              <div class="fin">Audit log de cobros, pausas, cancelaciones</div>
-            </div>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn btn-g btn-sm" onclick="initShopifyTypes()">⚙️ Inicializar tipos</button>
-            <button class="btn btn-g btn-sm"
-              onclick="fetch('/api/metrics').then(r=>r.json()).then(d=>alert('Suscripciones activas: '+d.active+'\nMRR: S/ '+d.mrr))">📊
-              Ver estado DB</button>
-          </div>
+        <div class="settings-section">
+          <div class="settings-title">Shopify — Base de datos</div>
+          <div class="conn-ok">Conectado a Shopify · Datos guardados en Shopify Metaobjects. Sin Supabase.</div>
+          <div style="font-size:11.5px;color:var(--mut);margin-top:6px">Tipo — Suscripciones:
+            <code>lab_subscription</code> &nbsp;|&nbsp; Tipo — Eventos/Historial: <code>lab_sub_event</code></div>
         </div>
-      </div>
 
-      <div class="settings-section">
-        <div class="settings-header">Shopify Admin API</div>
-        <div class="settings-body">
-          <div
-            style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0">
-            <span style="width:10px;height:10px;border-radius:50%;background:#16a34a;flex-shrink:0"></span>
-            <div>
-              <div style="font-weight:700;font-size:12px;color:#14532d">Configurado automaticamente</div>
-              <div style="font-size:11px;color:#166534">Token y dominio se leen de Railway (env vars). No necesitas
-                configurar nada aqui.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="settings-section">
-        <div class="settings-header">Email / SMTP</div>
-        <div class="settings-body">
+        <div class="settings-section">
+          <div class="settings-title">Email / SMTP</div>
           <div class="frow">
             <div class="fg"><label class="fl">Host SMTP</label><input class="fi" id="sm-host" value="smtp.gmail.com">
             </div>
-            <div class="fg"><label class="fl">Puerto</label><input class="fi" id="sm-port" value="587" type="number">
-            </div>
+            <div class="fg"><label class="fl">Puerto</label><input class="fi" id="sm-port" value="587"></div>
           </div>
           <div class="frow">
             <div class="fg"><label class="fl">Email remitente</label><input class="fi" id="sm-user"
                 placeholder="notificaciones@labnutrition.com"></div>
-            <div class="fg"><label class="fl">Contraseña / App password</label><input class="fi" id="sm-pass"
-                type="password" placeholder="xxxx xxxx xxxx xxxx"></div>
+            <div class="fg"><label class="fl">Contraseña / App Password</label><input class="fi" type="password"
+                id="sm-pass" placeholder="xxxx xxxx xxxx xxxx"></div>
           </div>
           <div class="fg"><label class="fl">Nombre remitente</label><input class="fi" id="sm-from"
-              value="LAB NUTRITION &lt;notificaciones@labnutrition.com&gt;"></div>
-          <button class="btn btn-g btn-sm" onclick="testEmail()">📧 Enviar email de prueba</button>
+              placeholder="LAB NUTRITION &#x3c;notificaciones@labnutrition.com&#x3e;"></div>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-title">Reglas anti-abuso</div>
+          <div class="frow">
+            <div class="fg"><label class="fl">Ventana cancelación — ABRE (días antes cobro)</label><input type="number"
+                class="fi" id="cfg-open" value="30">
+              <div class="fin">Días antes del cobro que puede cancelar</div>
+            </div>
+            <div class="fg"><label class="fl">Ventana cancelación — CIERRA (días antes cobro)</label><input
+                type="number" class="fi" id="cfg-close" value="15"></div>
+            <div class="fg"><label class="fl">Pausa máxima (meses)</label><input type="number" class="fi" id="cfg-pause"
+                value="2"></div>
+          </div>
         </div>
       </div>
     </div>
 
-  </div><!-- /main -->
-  <div class="toast" id="toast"></div>
+  </main>
+
+  <!-- ===== PRODUCT CONFIG DRAWER ===== -->
+  <div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+  <div class="drawer" id="config-drawer">
+    <div class="drawer-head">
+      <div>
+        <div style="font-size:14px;font-weight:800" id="drawer-prod-name">Producto</div>
+        <div style="font-size:11px;color:var(--mut)" id="drawer-prod-id"></div>
+      </div>
+      <button class="btn btn-g btn-sm" onclick="closeDrawer()">✕ Cerrar</button>
+    </div>
+    <div class="drawer-body">
+      <div class="fg">
+        <label class="fl">Permanencia mínima</label>
+        <select class="fsl" id="dr-min-perm">
+          <option value="3">3 meses</option>
+          <option value="6">6 meses</option>
+          <option value="12">12 meses</option>
+        </select>
+        <div class="fin">Meses mínimos que debe mantener la suscripción</div>
+      </div>
+      <div
+        style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin-bottom:10px;margin-top:4px">
+        Descuentos por permanencia</div>
+      <div class="disc-matrix">
+        <div class="disc-row">
+          <div>
+            <div class="disc-label">📦 Mensual · 3 meses</div>
+            <div class="disc-sublabel">1 envío/mes, permanencia 3M</div>
+          </div>
+          <div style="display:flex;align-items:center"><input class="disc-input" type="number" id="d-m1-p3" min="0"
+              max="60" value="10"><span class="disc-pct">%</span></div>
+        </div>
+        <div class="disc-row">
+          <div>
+            <div class="disc-label">📦 Mensual · 6 meses</div>
+            <div class="disc-sublabel">1 envío/mes, permanencia 6M</div>
+          </div>
+          <div style="display:flex;align-items:center"><input class="disc-input" type="number" id="d-m1-p6" min="0"
+              max="60" value="15"><span class="disc-pct">%</span></div>
+        </div>
+        <div class="disc-row">
+          <div>
+            <div class="disc-label">📦 Mensual · 12 meses</div>
+            <div class="disc-sublabel">1 envío/mes, permanencia 12M</div>
+          </div>
+          <div style="display:flex;align-items:center"><input class="disc-input" type="number" id="d-m1-p12" min="0"
+              max="60" value="25"><span class="disc-pct">%</span></div>
+        </div>
+        <div class="disc-row">
+          <div>
+            <div class="disc-label">📦 Bimestral · 3 meses</div>
+            <div class="disc-sublabel">1 envío/2 meses, permanencia 3M</div>
+          </div>
+          <div style="display:flex;align-items:center"><input class="disc-input" type="number" id="d-m2-p3" min="0"
+              max="60" value="12"><span class="disc-pct">%</span></div>
+        </div>
+        <div class="disc-row">
+          <div>
+            <div class="disc-label">📦 Bimestral · 6 meses</div>
+            <div class="disc-sublabel">1 envío/2 meses, permanencia 6M</div>
+          </div>
+          <div style="display:flex;align-items:center"><input class="disc-input" type="number" id="d-m2-p6" min="0"
+              max="60" value="18"><span class="disc-pct">%</span></div>
+        </div>
+        <div class="disc-row">
+          <div>
+            <div class="disc-label">📦 Bimestral · 12 meses</div>
+            <div class="disc-sublabel">1 envío/2 meses, permanencia 12M</div>
+          </div>
+          <div style="display:flex;align-items:center"><input class="disc-input" type="number" id="d-m2-p12" min="0"
+              max="60" value="30"><span class="disc-pct">%</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="drawer-foot">
+      <button class="btn btn-r" style="width:100%" onclick="saveProductConfig()">💾 Guardar configuración</button>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast"></div>
 
   <script>
-    const A = ''; // API base (same origin)
-    let allSubs = [], subFilter = 'all', subQ = '';
+    const BASE = '';
+    let _subFilter = 'all', _subSearch = '', _allSubs = [], _shopifyProds = [], _currentProdId = null;
 
-    /* ── NAV ── */
-    function show(id) {
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
-      document.getElementById('p-' + id).classList.add('active');
-      event?.currentTarget?.classList?.add('active') || [...document.querySelectorAll('.ni')].find(n => n.onclick?.toString().includes(`'${id}'`))?.classList.add('active');
-      const loaders = { dashboard: loadDash, subscribers: loadSubs, products: loadProds, plans: loadPlans, stacks: loadStacks, settings: loadSettings };
-      if (loaders[id]) loaders[id]();
+    function api(url, opts) {
+      return fetch(BASE + url, opts).then(r => {
+        if (!r.ok) return r.json().then(e => { throw new Error(e.error || r.statusText); });
+        const ct = r.headers.get('content-type') || '';
+        return ct.includes('application/json') ? r.json() : r.text();
+      });
     }
 
-    /* ── TOAST ── */
-    function toast(msg, ok = true, dur = 3000) {
+    function toast(msg, type = 'ok') {
       const t = document.getElementById('toast');
-      t.textContent = msg; t.style.background = ok ? '#1a7a3a' : '#9d2a23'; t.style.display = 'block';
-      clearTimeout(t._t); t._t = setTimeout(() => t.style.display = 'none', dur);
+      t.textContent = msg; t.className = 'show ' + type;
+      setTimeout(() => t.className = '', 3000);
     }
 
-    /* ── FORMATTERS ── */
-    function fd(d) { return d ? new Date(d).toLocaleDateString('es-PE', { day: 'numeric', month: 'short', year: 'numeric' }) : '—' }
-    function badge(s) { const m = { active: 'b-active', paused: 'b-paused', cancelled: 'b-cancel', payment_failed: 'b-failed', expired: 'b-cancel', pending: 'b-paused' }; const l = { active: 'Activa', paused: 'Pausada', cancelled: 'Cancelada', payment_failed: 'Pago fallido', expired: 'Expirada', pending: 'Pendiente' }; return `<span class="badge ${m[s] || ''}">${l[s] || s}</span>` }
-    async function api(url, opts = {}) { const r = await fetch(A + url, opts); return r.json() }
+    function nav(id) {
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('show'));
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      document.getElementById('p-' + id).classList.add('show');
+      document.getElementById('n-' + id).classList.add('active');
+      if (id === 'dash') loadDash();
+      if (id === 'subs') loadSubs();
+      if (id === 'prods') loadProds();
+      if (id === 'ajustes') loadSettings();
+    }
 
-    /* ── ① DASHBOARD ── */
+    // ──── DASHBOARD ────
     async function loadDash() {
       try {
-        const [m, s] = await Promise.all([api('/api/metrics'), api('/api/admin/subscriptions?limit=8')]);
-        document.getElementById('m-mrr').textContent = 'S/ ' + parseFloat(m.mrr || 0).toFixed(0);
-        document.getElementById('m-active').textContent = m.active || 0;
-        document.getElementById('m-paused').textContent = m.paused || 0;
-        document.getElementById('m-cancelled').textContent = m.cancelled || 0;
-        document.getElementById('m-failed').textContent = m.payment_failed || 0;
-        renderSubs(s.data || [], 'dash-table', true);
-      } catch (e) { document.getElementById('dash-table').innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:#c00">Error: ${e.message}</td></tr>` }
+        const [metrics, recent] = await Promise.all([
+          api('/api/metrics').catch(() => ({})),
+          api('/api/subscriptions?limit=10').catch(() => [])
+        ]);
+        document.getElementById('st-mrr').textContent = 'S/ ' + (metrics.mrr || 0).toFixed(2);
+        document.getElementById('st-active').textContent = metrics.active || 0;
+        document.getElementById('st-paused').textContent = metrics.paused || 0;
+        document.getElementById('st-cancelled').textContent = metrics.cancelled || 0;
+        document.getElementById('st-next7').textContent = metrics.next7d || 0;
+        const subs = Array.isArray(recent) ? recent : [];
+        document.getElementById('dash-table').innerHTML = subs.length
+          ? subs.slice(0, 10).map(s => `<tr>
+          <td><div style="font-weight:600">${s.customer_name || '—'}</div><div style="color:var(--mut);font-size:11px">${s.customer_email || ''}</div></td>
+          <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.product_title || '—'}</td>
+          <td>${s.frequency_months === 1 ? 'Mensual' : 'Bimestral'} · ${s.permanence_months}M</td>
+          <td><span class="badge b-${s.status || 'active'}">${s.status || 'activo'}</span></td>
+          <td>${s.next_charge_at ? new Date(s.next_charge_at).toLocaleDateString('es-PE') : '—'}</td>
+        </tr>`).join('')
+          : '<tr><td colspan="5" style="text-align:center;padding:28px;color:var(--mut)">Sin suscripciones aún</td></tr>';
+      } catch (e) { console.error(e); }
     }
 
-    /* ── ② SUBSCRIBERS ── */
+    // ──── SUSCRIPTORES ────
     async function loadSubs() {
-      const d = await api('/api/admin/subscriptions?limit=200');
-      allSubs = d.data || []; apply();
-    }
-    function fsub(f, btn) { subFilter = f; document.querySelectorAll('.fc').forEach(b => b.classList.remove('active')); btn.classList.add('active'); apply() }
-    function qsub(q) { subQ = q.toLowerCase(); apply() }
-    function apply() {
-      let d = allSubs;
-      if (subFilter !== 'all') d = d.filter(s => s.status === subFilter);
-      if (subQ) d = d.filter(s => s.customer_email?.toLowerCase().includes(subQ) || s.product_title?.toLowerCase().includes(subQ) || s.customer_name?.toLowerCase().includes(subQ));
-      renderSubs(d, 'sub-table', false);
-    }
-    function renderSubs(data, tbid, compact) {
-      const tb = document.getElementById(tbid);
-      if (!data.length) { tb.innerHTML = `<tr><td colspan="${compact ? 6 : 8}" style="text-align:center;padding:32px;color:var(--mut)">Sin resultados</td></tr>`; return }
-      tb.innerHTML = data.map(s => `<tr>
-    <td><strong style="font-size:12px">${s.customer_name || '—'}</strong><br><span style="font-size:11px;color:var(--mut)">${s.customer_email}</span></td>
-    <td style="max-width:130px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px">${s.product_title}</td>
-    <td>${s.frequency_months === 1 ? 'Mensual' : 'Bimestral'}</td>
-    ${!compact ? `<td>${s.cycles_completed}/${s.cycles_required}</td>` : ''}
-    <td><strong>S/ ${parseFloat(s.final_price).toFixed(2)}</strong><br><span style="font-size:10px;color:var(--red)">-${s.discount_pct}%</span></td>
-    <td>${badge(s.status)}</td>
-    <td style="font-size:11px">${fd(s.next_charge_at)}</td>
-    ${!compact ? `<td><div class="act">
-      <button class="btn btn-g btn-sm" title="Pausar" onclick="actSub('${s.id}','pause')">⏸</button>
-      <button class="btn btn-g btn-sm" title="Saltar envío" onclick="actSub('${s.id}','skip')">⏭</button>
-      <button class="btn btn-g btn-sm" style="color:var(--red)" title="Cancelar" onclick="actSub('${s.id}','cancel')">✕</button>
-    </div></td>`: ''}
-  </tr>`).join('');
-    }
-    async function actSub(id, action) {
-      const labels = { pause: '¿Pausar 1 mes esta suscripción?', skip: '¿Saltar el próximo envío?', cancel: '¿Cancelar? Se verificarán las reglas de permanencia.' };
-      if (!confirm(labels[action])) return;
-      const r = await api(`/api/subscriptions/${id}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pauseMonths: 1 }) });
-      if (r.success) toast({ pause: '⏸ Pausada', skip: '⏭ Envío saltado', cancel: '✅ Cancelada' }[action]);
-      else toast('Error: ' + (r.message || r.error), false);
-      loadSubs();
+      document.getElementById('subs-table').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--mut)">Cargando...</td></tr>';
+      try {
+        _allSubs = await api('/api/subscriptions').catch(() => []);
+        if (!Array.isArray(_allSubs)) _allSubs = [];
+        renderSubs();
+      } catch (e) { toast('Error cargando suscriptores', 'err'); }
     }
 
-    /* ── ③ MARKETING ── */
-    async function sendCampaign() {
-      const seg = document.getElementById('mk-seg').value;
-      const sub = document.getElementById('mk-subject').value.trim();
-      const body = document.getElementById('mk-body').value.trim();
-      if (!sub || !body) { toast('Completa asunto y mensaje', false); return }
-      if (!confirm(`Enviar campaña a segmento: "${document.getElementById('mk-seg').options[document.getElementById('mk-seg').selectedIndex].text}"?`)) return;
-      toast('📤 Enviando...', true, 10000);
-      const r = await api('/api/marketing/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ segment: seg, subject: sub, body }) });
-      if (r.success) toast(`✅ Enviado a ${r.sent} suscriptores${r.failed ? ` (${r.failed} fallidos)` : ''}`)
-      else toast('Error: ' + r.error, false);
-    }
-    async function sendTest() {
-      const email = document.getElementById('te-email').value;
-      if (!email) { toast('Ingresa un email de prueba', false); return }
-      toast(`📧 Test enviado a ${email}`);
+    function renderSubs() {
+      let subs = _allSubs;
+      if (_subFilter !== 'all') subs = subs.filter(s => s.status === _subFilter);
+      if (_subSearch) subs = subs.filter(s =>
+        (s.customer_email || '').toLowerCase().includes(_subSearch) ||
+        (s.product_title || '').toLowerCase().includes(_subSearch)
+      );
+      document.getElementById('subs-table').innerHTML = subs.length
+        ? subs.map(s => `<tr>
+        <td><div style="font-weight:600">${s.customer_name || '—'}</div><div style="font-size:11px;color:var(--mut)">${s.customer_email}</div></td>
+        <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.product_title || '—'}</td>
+        <td>${s.frequency_months === 1 ? 'Mensual' : 'Bimestral'} · ${s.permanence_months}M</td>
+        <td>${s.discount_pct || 0}%</td>
+        <td><span class="badge b-${s.status}">${s.status}</span></td>
+        <td>${s.next_charge_at ? new Date(s.next_charge_at).toLocaleDateString('es-PE') : '—'}</td>
+        <td style="white-space:nowrap">
+          ${s.status === 'active' ? `<button class="btn btn-g btn-sm" onclick="subAction('${s.id}','pause')">⏸</button>` : ''}
+          ${s.status === 'paused' ? `<button class="btn btn-b btn-sm" onclick="subAction('${s.id}','resume')">▶</button>` : ''}
+          ${s.status !== 'cancelled' ? `<button class="btn btn-sm" style="background:#fee2e2;color:#991b1b" onclick="subAction('${s.id}','cancel')">✕</button>` : ''}
+        </td>
+      </tr>`).join('')
+        : '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--mut)">Sin resultados</td></tr>';
     }
 
-    /* ── ④ PRODUCTS ── */
-    let shopifyProducts = [];
+    function filterSubs(q) { _subSearch = q.toLowerCase(); renderSubs(); }
+    function setSubFilter(f, el) {
+      _subFilter = f;
+      document.querySelectorAll('.filter-pills .pill').forEach(p => p.classList.remove('active'));
+      el.classList.add('active'); renderSubs();
+    }
+    async function subAction(id, action) {
+      if (action === 'cancel' && !confirm('¿Cancelar esta suscripción?')) return;
+      try {
+        await api(`/api/subscriptions/${id}/${action}`, { method: 'POST' });
+        toast(action === 'pause' ? '⏸ Suscripción pausada' : action === 'resume' ? '▶ Suscripción reactivada' : '✕ Suscripción cancelada');
+        loadSubs();
+      } catch (e) { toast('Error: ' + e.message, 'err'); }
+    }
+
+    // ──── PRODUCTOS ────
     async function loadProds() {
-      const el = document.getElementById('prod-list');
-      el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">Cargando productos...</div>';
+      document.getElementById('prod-list').innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">Cargando...</div>';
       try {
         const data = await api('/api/products');
-        shopifyProducts = Array.isArray(data) ? data : [];
-        const active = shopifyProducts.filter(p => p.subscription_enabled);
-        document.getElementById('prod-count').textContent = active.length + ' activos de ' + shopifyProducts.length + ' en catalogo';
-        if (!shopifyProducts.length) {
-          el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">No se encontraron productos. Verifica que SHOPIFY_ACCESS_TOKEN este configurado en Railway.</div>';
+        _shopifyProds = Array.isArray(data) ? data : [];
+        const active = _shopifyProds.filter(p => p.subscription_enabled);
+        document.getElementById('prod-count').textContent = `${active.length} activos de ${_shopifyProds.length} en catálogo`;
+        if (!_shopifyProds.length) {
+          document.getElementById('prod-list').innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">No se encontraron productos. Verifica SHOPIFY_ACCESS_TOKEN en Railway.</div>';
           return;
         }
-        const noImg = '<svg style="opacity:.2;display:block;margin:auto" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>';
-        let html = '<div class="prod-grid">';
-        for (const p of shopifyProducts) {
-          const on = p.subscription_enabled === true;
-          const img = p.image ? '<img src="' + p.image + '" style="width:100%;height:100%;object-fit:cover" loading="lazy">' : noImg;
-          const btnClass = on ? 'btn-b' : 'btn-g';
-          const btnText = on ? 'Activo' : 'Inactivo';
-          const safeTitle = (p.title || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-          html += '<div class="prod-card' + (on ? ' on' : '') + '">';
-          html += '<div style="width:100%;aspect-ratio:1;background:#f4f5f7;display:flex;align-items:center;justify-content:center;overflow:hidden">' + img + '</div>';
-          html += '<div class="prod-name">' + p.title + '</div>';
-          html += '<div style="padding:4px 10px 8px;text-align:center">';
-          html += '<button class="btn btn-sm ' + btnClass + '" onclick="toggleProd(\'' + p.shopify_id + '\',' + !on + ',\'' + safeTitle + '\')">'
-            + btnText + '</button>';
-          html += '</div><div class="prod-badge">ACTIVO</div></div>';
-        }
-        html += '</div>';
-        el.innerHTML = html;
+        const noImg = `<svg style="opacity:.2" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>`;
+        document.getElementById('prod-list').innerHTML = `<div class="prod-grid">` +
+          _shopifyProds.map(p => {
+            const on = !!p.subscription_enabled;
+            const t = (p.title || '').replace(/'/g, "\\'");
+            return `<div class="prod-card${on ? ' on' : ''}">
+          <div class="prod-img">${p.image ? `<img src="${p.image}" loading="lazy">` : noImg}</div>
+          <div class="prod-name">${p.title}</div>
+          <div class="prod-actions">
+            <label class="toggle-wrap" title="${on ? 'Desactivar' : 'Activar'} suscripción">
+              <span class="toggle"><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleProd('${p.shopify_id}',this.checked,'${t}')"><span class="tslide"></span></span>
+            </label>
+            <span style="font-size:11px;color:var(--mut);flex:1">${on ? 'Activo' : 'Inactivo'}</span>
+            <button class="btn btn-g btn-sm" onclick="openConfig('${p.shopify_id}','${t}')">⚙ Config</button>
+          </div>
+        </div>`;
+          }).join('') + `</div>`;
       } catch (e) {
-        el.innerHTML = '<div style="text-align:center;padding:32px;color:#c00">Error: ' + e.message + '</div>';
+        document.getElementById('prod-list').innerHTML = `<div style="text-align:center;padding:32px;color:var(--red)">Error: ${e.message}</div>`;
       }
     }
-    async function showProductPicker() {
-      const existing = document.getElementById('product-picker-overlay');
-      if (existing) existing.remove();
-      const overlay = document.createElement('div');
-      overlay.id = 'product-picker-overlay';
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-      overlay.innerHTML = `<div style="background:#fff;border-radius:12px;width:100%;max-width:700px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column">
-        <div style="padding:16px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center">
-          <div style="font-weight:800;font-size:14px;text-transform:uppercase;letter-spacing:1px">Seleccionar productos</div>
-          <button onclick="document.getElementById('product-picker-overlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#666">\u00d7</button>
-        </div>
-        <div style="padding:12px 20px;border-bottom:1px solid #eee"><input type="text" placeholder="Buscar producto..." oninput="filterPickerResults(this.value)" style="width:100%;border:1.5px solid #e5e7eb;border-radius:6px;padding:8px 12px;font-size:13px;outline:none;box-sizing:border-box"></div>
-        <div id="picker-results" style="padding:16px 20px;overflow-y:auto;flex:1">Cargando...</div>
-      </div>`;
-      document.body.appendChild(overlay);
+
+    async function toggleProd(id, active, title) {
       try {
-        const data = await api('/api/products');
-        shopifyProducts = Array.isArray(data) ? data : [];
-        renderPickerResults(shopifyProducts);
-      } catch (e) {
-        document.getElementById('picker-results').innerHTML = '<div style="text-align:center;padding:24px;color:#c00">Error: ' + e.message + '</div>';
-      }
-    }
-    function renderPickerResults(prods) {
-      const el = document.getElementById('picker-results');
-      if (!prods.length) { el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--mut)">Sin resultados</div>'; return; }
-      el.innerHTML = '<div class="prod-grid">' + prods.map(p => `<div class="prod-card" onclick="pickProduct('${p.shopify_id}','${(p.title || '').replace(/'/g, "\\'")}',' ${p.image || ''}')" style="cursor:pointer">
-        <div style="width:100%;aspect-ratio:1;background:#f4f5f7;display:flex;align-items:center;justify-content:center;overflow:hidden">
-          ${p.image ? '<img src="' + p.image + '" style="width:100%;height:100%;object-fit:cover">' : '<span style="color:#ccc;font-size:13px">Sin imagen</span>'}
-        </div>
-        <div class="prod-name">${p.title}</div>
-        <div style="font-size:11px;text-align:center;padding:2px 10px 8px;color:var(--mut)">S/ ${p.price}</div>
-      </div>`).join('') + '</div>';
-    }
-    function filterPickerResults(q) {
-      renderPickerResults(shopifyProducts.filter(p => p.title.toLowerCase().includes(q.toLowerCase())));
-    }
-    async function pickProduct(pid, title, image) {
-      await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_id: pid, product_title: title.trim(), product_image: image.trim(), is_active: true }) });
-      toast('Producto agregado'); const o = document.getElementById('product-picker-overlay'); if (o) o.remove(); loadProds();
-    }
-    async function toggleProd(pid, active, title) {
-      await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_id: pid, product_title: title, is_active: active }) });
-      toast(active ? 'Widget activado' : 'Widget desactivado'); loadProds();
+        await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_id: id, product_title: title, is_active: active }) });
+        toast(active ? '✅ Suscripción activada' : 'Widget desactivado');
+        loadProds();
+      } catch (e) { toast('Error: ' + e.message, 'err'); }
     }
 
-    /* ── ⑤ PLANS ── */
-    async function loadPlans() {
-      const data = await api('/api/plans').catch(() => []);
-      if (!Array.isArray(data) || !data.length) {
-        document.getElementById('plans-table').innerHTML = '<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--mut)">Sin planes configurados</td></tr>';
-        return;
-      }
-      document.getElementById('plans-table').innerHTML = data.map(p => `<tr data-id="${p.id}">
-    <td>${p.frequency_months === 1 ? '📦 Mensual' : '📦 Bimestral'}</td>
-    <td>${p.permanence_months} meses</td>
-    <td><input type="number" class="fi" style="width:70px" value="${p.discount_pct}" data-f="discount_pct" min="0" max="60"></td>
-    <td style="text-align:center"><label class="toggle-wrap"><span class="toggle"><input type="checkbox" ${p.is_active !== false ? 'checked' : ''} data-f="is_active"><span class="toggle-slider"></span></span></label></td>
-  </tr>`).join('');
-    }
-    async function savePlans() {
-      const rows = document.querySelectorAll('#plans-table tr[data-id]');
-      const plans = [...rows].map(row => {
-        const id = row.dataset.id; const body = { id };
-        row.querySelectorAll('[data-f]').forEach(el => {
-          const f = el.dataset.f;
-          if (el.type === 'checkbox') body[f] = el.checked;
-          else if (el.type === 'number') body[f] = el.value ? parseInt(el.value) : 0;
-          else body[f] = el.value || null;
-        });
-        return body;
-      });
-      await api('/api/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(plans) });
-      toast('💾 Matriz guardada correctamente');
+    // ──── PRODUCT CONFIG DRAWER ────
+    async function openConfig(id, title) {
+      _currentProdId = id;
+      document.getElementById('drawer-prod-name').textContent = title;
+      document.getElementById('drawer-prod-id').textContent = 'ID: ' + id;
+      document.getElementById('drawer-overlay').classList.add('open');
+      document.getElementById('config-drawer').classList.add('open');
+      // Load existing config
+      try {
+        const cfg = await api(`/api/products/${id}/config`).catch(() => null);
+        if (cfg && cfg.discounts) {
+          document.getElementById('d-m1-p3').value = cfg.discounts.m1_p3 ?? 10;
+          document.getElementById('d-m1-p6').value = cfg.discounts.m1_p6 ?? 15;
+          document.getElementById('d-m1-p12').value = cfg.discounts.m1_p12 ?? 25;
+          document.getElementById('d-m2-p3').value = cfg.discounts.m2_p3 ?? 12;
+          document.getElementById('d-m2-p6').value = cfg.discounts.m2_p6 ?? 18;
+          document.getElementById('d-m2-p12').value = cfg.discounts.m2_p12 ?? 30;
+          if (cfg.min_permanence) document.getElementById('dr-min-perm').value = cfg.min_permanence;
+        }
+      } catch (e) { }
     }
 
-    /* ── ⑥ STACKS ── */
-    async function loadStacks() {
-      const data = await api('/api/stacks');
-      const el = document.getElementById('stacks-grid');
-      if (!data.length) { el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--mut);grid-column:1/-1">Sin stacks. Crea uno con el botón +</div>'; return }
-      el.innerHTML = data.map(s => `<div class="card"><div class="cp">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start">
-      <div><div class="stack-name">${s.name}</div><div class="stack-desc">${s.description || ''}</div></div>
-      <button class="btn btn-g btn-sm" style="color:var(--red)" onclick="delStack('${s.id}')">🗑</button>
-    </div>
-    <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
-      ${(s.products || []).map(p => `<span class="stack-pill">${typeof p === 'object' ? p.title || p : p}</span>`).join('')}
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <span class="badge b-active">${s.discount_pct}% OFF</span>
-      <span style="font-size:10px;color:var(--mut);text-transform:uppercase;font-weight:700">${s.goal || ''}</span>
-    </div>
-  </div></div>`).join('');
+    function closeDrawer() {
+      document.getElementById('drawer-overlay').classList.remove('open');
+      document.getElementById('config-drawer').classList.remove('open');
+      _currentProdId = null;
     }
-    function openStackModal() { document.getElementById('stack-modal').style.display = 'flex' }
-    function closeStackModal() { document.getElementById('stack-modal').style.display = 'none' }
-    async function saveStack() {
-      const name = document.getElementById('st-name').value.trim(); if (!name) { toast('Nombre requerido', false); return }
-      const prods = document.getElementById('st-products').value.trim().split('\n').filter(Boolean).map(line => { const [id, title, role] = line.split('|').map(s => s.trim()); return { productId: id, title, role } });
-      await api('/api/stacks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description: document.getElementById('st-desc').value, goal: document.getElementById('st-goal').value, discount_pct: parseInt(document.getElementById('st-disc').value) || 25, products: prods, is_active: true }) });
-      toast('🧬 Stack guardado'); closeStackModal(); loadStacks();
-    }
-    async function delStack(id) { if (!confirm('¿Eliminar stack?')) return; await api(`/api/stacks/${id}`, { method: 'DELETE' }); toast('Eliminado'); loadStacks() }
 
-    /* ── ⑧ SETTINGS ── */
-    async function loadSettings() {
-      const data = await api('/api/settings').catch(() => ({}));
-      if (data.cancellation_window_open) document.getElementById('cfg-open').value = data.cancellation_window_open;
-      if (data.cancellation_window_close) document.getElementById('cfg-close').value = data.cancellation_window_close;
-      if (data.max_pause_months) document.getElementById('cfg-pause').value = data.max_pause_months;
-    }
-    async function saveSettings() {
-      await api('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cancellation_window_open: parseInt(document.getElementById('cfg-open').value), cancellation_window_close: parseInt(document.getElementById('cfg-close').value), max_pause_months: parseInt(document.getElementById('cfg-pause').value) }) });
-      toast('💾 Reglas actualizadas');
-    }
-    async function saveWidgetSettings() { toast('💾 Configuración del widget guardada (aplica en próximo deploy)') }
-    async function saveAllSettings() {
-      const settings = {
-        MP_ACCESS_TOKEN: document.getElementById('mp-token').value,
-        MP_PUBLIC_KEY: document.getElementById('mp-pk').value,
-        SMTP_HOST: document.getElementById('sm-host').value,
-        SMTP_PORT: document.getElementById('sm-port').value,
-        SMTP_USER: document.getElementById('sm-user').value,
-        SMTP_PASS: document.getElementById('sm-pass').value,
-        EMAIL_FROM: document.getElementById('sm-from').value
+    async function saveProductConfig() {
+      if (!_currentProdId) return;
+      const config = {
+        min_permanence: parseInt(document.getElementById('dr-min-perm').value),
+        discounts: {
+          m1_p3: parseInt(document.getElementById('d-m1-p3').value) || 0,
+          m1_p6: parseInt(document.getElementById('d-m1-p6').value) || 0,
+          m1_p12: parseInt(document.getElementById('d-m1-p12').value) || 0,
+          m2_p3: parseInt(document.getElementById('d-m2-p3').value) || 0,
+          m2_p6: parseInt(document.getElementById('d-m2-p6').value) || 0,
+          m2_p12: parseInt(document.getElementById('d-m2-p12').value) || 0,
+        }
       };
-      await api('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ env_config: settings, cancellation_window_open: parseInt(document.getElementById('cfg-open')?.value || 30), cancellation_window_close: parseInt(document.getElementById('cfg-close')?.value || 15), max_pause_months: parseInt(document.getElementById('cfg-pause')?.value || 2) }) });
-      toast('Configuracion guardada');
+      try {
+        await api(`/api/products/${_currentProdId}/config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+        toast('💾 Configuración guardada');
+        closeDrawer();
+      } catch (e) { toast('Error: ' + e.message, 'err'); }
     }
-    async function testMP() { toast('Verificando Mercado Pago...', true, 2000) }
-    async function testEmail() {
-      const email = prompt('Email de prueba:'); if (!email) return;
-      toast(`📧 Enviando test a ${email}...`, true, 5000);
+
+    // ──── SETTINGS ────
+    async function loadSettings() {
+      try {
+        const data = await api('/api/settings').catch(() => ({}));
+        if (data.mp_access_token) document.getElementById('mp-token').value = data.mp_access_token;
+        if (data.mp_public_key) document.getElementById('mp-pk').value = data.mp_public_key;
+        if (data.smtp_host) document.getElementById('sm-host').value = data.smtp_host;
+        if (data.smtp_port) document.getElementById('sm-port').value = data.smtp_port;
+        if (data.smtp_user) document.getElementById('sm-user').value = data.smtp_user;
+        if (data.email_from) document.getElementById('sm-from').value = data.email_from;
+        if (data.cancellation_window_open) document.getElementById('cfg-open').value = data.cancellation_window_open;
+        if (data.cancellation_window_close) document.getElementById('cfg-close').value = data.cancellation_window_close;
+        if (data.max_pause_months) document.getElementById('cfg-pause').value = data.max_pause_months;
+      } catch (e) { }
+    }
+
+    async function saveAllSettings() {
+      const body = {
+        mp_access_token: document.getElementById('mp-token').value,
+        mp_public_key: document.getElementById('mp-pk').value,
+        smtp_host: document.getElementById('sm-host').value,
+        smtp_port: document.getElementById('sm-port').value,
+        smtp_user: document.getElementById('sm-user').value,
+        smtp_pass: document.getElementById('sm-pass').value,
+        email_from: document.getElementById('sm-from').value,
+        cancellation_window_open: parseInt(document.getElementById('cfg-open').value),
+        cancellation_window_close: parseInt(document.getElementById('cfg-close').value),
+        max_pause_months: parseInt(document.getElementById('cfg-pause').value),
+      };
+      try {
+        await api('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        toast('💾 Ajustes guardados correctamente');
+      } catch (e) { toast('Error: ' + e.message, 'err'); }
+    }
+
+    async function testMP() {
+      const token = document.getElementById('mp-token').value;
+      if (!token) { toast('Ingresa el Access Token primero', 'err'); return; }
+      try {
+        const r = await fetch('https://api.mercadopago.com/v1/payment_methods', { headers: { Authorization: `Bearer ${token}` } });
+        if (r.ok) { document.getElementById('mp-status').style.display = 'flex'; toast('✅ Mercado Pago conectado correctamente'); }
+        else throw new Error('Token inválido');
+      } catch (e) { toast('❌ ' + e.message, 'err'); }
     }
 
     // INIT

@@ -377,6 +377,40 @@ app.post('/api/products', async (req, res) => {
     }
 });
 
+/* ── PER-PRODUCT CONFIG — descuentos individuales por producto ── */
+app.get('/api/products/:id/config', async (req, res) => {
+    try {
+        let allConfigs = await readFromShopify('lab_app', 'product_configs').catch(() => null);
+        if (!allConfigs || typeof allConfigs !== 'object' || Array.isArray(allConfigs)) allConfigs = {};
+        const cfg = allConfigs[req.params.id];
+        res.json(cfg || { min_permanence: 3, discounts: { m1_p3: 10, m1_p6: 15, m1_p12: 25, m2_p3: 12, m2_p6: 18, m2_p12: 30 } });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/products/:id/config', async (req, res) => {
+    try {
+        let allConfigs = await readFromShopify('lab_app', 'product_configs').catch(() => null);
+        if (!allConfigs || typeof allConfigs !== 'object' || Array.isArray(allConfigs)) allConfigs = {};
+        allConfigs[req.params.id] = { ...req.body, updated_at: new Date().toISOString() };
+        await saveToShopify(allConfigs, 'lab_app', 'product_configs');
+        console.log('[PRODUCT CONFIG] Saved config for product', req.params.id);
+        res.json({ success: true, config: allConfigs[req.params.id] });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── SUBSCRIPTIONS LIST alias for admin panel ── */
+app.get('/api/subscriptions', async (req, res) => {
+    try {
+        const { status, limit } = req.query;
+        const filters = status ? { status } : {};
+        let data = await db.getSubscriptions(filters).catch(() => []);
+        if (!Array.isArray(data)) data = [];
+        if (limit) data = data.slice(0, parseInt(limit));
+        res.json(data);
+    } catch (e) { res.json([]); }
+});
+
+
 /* ── METRICS — from Shopify Metaobjects ── */
 app.get('/api/metrics', async (req, res) => {
     try {
