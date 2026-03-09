@@ -1118,13 +1118,6 @@
           <button class="btn btn-g btn-sm" onclick="testMP()">🔗 Verificar conexión MP</button>
         </div>
 
-        <div class="settings-section">
-          <div class="settings-title">Shopify — Base de datos</div>
-          <div class="conn-ok">Conectado a Shopify · Datos guardados en Shopify Metaobjects. Sin Supabase.</div>
-          <div style="font-size:11.5px;color:var(--mut);margin-top:6px">Tipo — Suscripciones:
-            <code>lab_subscription</code> &nbsp;|&nbsp; Tipo — Eventos/Historial: <code>lab_sub_event</code>
-          </div>
-        </div>
 
         <div class="settings-section">
           <div class="settings-title">Email / SMTP</div>
@@ -1246,6 +1239,37 @@
   <script>
     const BASE = '';
     let _subFilter = 'all', _subSearch = '', _allSubs = [], _shopifyProds = [], _currentProdId = null;
+
+    // ── Shopify App Bridge: register navigation in Shopify's left sidebar ──
+    (function initAppBridge() {
+      try {
+        const params = new URLSearchParams(location.search);
+        const host = params.get('host');
+        if (!host) return; // not embedded, skip
+        const AppBridge = window['app-bridge'];
+        if (!AppBridge) return;
+        const app = AppBridge.createApp({ apiKey: 'fc20b3f68f1c8e854a3dca30788acd48', host });
+        const NavigationMenu = AppBridge.actions.NavigationMenu;
+        const origin = location.origin;
+        const qs = '?shop=' + (params.get('shop') || '') + '&host=' + host;
+        const items = [
+          { label: 'Dashboard', destination: origin + '/' + qs + '&page=dash' },
+          { label: 'Planes', destination: origin + '/' + qs + '&page=plans' },
+          { label: 'Suscripciones', destination: origin + '/' + qs + '&page=subs' },
+          { label: 'Productos', destination: origin + '/' + qs + '&page=prods' },
+          { label: 'Widget', destination: origin + '/' + qs + '&page=widget' },
+          { label: 'Portal del cliente', destination: origin + '/' + qs + '&page=portal' },
+          { label: 'Ajustes', destination: origin + '/' + qs + '&page=ajustes' },
+        ];
+        const page = params.get('page') || 'dash';
+        const active = items.find(i => i.destination.includes('page=' + page)) || items[0];
+        NavigationMenu.create(app, { items, active });
+        // navigate to the correct panel based on ?page= param
+        if (page && page !== 'dash') {
+          document.addEventListener('DOMContentLoaded', () => { setTimeout(() => nav(page), 100); });
+        }
+      } catch (e) { console.warn('[AppBridge nav]', e); }
+    })();
 
     function api(url, opts) {
       return fetch(BASE + url, opts).then(r => {
