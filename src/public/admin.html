@@ -13,18 +13,18 @@
     rel="stylesheet">
   <style>
     :root {
-      --red: #C33118;
-      --red2: #9E270F;
-      --blk: #1A1209;
-      --wht: #fff;
-      --bg: #F8F4EF;
-      --card: #FFFFFF;
-      --bdr: #E6DDD3;
-      --mut: #9A8672;
-      --grn: #2D7A3A;
-      --amber: #C07A1A;
-      --r: 10px;
-      --sh: 0 1px 4px rgba(30, 15, 0, .07)
+      --red:   #D4502A;
+      --red2:  #B3401F;
+      --blk:   #2C2C2C;
+      --wht:   #fff;
+      --bg:    #FAFAF8;
+      --card:  #FFFFFF;
+      --bdr:   #EBEBEA;
+      --mut:   #8A8A8A;
+      --grn:   #2E7D49;
+      --amber: #B86A1A;
+      --r:     10px;
+      --sh:    0 1px 3px rgba(0,0,0,.06)
     }
 
     * {
@@ -43,9 +43,9 @@
       font-size: 13px
     }
 
-    /* SIDEBAR */
+    /* SIDEBAR — siempre visible, es la nav principal de la app */
     .sb {
-      width: 224px;
+      width: 220px;
       min-height: 100vh;
       background: #1E1E1E;
       color: #fff;
@@ -53,7 +53,7 @@
       flex-direction: column;
       flex-shrink: 0
     }
-
+    /* sb-hidden solo se aplica si se necesita ocultar en móvil */
     .sb.sb-hidden { display: none }
 
     .sb-brand {
@@ -1276,9 +1276,7 @@
         const params = new URLSearchParams(location.search);
         const host = params.get('host');
         if (!host) return;
-        // Ocultar sidebar interno (Shopify ya tiene el suyo)
-        const sb = document.querySelector('.sb');
-        if (sb) sb.classList.add('sb-hidden');
+        // Sidebar siempre visible — es la nav principal de la app
         const AB = window['app-bridge'];
         if (!AB) return;
         const createApp = AB.default;
