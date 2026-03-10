@@ -209,6 +209,51 @@
       margin-bottom: 16px
     }
 
+    /* SETUP GUIDE */
+    .setup-step {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 2px;
+      border-bottom: 1px solid var(--bdr);
+      cursor: pointer;
+      transition: background .15s;
+      border-radius: 6px;
+      padding-left: 4px;
+      padding-right: 4px
+    }
+    .setup-step:last-child { border-bottom: none }
+    .setup-step:hover { background: var(--bg) }
+    .setup-step-check {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid var(--bdr);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: .2s
+    }
+    .setup-step-check.done {
+      background: var(--grn);
+      border-color: var(--grn);
+    }
+    .setup-step-check.done::after {
+      content: '';
+      width: 6px;
+      height: 10px;
+      border: 2px solid #fff;
+      border-top: none;
+      border-left: none;
+      transform: rotate(45deg) translate(-1px,-1px);
+      display: block
+    }
+    .setup-step-body { flex: 1 }
+    .setup-step-title { font-size: 13px; font-weight: 600; color: var(--blk); margin-bottom: 2px }
+    .setup-step-desc { font-size: 11.5px; color: var(--mut) }
+    .setup-step-arrow { font-size: 20px; color: var(--bdr); font-weight: 300; flex-shrink: 0 }
+
     .card-head {
       padding: 14px 18px;
       border-bottom: 1px solid var(--bdr);
@@ -949,7 +994,7 @@
               </div>
             </div>
             <button class="btn btn-r" onclick="openThemeEditor()" style="width:100%;padding:14px;font-size:14px">
-              🎨 Abrir editor de temas en Shopify →
+              Abrir editor de temas en Shopify
             </button>
           </div>
         </div>
@@ -1002,21 +1047,80 @@
                       class="tslide"></span></label>
               </label>
             </div>
-            <button class="btn btn-r" onclick="savePortalConfig()" style="margin-top:16px">💾 Guardar permisos</button>
+            <button class="btn btn-r" onclick="savePortalConfig()" style="margin-top:16px">Guardar permisos</button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ① DASHBOARD -->
+    <!-- DASHBOARD -->
     <div id="p-dash" class="panel show">
       <div class="ph">
         <div>
           <div class="pt">Dashboard</div>
-          <div class="ps">Resumen de suscripciones activas</div>
+          <div class="ps">Panel de control de suscripciones</div>
         </div>
       </div>
       <div class="content">
+
+        <!-- SETUP GUIDE -->
+        <div class="card" id="setup-guide" style="margin-bottom:20px">
+          <div class="card-head" style="cursor:pointer" onclick="toggleSetupGuide()">
+            <span class="card-title">Guía de configuración</span>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span id="setup-progress-text" style="font-size:12px;color:var(--red);font-weight:600">0 de 5 completados</span>
+              <span id="setup-chevron" style="font-size:11px;color:var(--mut)">&#9650;</span>
+            </div>
+          </div>
+          <div id="setup-guide-body" style="padding:0 20px 4px">
+            <div style="height:4px;background:var(--bdr);border-radius:2px;margin:14px 0 18px">
+              <div id="setup-bar" style="height:100%;width:0%;background:var(--red);border-radius:2px;transition:.4s"></div>
+            </div>
+            <div id="setup-steps" style="display:flex;flex-direction:column;gap:2px;margin-bottom:16px">
+              <div class="setup-step" data-step="mp" onclick="nav('ajustes')">
+                <div class="setup-step-check" id="sc-mp"></div>
+                <div class="setup-step-body">
+                  <div class="setup-step-title">Configurar Mercado Pago</div>
+                  <div class="setup-step-desc">Ingresa tu Access Token y Public Key para habilitar los cobros.</div>
+                </div>
+                <div class="setup-step-arrow">&#8250;</div>
+              </div>
+              <div class="setup-step" data-step="plans" onclick="nav('plans')">
+                <div class="setup-step-check" id="sc-plans"></div>
+                <div class="setup-step-body">
+                  <div class="setup-step-title">Crear planes de suscripción</div>
+                  <div class="setup-step-desc">Define frecuencias, permanencia y descuentos para tus suscriptores.</div>
+                </div>
+                <div class="setup-step-arrow">&#8250;</div>
+              </div>
+              <div class="setup-step" data-step="products" onclick="nav('prods')">
+                <div class="setup-step-check" id="sc-products"></div>
+                <div class="setup-step-body">
+                  <div class="setup-step-title">Activar productos con suscripción</div>
+                  <div class="setup-step-desc">Habilita qué productos pueden suscribirse y configura sus descuentos.</div>
+                </div>
+                <div class="setup-step-arrow">&#8250;</div>
+              </div>
+              <div class="setup-step" data-step="widget" onclick="openThemeEditor()">
+                <div class="setup-step-check" id="sc-widget"></div>
+                <div class="setup-step-body">
+                  <div class="setup-step-title">Agregar widget a la tienda</div>
+                  <div class="setup-step-desc">Añade el bloque de suscripción en la página de producto de tu tema.</div>
+                </div>
+                <div class="setup-step-arrow">&#8250;</div>
+              </div>
+              <div class="setup-step" data-step="portal" onclick="nav('portal')">
+                <div class="setup-step-check" id="sc-portal"></div>
+                <div class="setup-step-body">
+                  <div class="setup-step-title">Configurar portal del cliente</div>
+                  <div class="setup-step-desc">Define qué acciones pueden realizar tus suscriptores desde su cuenta.</div>
+                </div>
+                <div class="setup-step-arrow">&#8250;</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="stats-grid" id="stats-grid">
           <div class="stat">
             <div class="stat-val" id="st-mrr">—</div>
@@ -1493,6 +1597,44 @@
     }
 
 
+    // ──── SETUP GUIDE ────
+    let _setupOpen = true;
+    function toggleSetupGuide() {
+      _setupOpen = !_setupOpen;
+      document.getElementById('setup-guide-body').style.display = _setupOpen ? '' : 'none';
+      document.getElementById('setup-chevron').innerHTML = _setupOpen ? '&#9650;' : '&#9660;';
+    }
+    async function checkSetupProgress() {
+      try {
+        const [settings, plans, prods] = await Promise.all([
+          api('/api/settings').catch(() => ({})),
+          api('/api/plans').catch(() => []),
+          api('/api/products').catch(() => [])
+        ]);
+        const steps = {
+          mp: !!(settings.mp_access_token),
+          plans: Array.isArray(plans) && plans.some(p => p.active !== false),
+          products: Array.isArray(prods) && prods.some(p => p.subscription_enabled),
+          widget: false, // requires manual theme editor step
+          portal: !!(settings.portal_configured)
+        };
+        let done = 0;
+        Object.keys(steps).forEach(k => {
+          const el = document.getElementById('sc-' + k);
+          if (!el) return;
+          if (steps[k]) { el.classList.add('done'); done++; }
+          else el.classList.remove('done');
+        });
+        const total = Object.keys(steps).length;
+        document.getElementById('setup-progress-text').textContent = done + ' de ' + total + ' completados';
+        document.getElementById('setup-bar').style.width = Math.round(done / total * 100) + '%';
+        if (done === total) {
+          const guide = document.getElementById('setup-guide');
+          if (guide) guide.style.display = 'none';
+        }
+      } catch (e) { /* silently fail */ }
+    }
+
     // ──── DASHBOARD ────
     async function loadDash() {
       try {
@@ -1505,6 +1647,7 @@
         document.getElementById('st-paused').textContent = parseInt(metrics.paused) || 0;
         document.getElementById('st-cancelled').textContent = parseInt(metrics.cancelled) || 0;
         document.getElementById('st-next7').textContent = parseInt(metrics.next7d) || 0;
+        checkSetupProgress();
         const subs = Array.isArray(recent) ? recent : [];
         document.getElementById('dash-table').innerHTML = subs.length
           ? subs.slice(0, 10).map(s => `<tr>
