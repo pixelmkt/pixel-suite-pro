@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 
 <head>
@@ -47,12 +47,14 @@
     .sb {
       width: 224px;
       min-height: 100vh;
-      background: #120D07;
+      background: #1E1E1E;
       color: #fff;
       display: flex;
       flex-direction: column;
       flex-shrink: 0
     }
+
+    .sb.sb-hidden { display: none }
 
     .sb-brand {
       padding: 22px 18px 16px;
@@ -70,7 +72,7 @@
     .sb-role {
       font-size: 10px;
       font-weight: 600;
-      color: #C97A68;
+      color: #888;
       letter-spacing: 1.2px;
       text-transform: uppercase;
       margin-top: 3px
@@ -82,7 +84,7 @@
       font-weight: 700;
       letter-spacing: 1.2px;
       text-transform: uppercase;
-      color: #5A4A3A
+      color: #666
     }
 
     .nav-item {
@@ -93,15 +95,15 @@
       border-radius: 7px;
       margin: 1px 7px;
       cursor: pointer;
-      color: #B0977E;
+      color: #999;
       font-weight: 500;
       transition: .15s;
       font-size: 12.5px
     }
 
     .nav-item:hover {
-      background: #2A1D12;
-      color: #EDD9C0
+      background: #2D2D2D;
+      color: #ddd
     }
 
     .nav-item.active {
@@ -1274,6 +1276,9 @@
         const params = new URLSearchParams(location.search);
         const host = params.get('host');
         if (!host) return;
+        // Ocultar sidebar interno (Shopify ya tiene el suyo)
+        const sb = document.querySelector('.sb');
+        if (sb) sb.classList.add('sb-hidden');
         const AB = window['app-bridge'];
         if (!AB) return;
         const createApp = AB.default;
