@@ -1362,23 +1362,26 @@
           <div class="pt">Ajustes</div>
           <div class="ps">Credenciales y reglas de la app</div>
         </div>
-        <button class="btn btn-r" onclick="saveAllSettings()">💾 Guardar todo</button>
+        <button class="btn btn-r" onclick="saveAllSettings()">Guardar todo</button>
       </div>
       <div class="content">
         <div class="info-box warn">🔒 Tus credenciales de pago están protegidas y almacenadas de forma segura.</div>
 
         <div class="settings-section">
           <div class="settings-title">Mercado Pago</div>
-          <div id="mp-status" style="display:none" class="conn-ok">Conexión verificada con Mercado Pago</div>
+          <div id="mp-status" style="display:none;padding:10px 14px;border-radius:7px;font-size:13px;margin-bottom:10px"></div>
           <div class="frow">
             <div class="fg"><label class="fl">Access Token (Producción)</label><input class="fi" id="mp-token"
                 placeholder="APP_USR-...">
-              <div class="fin">En MP → Credenciales → Producción</div>
+              <div class="fin">En Mercado Pago → Desarrolladores → Credenciales → Producción</div>
             </div>
             <div class="fg"><label class="fl">Public Key (Producción)</label><input class="fi" id="mp-pk"
                 placeholder="APP_USR-..."></div>
           </div>
-          <button class="btn btn-g btn-sm" onclick="testMP()">🔗 Verificar conexión MP</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-g btn-sm" onclick="testMP()">Verificar conexión</button>
+            <button class="btn btn-r btn-sm" onclick="saveMPAndTest()">Guardar y verificar</button>
+          </div>
         </div>
 
 
@@ -2104,13 +2107,55 @@
     }
 
     async function testMP() {
-      const token = document.getElementById('mp-token').value;
+      const token = document.getElementById('mp-token').value.trim();
+      const statusEl = document.getElementById('mp-status');
+      if (!token) { toast('Ingresa el Access Token primero', 'err'); return; }
+      statusEl.style.display = 'block';
+      statusEl.style.background = '#f3f4f6';
+      statusEl.style.color = '#555';
+      statusEl.textContent = 'Verificando conexión con Mercado Pago...';
+      try {
+        const r = await api('/api/settings/test-mp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        if (r.ok) {
+          statusEl.style.background = '#d1fae5';
+          statusEl.style.border = '1px solid #6ee7b7';
+          statusEl.style.color = '#065f46';
+          statusEl.textContent = 'Mercado Pago conectado correctamente. Token válido de producción.';
+          toast('Mercado Pago verificado');
+        } else {
+          statusEl.style.background = '#fee2e2';
+          statusEl.style.border = '1px solid #fca5a5';
+          statusEl.style.color = '#991b1b';
+          statusEl.textContent = 'Error: ' + (r.error || 'Token inválido');
+          toast('Token inválido: ' + r.error, 'err');
+        }
+      } catch (e) {
+        statusEl.style.background = '#fee2e2';
+        statusEl.style.color = '#991b1b';
+        statusEl.textContent = 'Error al conectar: ' + e.message;
+        toast('Error: ' + e.message, 'err');
+      }
+    }
+
+    async function saveMPAndTest() {
+      const token = document.getElementById('mp-token').value.trim();
+      const pk = document.getElementById('mp-pk').value.trim();
       if (!token) { toast('Ingresa el Access Token primero', 'err'); return; }
       try {
-        const r = await fetch('https://api.mercadopago.com/v1/payment_methods', { headers: { Authorization: `Bearer ${token}` } });
-        if (r.ok) { document.getElementById('mp-status').style.display = 'flex'; toast('✅ Mercado Pago conectado correctamente'); }
-        else throw new Error('Token inválido');
-      } catch (e) { toast('❌ ' + e.message, 'err'); }
+        // 1. Save to Shopify metafields (persists across restarts)
+        await api('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mp_access_token: token, mp_public_key: pk })
+        });
+        toast('Token guardado en Shopify Metafields');
+        // 2. Verify immediately
+        await testMP();
+      } catch (e) { toast('Error al guardar: ' + e.message, 'err'); }
     }
 
     // INIT

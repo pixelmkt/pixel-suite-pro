@@ -932,6 +932,22 @@ app.put('/api/settings', async (req, res) => {
     res.json({ success: true, storage: shopifySaved ? 'shopify_metafields' : 'local_file', settings: { ...getEnvDefaults(), ...merged } });
 });
 
+/* ── TEST MP CONNECTION — verifica token en tiempo real ── */
+app.post('/api/settings/test-mp', async (req, res) => {
+    // If a token was sent, apply it now before testing
+    if (req.body && req.body.token) {
+        process.env.MP_ACCESS_TOKEN = req.body.token.trim();
+    }
+    try {
+        if (!process.env.MP_ACCESS_TOKEN) return res.json({ ok: false, error: 'Token no configurado' });
+        const result = await mp.verifyConnection();
+        res.json({ ok: true, message: 'Conexión con Mercado Pago verificada correctamente', ...result });
+    } catch (e) {
+        const msg = e?.cause?.message || e?.message || 'Error de autenticación';
+        res.json({ ok: false, error: msg.includes('401') || msg.includes('unauthorized') ? 'Token inválido o sin permisos de producción' : msg });
+    }
+});
+
 /* ═══════════════════════════════════════════════
    👤 PORTAL DEL SUSCRIPTOR (customer self-service)
 ═══════════════════════════════════════════════ */
