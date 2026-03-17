@@ -822,6 +822,9 @@
           d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
       </svg>Productos</div>
     <div class="sb-section">Herramientas</div>
+    <div class="nav-item" onclick="nav('customers')" id="n-customers"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Clientes (Nuevo)</div>
+    <div class="nav-item" onclick="nav('remarketing')" id="n-remarketing"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>Remarketing</div>
+    <div class="sb-section">Ajustes</div>
     <div class="nav-item" onclick="nav('widget')" id="n-widget"><svg width="14" height="14" viewBox="0 0 24 24"
         fill="none" stroke="currentColor" stroke-width="2">
         <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -839,12 +842,128 @@
         <path
           d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
       </svg>Ajustes</div>
-    <div style="margin-top:auto;padding:14px 16px;font-size:10px;color:#444">v3.1 · LAB NUTRITION<br><span
+    <div style="margin-top:auto;padding:14px 16px;font-size:10px;color:#444">v5.0 · LAB NUTRITION<br><span
         style="color:#555">Perú · Mercado Pago</span></div>
   </aside>
 
   <!-- ===== MAIN ===== -->
   <main class="main">
+
+    <!-- CLIENTES -->
+    <div id="p-customers" class="panel">
+      <div class="ph">
+        <div>
+          <div class="pt">Clientes</div>
+          <div class="ps">Clientes de Shopify cruzados con suscripciones activas</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-g btn-sm" onclick="loadCustomers()">Actualizar</button>
+          <button class="btn btn-r btn-sm" onclick="getCustSegmentForRemarketing()">Crear campaña</button>
+        </div>
+      </div>
+      <div class="content">
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+          <div class="search-box" style="flex:1;min-width:200px;margin:0">
+            <input id="cust-search" placeholder="Buscar por nombre o email..." oninput="filterCustomers(this.value)">
+          </div>
+          <div class="filter-pills" style="margin:0">
+            <span class="pill active" onclick="setCustFilter('all',this)">Todos</span>
+            <span class="pill" onclick="setCustFilter('subscribers',this)">Suscriptores</span>
+            <span class="pill" onclick="setCustFilter('active',this)">Activos</span>
+            <span class="pill" onclick="setCustFilter('paused',this)">Pausados</span>
+            <span class="pill" onclick="setCustFilter('non_subscribers',this)">Sin suscripción</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Lista de clientes</span>
+            <span id="cust-count" style="font-size:11px;color:var(--mut)"></span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Email</th>
+                <th>Suscriptor</th>
+                <th>Pedidos</th>
+                <th>Total gastado</th>
+                <th>Próx. cobro</th>
+                <th>Registrado</th>
+              </tr>
+            </thead>
+            <tbody id="cust-tbody">
+              <tr><td colspan="7" style="text-align:center;padding:28px;color:var(--mut)">Cargando clientes...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- REMARKETING -->
+    <div id="p-remarketing" class="panel">
+      <div class="ph">
+        <div>
+          <div class="pt">Remarketing</div>
+          <div class="ps">Envía campañas de email a segmentos de suscriptores</div>
+        </div>
+      </div>
+      <div class="content">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+          <div class="stat" style="cursor:pointer" onclick="setRemSegment('active',this)">
+            <div class="stat-val" id="rm-active" style="color:var(--grn)">-</div>
+            <div class="stat-lbl">Activos</div>
+          </div>
+          <div class="stat" style="cursor:pointer" onclick="setRemSegment('paused',this)">
+            <div class="stat-val" id="rm-paused" style="color:var(--amber)">-</div>
+            <div class="stat-lbl">Pausados</div>
+          </div>
+          <div class="stat" style="cursor:pointer" onclick="setRemSegment('cancelled',this)">
+            <div class="stat-val" id="rm-cancelled" style="color:var(--red)">-</div>
+            <div class="stat-lbl">Cancelados</div>
+          </div>
+          <div class="stat" style="cursor:pointer" onclick="setRemSegment('next7d',this)">
+            <div class="stat-val" id="rm-next7d">-</div>
+            <div class="stat-lbl">Cobros próx. 7 días</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span class="card-title">Nueva campaña de email</span></div>
+          <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">Segmento</label>
+              <select id="rm-segment" onchange="updateRemCount()" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;outline:none;background:#fff">
+                <option value="active">Suscriptores activos</option>
+                <option value="paused">Suscriptores pausados</option>
+                <option value="cancelled">Suscriptores cancelados</option>
+                <option value="next7d">Con cobro en los próximos 7 días</option>
+                <option value="all_subscribers">Todos los suscriptores</option>
+              </select>
+              <div id="rm-recipient-count" style="font-size:11px;color:var(--mut);margin-top:5px"></div>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">Asunto del email</label>
+              <input id="rm-subject" type="text" placeholder="Ej: Tu resumen de suscripción" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">Mensaje</label>
+              <textarea id="rm-message" rows="5" placeholder="Escribe el mensaje de la campaña..." style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box"></textarea>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div>
+                <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">Texto del botón (opcional)</label>
+                <input id="rm-cta-text" type="text" placeholder="Ver mis suscripciones" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">URL del botón (opcional)</label>
+                <input id="rm-cta-url" type="text" placeholder="https://tu-tienda.myshopify.com/portal" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
+              </div>
+            </div>
+            <div id="rm-result" style="display:none;padding:10px 14px;border-radius:7px;font-size:13px"></div>
+            <button class="btn btn-r" onclick="sendRemarketing()" style="padding:12px">Enviar campaña</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- ② PLANES DE SUSCRIPCIÓN (no-code: crear/quitar planes) -->
     <div id="p-plans" class="panel">
@@ -1421,8 +1540,10 @@
     function nav(id) {
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('show'));
       document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-      document.getElementById('p-' + id).classList.add('show');
-      document.getElementById('n-' + id).classList.add('active');
+      const panel = document.getElementById('p-' + id);
+      const navItem = document.getElementById('n-' + id);
+      if (panel) panel.classList.add('show');
+      if (navItem) navItem.classList.add('active');
       if (id === 'dash') loadDash();
       if (id === 'plans') loadPlans();
       if (id === 'subs') loadSubs();
@@ -1430,6 +1551,122 @@
       if (id === 'ajustes') loadSettings();
       if (id === 'portal') loadPortalConfig();
       if (id === 'widget') loadWidgetConfig();
+      if (id === 'customers') loadCustomers();
+      if (id === 'remarketing') loadRemarketing();
+    }
+
+    // ──── CLIENTES ────
+    let _allCustomers = [], _custFilter = 'all', _custSearch = '';
+
+    async function loadCustomers() {
+      document.getElementById('cust-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--mut)">Cargando clientes de Shopify...</td></tr>';
+      try {
+        const data = await api('/api/customers').catch(() => ({ customers: [] }));
+        _allCustomers = Array.isArray(data.customers) ? data.customers : [];
+        renderCustomers();
+        document.getElementById('cust-count').textContent = _allCustomers.length + ' clientes';
+      } catch (e) {
+        document.getElementById('cust-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--red)">Error al cargar: ' + e.message + '</td></tr>';
+      }
+    }
+
+    function renderCustomers() {
+      let list = _allCustomers;
+      if (_custFilter === 'subscribers') list = list.filter(c => c.is_subscriber);
+      else if (_custFilter === 'active') list = list.filter(c => c.subscription_status === 'active');
+      else if (_custFilter === 'paused') list = list.filter(c => c.subscription_status === 'paused');
+      else if (_custFilter === 'non_subscribers') list = list.filter(c => !c.is_subscriber);
+      if (_custSearch) {
+        const s = _custSearch.toLowerCase();
+        list = list.filter(c => (c.name || '').toLowerCase().includes(s) || (c.email || '').toLowerCase().includes(s));
+      }
+      document.getElementById('cust-count').textContent = list.length + ' clientes';
+      if (!list.length) {
+        document.getElementById('cust-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--mut)">Sin clientes en este segmento</td></tr>';
+        return;
+      }
+      document.getElementById('cust-tbody').innerHTML = list.map(c => {
+        const subBadge = c.is_subscriber
+          ? '<span class="badge b-' + (c.subscription_status || 'active') + '">' + (c.subscription_status || 'activo') + '</span>'
+          : '<span style="color:var(--mut);font-size:11px">—</span>';
+        const nextCharge = c.next_charge_at ? new Date(c.next_charge_at).toLocaleDateString('es-PE') : '—';
+        const reg = c.created_at ? new Date(c.created_at).toLocaleDateString('es-PE') : '—';
+        return `<tr>
+          <td><div style="font-weight:600">${c.name || '—'}</div></td>
+          <td style="font-size:12px;color:var(--mut)">${c.email || '—'}</td>
+          <td>${subBadge}</td>
+          <td>${c.orders_count || 0}</td>
+          <td>S/ ${parseFloat(c.total_spent || 0).toFixed(2)}</td>
+          <td>${nextCharge}</td>
+          <td style="font-size:11px;color:var(--mut)">${reg}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function filterCustomers(val) { _custSearch = val; renderCustomers(); }
+    function setCustFilter(f, el) {
+      _custFilter = f;
+      document.querySelectorAll('#p-customers .pill').forEach(p => p.classList.remove('active'));
+      el.classList.add('active');
+      renderCustomers();
+    }
+    function getCustSegmentForRemarketing() {
+      nav('remarketing');
+    }
+
+    // ──── REMARKETING ────
+    let _remSegments = {};
+
+    async function loadRemarketing() {
+      try {
+        _remSegments = await api('/api/remarketing/segments').catch(() => ({}));
+        document.getElementById('rm-active').textContent = _remSegments.active || 0;
+        document.getElementById('rm-paused').textContent = _remSegments.paused || 0;
+        document.getElementById('rm-cancelled').textContent = _remSegments.cancelled || 0;
+        document.getElementById('rm-next7d').textContent = _remSegments.next7d || 0;
+        updateRemCount();
+      } catch (e) { console.error('[REMARKETING]', e); }
+    }
+
+    function setRemSegment(seg, el) {
+      document.getElementById('rm-segment').value = seg;
+      updateRemCount();
+    }
+
+    function updateRemCount() {
+      const seg = document.getElementById('rm-segment').value;
+      const count = _remSegments[seg] || _remSegments.all_subscribers || 0;
+      const el = document.getElementById('rm-recipient-count');
+      if (el) el.textContent = count + ' destinatarios en este segmento';
+    }
+
+    async function sendRemarketing() {
+      const segment = document.getElementById('rm-segment').value;
+      const subject = document.getElementById('rm-subject').value.trim();
+      const message = document.getElementById('rm-message').value.trim();
+      const cta_text = document.getElementById('rm-cta-text').value.trim();
+      const cta_url = document.getElementById('rm-cta-url').value.trim();
+      if (!subject || !message) { toast('Completa el asunto y el mensaje', 'err'); return; }
+      const btn = document.querySelector('#p-remarketing .btn-r');
+      if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+      try {
+        const res = await api('/api/remarketing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ segment, subject, message, cta_text, cta_url })
+        });
+        const resultEl = document.getElementById('rm-result');
+        resultEl.style.display = 'block';
+        resultEl.style.background = res.errors > 0 ? '#fff3cd' : '#d1fae5';
+        resultEl.style.border = '1px solid ' + (res.errors > 0 ? '#ffc107' : '#6ee7b7');
+        resultEl.style.color = '#2C2C2C';
+        resultEl.textContent = 'Enviado a ' + res.sent + ' de ' + res.total_recipients + ' destinatarios' + (res.errors > 0 ? '. Errores: ' + res.errors : '');
+        toast('Campaña enviada: ' + res.sent + ' emails');
+      } catch (e) {
+        toast('Error al enviar: ' + e.message, 'err');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Enviar campaña'; }
+      }
     }
 
     // ──── PLANES DINÁMICOS ────

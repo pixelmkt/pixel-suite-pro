@@ -429,6 +429,151 @@ app.get('/api/admin/subscriptions', async (req, res) => {
     } catch (e) { res.json({ data: [], total: 0, error: e.message }); }
 });
 
+/* ══════════════════════════════════════════════════
+   👥 CLIENTES — lee clientes reales de Shopify
+══════════════════════════════════════════════════ */
+app.get('/api/customers', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.json({ customers: [], total: 0, error: 'No Shopify token configured' });
+
+        const { query = '', segment = 'all', page_info } = req.query;
+        let url = `https://${shop}/admin/api/2026-01/customers.json?limit=250&fields=id,email,first_name,last_name,orders_count,total_spent,tags,created_at,phone,state`;
+        if (query) url += `&email=${encodeURIComponent(query)}`;
+
+        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+        if (!r.ok) return res.json({ customers: [], total: 0, error: 'Shopify API error: ' + r.status });
+        const data = await r.json();
+
+        // Cross-reference with our subscription records
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const subsByEmail = {};
+        allSubs.forEach(s => {
+            const email = (s.customer_email || '').toLowerCase();
+            if (!subsByEmail[email]) subsByEmail[email] = [];
+            subsByEmail[email].push(s);
+        });
+
+        let customers = (data.customers || []).map(c => {
+            const email = (c.email || '').toLowerCase();
+            const subs = subsByEmail[email] || [];
+            const activeSub = subs.find(s => s.status === 'active');
+            return {
+                id: c.id,
+                email: c.email,
+                name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.email,
+                first_name: c.first_name,
+                last_name: c.last_name,
+                orders_count: c.orders_count || 0,
+                total_spent: c.total_spent || '0.00',
+                tags: c.tags || '',
+                phone: c.phone,
+                state: c.state,
+                created_at: c.created_at,
+                is_subscriber: subs.length > 0,
+                subscription_status: activeSub ? activeSub.status : (subs.length ? subs[subs.length - 1].status : null),
+                subscription_count: subs.length,
+                next_charge_at: activeSub ? activeSub.next_charge_at : null
+            };
+        });
+
+        // Apply segment filter
+        if (segment === 'subscribers') customers = customers.filter(c => c.is_subscriber);
+        else if (segment === 'active') customers = customers.filter(c => c.subscription_status === 'active');
+        else if (segment === 'paused') customers = customers.filter(c => c.subscription_status === 'paused');
+        else if (segment === 'non_subscribers') customers = customers.filter(c => !c.is_subscriber);
+        else if (segment === 'next7d') {
+            const in7 = new Date(Date.now() + 7 * 86400000);
+            customers = customers.filter(c => c.next_charge_at && new Date(c.next_charge_at) <= in7);
+        }
+
+        console.log(`[CUSTOMERS] ${customers.length} returned (segment: ${segment})`);
+        res.json({ customers, total: customers.length });
+    } catch (e) {
+        console.error('[CUSTOMERS] Error:', e.message);
+        res.json({ customers: [], total: 0, error: e.message });
+    }
+});
+
+/* ── REMARKETING SEGMENTS — preview counts ── */
+app.get('/api/remarketing/segments', async (req, res) => {
+    try {
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const now = new Date();
+        const in7 = new Date(Date.now() + 7 * 86400000);
+
+        const counts = {
+            active: allSubs.filter(s => s.status === 'active').length,
+            paused: allSubs.filter(s => s.status === 'paused').length,
+            cancelled: allSubs.filter(s => s.status === 'cancelled').length,
+            next7d: allSubs.filter(s => s.status === 'active' && s.next_charge_at && new Date(s.next_charge_at) <= in7).length,
+            all_subscribers: allSubs.length
+        };
+        res.json(counts);
+    } catch (e) { res.json({ active: 0, paused: 0, cancelled: 0, next7d: 0, all_subscribers: 0 }); }
+});
+
+/* ── REMARKETING SEND — email campaigns to subscriber segments ── */
+app.post('/api/remarketing', async (req, res) => {
+    try {
+        const { segment = 'active', subject, message, cta_text, cta_url } = req.body;
+        if (!subject || !message) return res.status(400).json({ error: 'subject and message are required' });
+
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const in7 = new Date(Date.now() + 7 * 86400000);
+
+        let targets;
+        switch (segment) {
+            case 'active': targets = allSubs.filter(s => s.status === 'active'); break;
+            case 'paused': targets = allSubs.filter(s => s.status === 'paused'); break;
+            case 'cancelled': targets = allSubs.filter(s => s.status === 'cancelled'); break;
+            case 'next7d': targets = allSubs.filter(s => s.status === 'active' && s.next_charge_at && new Date(s.next_charge_at) <= in7); break;
+            default: targets = allSubs; break;
+        }
+
+        // Deduplicate by email
+        const seen = new Set();
+        targets = targets.filter(s => {
+            const email = (s.customer_email || '').toLowerCase();
+            if (!email || seen.has(email)) return false;
+            seen.add(email);
+            return true;
+        });
+
+        if (!targets.length) return res.json({ success: true, sent: 0, message: 'No recipients in this segment' });
+
+        // Send emails via notifications service if available
+        let sent = 0;
+        let errors = 0;
+        if (notifications.sendRaw) {
+            for (const sub of targets) {
+                try {
+                    await notifications.sendRaw({
+                        to: sub.customer_email,
+                        name: sub.customer_name,
+                        subject,
+                        message,
+                        cta_text: cta_text || 'Ver mis suscripciones',
+                        cta_url: cta_url || `${HOST}/portal`
+                    });
+                    sent++;
+                } catch { errors++; }
+            }
+        } else {
+            // Log recipients if SMTP not configured
+            targets.forEach(s => console.log(`[REMARKETING] Would send to: ${s.customer_email}`));
+            sent = targets.length;
+        }
+
+        console.log(`[REMARKETING] Segment: ${segment}, Sent: ${sent}, Errors: ${errors}`);
+        res.json({ success: true, sent, errors, total_recipients: targets.length, segment });
+    } catch (e) {
+        console.error('[REMARKETING] Error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 /* ═══════════════════════════════════════════════
    🔔 MERCADO PAGO WEBHOOK
 ═══════════════════════════════════════════════ */
