@@ -1332,10 +1332,20 @@
           <div class="pt">Productos con suscripción</div>
           <div class="ps">Activa el widget y configura descuento por producto</div>
         </div>
+        <button class="btn btn-g btn-sm" onclick="loadProds()">Actualizar</button>
       </div>
       <div class="content">
-        <div class="info-box">💡 <strong>Click en ⚙ Configurar</strong> para definir los descuentos específicos de cada
-          producto. El widget mostrará automáticamente los porcentajes configurados.</div>
+        <div class="info-box">Haz click en <strong>Configurar</strong> para definir los descuentos específicos de cada producto. El widget mostrará automáticamente los porcentajes configurados.</div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+          <div class="search-box" style="flex:1;min-width:220px;margin:0">
+            <input id="prod-search" placeholder="Buscar producto por nombre..." oninput="filterProds(this.value)">
+          </div>
+          <div class="filter-pills" style="margin:0">
+            <span class="pill active" onclick="setProdFilter('all',this)">Todos</span>
+            <span class="pill" onclick="setProdFilter('active',this)">Con suscripción</span>
+            <span class="pill" onclick="setProdFilter('inactive',this)">Sin suscripción</span>
+          </div>
+        </div>
         <div class="card">
           <div class="card-head"><span class="card-title" id="prod-count">Cargando productos...</span></div>
           <div style="padding:16px" id="prod-list">
@@ -1935,7 +1945,7 @@
     function filterSubs(q) { _subSearch = q.toLowerCase(); renderSubs(); }
     function setSubFilter(f, el) {
       _subFilter = f;
-      document.querySelectorAll('.filter-pills .pill').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('#p-subs .filter-pills .pill').forEach(p => p.classList.remove('active'));
       el.classList.add('active'); renderSubs();
     }
     async function subAction(id, action) {
@@ -1948,23 +1958,39 @@
     }
 
     // ──── PRODUCTOS ────
+    let _prodSearch = '', _prodFilter = 'all';
+
     async function loadProds() {
       document.getElementById('prod-list').innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">Cargando...</div>';
       try {
         const data = await api('/api/products');
         _shopifyProds = Array.isArray(data) ? data : [];
-        const active = _shopifyProds.filter(p => p.subscription_enabled);
-        document.getElementById('prod-count').textContent = `${active.length} activos de ${_shopifyProds.length} en catálogo`;
-        if (!_shopifyProds.length) {
-          document.getElementById('prod-list').innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">No se encontraron productos. Verifica SHOPIFY_ACCESS_TOKEN en Railway.</div>';
-          return;
-        }
-        const noImg = `<svg style="opacity:.2" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>`;
-        document.getElementById('prod-list').innerHTML = `<div class="prod-grid">` +
-          _shopifyProds.map(p => {
-            const on = !!p.subscription_enabled;
-            const t = (p.title || '').replace(/'/g, "\\'");
-            return `<div class="prod-card${on ? ' on' : ''}">
+        renderProds();
+      } catch (e) {
+        document.getElementById('prod-list').innerHTML = `<div style="text-align:center;padding:32px;color:var(--red)">Error: ${e.message}<br><small>Verifica SHOPIFY_ACCESS_TOKEN en Railway</small></div>`;
+      }
+    }
+
+    function renderProds() {
+      let list = _shopifyProds;
+      if (_prodFilter === 'active') list = list.filter(p => p.subscription_enabled);
+      else if (_prodFilter === 'inactive') list = list.filter(p => !p.subscription_enabled);
+      if (_prodSearch) {
+        const s = _prodSearch.toLowerCase();
+        list = list.filter(p => (p.title || '').toLowerCase().includes(s));
+      }
+      const active = _shopifyProds.filter(p => p.subscription_enabled);
+      document.getElementById('prod-count').textContent = `${active.length} activos de ${_shopifyProds.length} en catálogo · ${list.length} visibles`;
+      if (!list.length) {
+        document.getElementById('prod-list').innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">Sin productos para mostrar con este filtro.</div>';
+        return;
+      }
+      const noImg = `<svg style="opacity:.2" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>`;
+      document.getElementById('prod-list').innerHTML = `<div class="prod-grid">` +
+        list.map(p => {
+          const on = !!p.subscription_enabled;
+          const t = (p.title || '').replace(/'/g, "\\'");
+          return `<div class="prod-card${on ? ' on' : ''}">
           <div class="prod-img">${p.image ? `<img src="${p.image}" loading="lazy">` : noImg}</div>
           <div class="prod-name">${p.title}</div>
           <div class="prod-actions">
@@ -1972,13 +1998,18 @@
               <span class="toggle"><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleProd('${p.shopify_id}',this.checked,'${t}')"><span class="tslide"></span></span>
             </label>
             <span style="font-size:11px;color:var(--mut);flex:1">${on ? 'Activo' : 'Inactivo'}</span>
-            <button class="btn btn-g btn-sm" onclick="openConfig('${p.shopify_id}','${t}')">⚙ Config</button>
+            <button class="btn btn-g btn-sm" onclick="openConfig('${p.shopify_id}','${t}')">Config</button>
           </div>
         </div>`;
-          }).join('') + `</div>`;
-      } catch (e) {
-        document.getElementById('prod-list').innerHTML = `<div style="text-align:center;padding:32px;color:var(--red)">Error: ${e.message}</div>`;
-      }
+        }).join('') + `</div>`;
+    }
+
+    function filterProds(q) { _prodSearch = q.toLowerCase(); renderProds(); }
+    function setProdFilter(f, el) {
+      _prodFilter = f;
+      document.querySelectorAll('#p-prods .filter-pills .pill').forEach(p => p.classList.remove('active'));
+      el.classList.add('active');
+      renderProds();
     }
 
     async function toggleProd(id, active, title) {

@@ -362,14 +362,16 @@ app.get('/api/products', async (req, res) => {
 
 app.post('/api/products', async (req, res) => {
     try {
-        const current = await readFromShopify('lab_app', 'eligible_products') || [];
+        // Always force array — readFromShopify can return {} if metafield was stored incorrectly
+        let current = await readFromShopify('lab_app', 'eligible_products') || [];
+        if (!Array.isArray(current)) current = [];
         const pid = req.body.shopify_id || req.body.shopify_product_id;
         const idx = current.findIndex(p => (p.shopify_id || p.shopify_product_id) === pid);
         const entry = { shopify_id: pid, product_title: req.body.product_title, is_active: req.body.is_active !== false, updated_at: new Date().toISOString() };
         if (idx >= 0) current[idx] = { ...current[idx], ...entry };
         else current.push({ ...entry, created_at: new Date().toISOString() });
         await saveToShopify(current, 'lab_app', 'eligible_products');
-        console.log('[PRODUCTS] Saved ' + current.length + ' eligible products, toggled ' + pid);
+        console.log('[PRODUCTS] Saved ' + current.length + ' eligible products, toggled ' + pid + ' to ' + entry.is_active);
         res.json({ success: true, product: entry });
     } catch (e) {
         console.error('[PRODUCTS] Save error:', e.message);
