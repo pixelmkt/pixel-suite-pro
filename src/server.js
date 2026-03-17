@@ -634,65 +634,6 @@ app.post('/api/remarketing', async (req, res) => {
 });
 
 
-
-        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
-        if (!r.ok) return res.json({ customers: [], total: 0, error: 'Shopify API error: ' + r.status });
-        const data = await r.json();
-
-        // Cross-reference with our subscription records
-        const allSubs = await db.getSubscriptions().catch(() => []);
-        const subsByEmail = {};
-        allSubs.forEach(s => {
-            const email = (s.customer_email || '').toLowerCase();
-            if (!subsByEmail[email]) subsByEmail[email] = [];
-            subsByEmail[email].push(s);
-        });
-
-        let customers = (data.customers || []).map(c => {
-            const email = (c.email || '').toLowerCase();
-            const subs = subsByEmail[email] || [];
-            const activeSub = subs.find(s => s.status === 'active');
-            return {
-                id: c.id,
-                email: c.email,
-                name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.email,
-                first_name: c.first_name,
-                last_name: c.last_name,
-                orders_count: c.orders_count || 0,
-                total_spent: c.total_spent || '0.00',
-                tags: c.tags || '',
-                phone: c.phone,
-                state: c.state,
-                created_at: c.created_at,
-                is_subscriber: subs.length > 0,
-                subscription_status: activeSub ? activeSub.status : (subs.length ? subs[subs.length - 1].status : null),
-                subscription_count: subs.length,
-                next_charge_at: activeSub ? activeSub.next_charge_at : null
-            };
-        });
-
-        // Apply segment filter
-        if (segment === 'subscribers') customers = customers.filter(c => c.is_subscriber);
-        else if (segment === 'active') customers = customers.filter(c => c.subscription_status === 'active');
-        else if (segment === 'paused') customers = customers.filter(c => c.subscription_status === 'paused');
-        else if (segment === 'non_subscribers') customers = customers.filter(c => !c.is_subscriber);
-        else if (segment === 'next7d') {
-            const in7 = new Date(Date.now() + 7 * 86400000);
-            customers = customers.filter(c => c.next_charge_at && new Date(c.next_charge_at) <= in7);
-        }
-
-        // Client-side sort when applying segment filter on a paginated page
-        if (sort === 'orders') customers.sort((a, b) => b.orders_count - a.orders_count);
-        else customers.sort((a, b) => b.total_spent - a.total_spent); // default: highest spenders
-
-        console.log(`[CUSTOMERS] ${customers.length} returned (sort:${sort}, segment:${segment}, has_more:${!!nextPageInfo})`);
-        res.json({ customers, total: customers.length, has_more: !!nextPageInfo, next_page_info: nextPageInfo });
-    } catch (e) {
-        console.error('[CUSTOMERS] Error:', e.message);
-        res.json({ customers: [], total: 0, has_more: false, error: e.message });
-    }
-});
-
 /* ═══════════════════════════════════════════════
    🔔 MERCADO PAGO WEBHOOK
 ═══════════════════════════════════════════════ */
