@@ -931,7 +931,7 @@ async function saveToShopify(settings, ns, key) {
     const mfKey = key || METAFIELD_KEY;
     try {
         const checkR = await fetch(
-            `https://${shop}/admin/api/2025-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${namespace}&metafield[key]=${mfKey}`,
+            `https://${shop}/admin/api/2026-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${namespace}&metafield[key]=${mfKey}`,
             { headers: { 'X-Shopify-Access-Token': token } }
         );
         const checkData = await checkR.json();
