@@ -856,8 +856,13 @@
           <div class="pt">Clientes</div>
           <div class="ps">Clientes de Shopify cruzados con suscripciones activas</div>
         </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-g btn-sm" onclick="loadCustomers()">Actualizar</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="cust-sort" onchange="reloadCustomers()" style="border:1.5px solid var(--bdr);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;background:#fff;color:var(--txt)">
+            <option value="total_spent">Mayor gasto</option>
+            <option value="orders">Más pedidos</option>
+            <option value="recent">Más recientes</option>
+          </select>
+          <button class="btn btn-g btn-sm" onclick="reloadCustomers()">Actualizar</button>
           <button class="btn btn-r btn-sm" onclick="getCustSegmentForRemarketing()">Crear campaña</button>
         </div>
       </div>
@@ -876,8 +881,8 @@
         </div>
         <div class="card">
           <div class="card-head">
-            <span class="card-title">Lista de clientes</span>
-            <span id="cust-count" style="font-size:11px;color:var(--mut)"></span>
+            <span class="card-title" id="cust-count">Cargando clientes...</span>
+            <span id="cust-total-badge" style="font-size:11px;color:var(--mut)"></span>
           </div>
           <table>
             <thead>
@@ -895,6 +900,9 @@
               <tr><td colspan="7" style="text-align:center;padding:28px;color:var(--mut)">Cargando clientes...</td></tr>
             </tbody>
           </table>
+          <div id="cust-load-more" style="display:none;padding:12px;text-align:center">
+            <button class="btn btn-g" onclick="loadMoreCustomers()" style="width:100%">Cargar más clientes</button>
+          </div>
         </div>
       </div>
     </div>
@@ -908,7 +916,7 @@
         </div>
       </div>
       <div class="content">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px">
           <div class="stat" style="cursor:pointer" onclick="setRemSegment('active',this)">
             <div class="stat-val" id="rm-active" style="color:var(--grn)">-</div>
             <div class="stat-lbl">Activos</div>
@@ -923,7 +931,11 @@
           </div>
           <div class="stat" style="cursor:pointer" onclick="setRemSegment('next7d',this)">
             <div class="stat-val" id="rm-next7d">-</div>
-            <div class="stat-lbl">Cobros próx. 7 días</div>
+            <div class="stat-lbl">Cobros próx. 7d</div>
+          </div>
+          <div class="stat" style="cursor:pointer;border:1.5px solid var(--acc)" onclick="setRemSegment('all_customers',this)">
+            <div class="stat-val" id="rm-all-customers" style="color:var(--acc)">-</div>
+            <div class="stat-lbl">Todos en Shopify</div>
           </div>
         </div>
         <div class="card">
@@ -937,6 +949,7 @@
                 <option value="cancelled">Suscriptores cancelados</option>
                 <option value="next7d">Con cobro en los próximos 7 días</option>
                 <option value="all_subscribers">Todos los suscriptores</option>
+                <option value="all_customers">Todos los clientes en Shopify (base de datos completa)</option>
               </select>
               <div id="rm-recipient-count" style="font-size:11px;color:var(--mut);margin-top:5px"></div>
             </div>
@@ -1568,20 +1581,39 @@
       if (id === 'remarketing') loadRemarketing();
     }
 
-    // ──── CLIENTES ────
-    let _allCustomers = [], _custFilter = 'all', _custSearch = '';
+    // \u2500\u2500\u2500\u2500 CLIENTES \u2500\u2500\u2500\u2500
+    let _allCustomers = [], _custFilter = 'all', _custSearch = '', _custNextPageInfo = null;
+
+    function reloadCustomers() {
+      _allCustomers = []; _custNextPageInfo = null;
+      loadCustomers();
+    }
 
     async function loadCustomers() {
-      document.getElementById('cust-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--mut)">Cargando clientes de Shopify...</td></tr>';
+      if (!_custNextPageInfo) {
+        document.getElementById('cust-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--mut)">Cargando clientes de Shopify...</td></tr>';
+      }
+      const sort = document.getElementById('cust-sort')?.value || 'total_spent';
+      const query = document.getElementById('cust-search')?.value || '';
+      let url = `/api/customers?sort=${sort}&limit=250`;
+      if (query) url += `&query=${encodeURIComponent(query)}`;
+      if (_custNextPageInfo) url += `&page_info=${encodeURIComponent(_custNextPageInfo)}`;
       try {
-        const data = await api('/api/customers').catch(() => ({ customers: [] }));
-        _allCustomers = Array.isArray(data.customers) ? data.customers : [];
+        const data = await api(url).catch(() => ({ customers: [], has_more: false }));
+        const newBatch = Array.isArray(data.customers) ? data.customers : [];
+        _allCustomers = _custNextPageInfo ? [..._allCustomers, ...newBatch] : newBatch;
+        _custNextPageInfo = data.has_more ? data.next_page_info : null;
+        const loadMoreDiv = document.getElementById('cust-load-more');
+        if (loadMoreDiv) loadMoreDiv.style.display = _custNextPageInfo ? 'block' : 'none';
+        const badge = document.getElementById('cust-total-badge');
+        if (badge) badge.textContent = _custNextPageInfo ? `(cargados ${_allCustomers.length}, hay m\u00e1s)` : `(total: ${_allCustomers.length})`;
         renderCustomers();
-        document.getElementById('cust-count').textContent = _allCustomers.length + ' clientes';
       } catch (e) {
-        document.getElementById('cust-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--red)">Error al cargar: ' + e.message + '</td></tr>';
+        document.getElementById('cust-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--red)">Error: ' + e.message + '</td></tr>';
       }
     }
+
+    function loadMoreCustomers() { loadCustomers(); }
 
     function renderCustomers() {
       let list = _allCustomers;
@@ -1601,12 +1633,12 @@
       document.getElementById('cust-tbody').innerHTML = list.map(c => {
         const subBadge = c.is_subscriber
           ? '<span class="badge b-' + (c.subscription_status || 'active') + '">' + (c.subscription_status || 'activo') + '</span>'
-          : '<span style="color:var(--mut);font-size:11px">—</span>';
-        const nextCharge = c.next_charge_at ? new Date(c.next_charge_at).toLocaleDateString('es-PE') : '—';
-        const reg = c.created_at ? new Date(c.created_at).toLocaleDateString('es-PE') : '—';
+          : '<span style="color:var(--mut);font-size:11px">\u2014</span>';
+        const nextCharge = c.next_charge_at ? new Date(c.next_charge_at).toLocaleDateString('es-PE') : '\u2014';
+        const reg = c.created_at ? new Date(c.created_at).toLocaleDateString('es-PE') : '\u2014';
         return `<tr>
-          <td><div style="font-weight:600">${c.name || '—'}</div></td>
-          <td style="font-size:12px;color:var(--mut)">${c.email || '—'}</td>
+          <td><div style="font-weight:600">${c.name || '\u2014'}</div></td>
+          <td style="font-size:12px;color:var(--mut)">${c.email || '\u2014'}</td>
           <td>${subBadge}</td>
           <td>${c.orders_count || 0}</td>
           <td>S/ ${parseFloat(c.total_spent || 0).toFixed(2)}</td>
@@ -1623,11 +1655,9 @@
       el.classList.add('active');
       renderCustomers();
     }
-    function getCustSegmentForRemarketing() {
-      nav('remarketing');
-    }
+    function getCustSegmentForRemarketing() { nav('remarketing'); }
 
-    // ──── REMARKETING ────
+    // \u2500\u2500\u2500\u2500 REMARKETING \u2500\u2500\u2500\u2500
     let _remSegments = {};
 
     async function loadRemarketing() {
@@ -1637,6 +1667,8 @@
         document.getElementById('rm-paused').textContent = _remSegments.paused || 0;
         document.getElementById('rm-cancelled').textContent = _remSegments.cancelled || 0;
         document.getElementById('rm-next7d').textContent = _remSegments.next7d || 0;
+        const allCustEl = document.getElementById('rm-all-customers');
+        if (allCustEl) allCustEl.textContent = _remSegments.all_customers > 0 ? _remSegments.all_customers.toLocaleString() : '-';
         updateRemCount();
       } catch (e) { console.error('[REMARKETING]', e); }
     }

@@ -432,17 +432,208 @@ app.get('/api/admin/subscriptions', async (req, res) => {
 });
 
 /* ══════════════════════════════════════════════════
-   👥 CLIENTES — lee clientes reales de Shopify
+   👥 CLIENTES — paginación cursor-based Shopify (soporta 50k+)
 ══════════════════════════════════════════════════ */
+
+/** Fetch ONE page of Shopify customers and return next cursor */
+async function fetchShopifyCustomersPage(shop, token, { pageInfo, limit = 250, sort, query } = {}) {
+    let url = `https://${shop}/admin/api/2026-01/customers.json?limit=${limit}&fields=id,email,first_name,last_name,orders_count,total_spent,tags,created_at,phone,state`;
+    if (pageInfo) {
+        // Cursor-based pagination — replaces all other params
+        url = `https://${shop}/admin/api/2026-01/customers.json?limit=${limit}&page_info=${pageInfo}&fields=id,email,first_name,last_name,orders_count,total_spent,tags,created_at,phone,state`;
+    } else {
+        // First page — apply filters
+        if (query) url += `&query=${encodeURIComponent(query)}`;
+        // Shopify supports: created_at desc, total_spent desc, orders_count desc
+        if (sort === 'total_spent') url += '&order=total_spent+desc';
+        else if (sort === 'orders') url += '&order=orders_count+desc';
+        else if (sort === 'recent') url += '&order=created_at+desc';
+        else url += '&order=total_spent+desc'; // default: highest spenders first
+    }
+    const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+    if (!r.ok) throw new Error('Shopify API error: ' + r.status);
+    const data = await r.json();
+    // Parse Link header for next cursor
+    const linkHeader = r.headers.get('Link') || '';
+    let nextPageInfo = null;
+    const nextMatch = linkHeader.match(/<[^>]+[?&]page_info=([^&>]+)[^>]*>;\s*rel="next"/);
+    if (nextMatch) nextPageInfo = nextMatch[1];
+    return { customers: data.customers || [], nextPageInfo };
+}
+
 app.get('/api/customers', async (req, res) => {
     try {
         const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
         const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
-        if (!token) return res.json({ customers: [], total: 0, error: 'No Shopify token configured' });
+        if (!token) return res.json({ customers: [], total: 0, has_more: false, error: 'No Shopify token configured' });
 
-        const { query = '', segment = 'all', page_info } = req.query;
-        let url = `https://${shop}/admin/api/2026-01/customers.json?limit=250&fields=id,email,first_name,last_name,orders_count,total_spent,tags,created_at,phone,state`;
-        if (query) url += `&email=${encodeURIComponent(query)}`;
+        const { query = '', segment = 'all', page_info, sort = 'total_spent', limit = '250' } = req.query;
+        const pageSize = Math.min(parseInt(limit) || 250, 250); // max 250 per Shopify
+
+        const { customers: raw, nextPageInfo } = await fetchShopifyCustomersPage(shop, token, {
+            pageInfo: page_info || null,
+            limit: pageSize,
+            sort,
+            query: query.trim()
+        });
+
+        // Cross-reference with subscriptions
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const subsByEmail = {};
+        allSubs.forEach(s => {
+            const email = (s.customer_email || '').toLowerCase();
+            if (!subsByEmail[email]) subsByEmail[email] = [];
+            subsByEmail[email].push(s);
+        });
+
+        let customers = raw.map(c => {
+            const email = (c.email || '').toLowerCase();
+            const subs = subsByEmail[email] || [];
+            const activeSub = subs.find(s => s.status === 'active');
+            return {
+                id: c.id,
+                email: c.email,
+                name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.email,
+                orders_count: parseInt(c.orders_count) || 0,
+                total_spent: parseFloat(c.total_spent || 0),
+                tags: c.tags || '',
+                phone: c.phone || '',
+                created_at: c.created_at,
+                is_subscriber: subs.length > 0,
+                subscription_status: activeSub ? activeSub.status : (subs.length ? subs[subs.length - 1].status : null),
+                subscription_count: subs.length,
+                next_charge_at: activeSub ? activeSub.next_charge_at : null
+            };
+        });
+
+        // Apply segment filter
+        if (segment === 'subscribers') customers = customers.filter(c => c.is_subscriber);
+        else if (segment === 'active') customers = customers.filter(c => c.subscription_status === 'active');
+        else if (segment === 'paused') customers = customers.filter(c => c.subscription_status === 'paused');
+        else if (segment === 'non_subscribers') customers = customers.filter(c => !c.is_subscriber);
+        else if (segment === 'next7d') {
+            const in7 = new Date(Date.now() + 7 * 86400000);
+            customers = customers.filter(c => c.next_charge_at && new Date(c.next_charge_at) <= in7);
+        }
+
+        // Client-side sort by total_spent if not done server-side (fallback)
+        if (sort === 'total_spent') customers.sort((a, b) => b.total_spent - a.total_spent);
+        else if (sort === 'orders') customers.sort((a, b) => b.orders_count - a.orders_count);
+
+        console.log(`[CUSTOMERS] ${customers.length} returned (sort:${sort}, segment:${segment}, has_more:${!!nextPageInfo})`);
+        res.json({ customers, total: customers.length, has_more: !!nextPageInfo, next_page_info: nextPageInfo });
+    } catch (e) {
+        console.error('[CUSTOMERS] Error:', e.message);
+        res.json({ customers: [], total: 0, has_more: false, error: e.message });
+    }
+});
+
+/* ── REMARKETING SEGMENTS — preview counts (now includes all_customers from Shopify) ── */
+app.get('/api/remarketing/segments', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const in7 = new Date(Date.now() + 7 * 86400000);
+
+        // Get Shopify total customer count from API
+        let shopifyTotal = 0;
+        if (token) {
+            try {
+                const cr = await fetch(`https://${shop}/admin/api/2026-01/customers/count.json`, { headers: { 'X-Shopify-Access-Token': token } });
+                if (cr.ok) { const cd = await cr.json(); shopifyTotal = cd.count || 0; }
+            } catch { }
+        }
+
+        res.json({
+            active: allSubs.filter(s => s.status === 'active').length,
+            paused: allSubs.filter(s => s.status === 'paused').length,
+            cancelled: allSubs.filter(s => s.status === 'cancelled').length,
+            next7d: allSubs.filter(s => s.status === 'active' && s.next_charge_at && new Date(s.next_charge_at) <= in7).length,
+            all_subscribers: allSubs.length,
+            all_customers: shopifyTotal
+        });
+    } catch (e) { res.json({ active: 0, paused: 0, cancelled: 0, next7d: 0, all_subscribers: 0, all_customers: 0 }); }
+});
+
+/* ── REMARKETING SEND — supports all_customers segment (paginates all Shopify customers) ── */
+app.post('/api/remarketing', async (req, res) => {
+    try {
+        const { segment = 'active', subject, message, cta_text, cta_url } = req.body;
+        if (!subject || !message) return res.status(400).json({ error: 'subject and message are required' });
+
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+
+        let emailList = []; // { email, name }
+
+        if (segment === 'all_customers') {
+            // Paginate through ALL Shopify customers
+            if (!token) return res.status(400).json({ error: 'No Shopify token configured for all_customers segment' });
+            let pageInfo = null;
+            let page = 0;
+            do {
+                const { customers, nextPageInfo } = await fetchShopifyCustomersPage(shop, token, { pageInfo, limit: 250 });
+                customers.forEach(c => {
+                    if (c.email) emailList.push({ email: c.email, name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.email });
+                });
+                pageInfo = nextPageInfo;
+                page++;
+                console.log(`[REMARKETING] Fetched page ${page}, total so far: ${emailList.length}`);
+            } while (pageInfo && page < 400); // safety limit: 400 pages × 250 = 100k
+        } else {
+            // Subscriber-based segments
+            const allSubs = await db.getSubscriptions().catch(() => []);
+            const in7 = new Date(Date.now() + 7 * 86400000);
+            let targets;
+            switch (segment) {
+                case 'active': targets = allSubs.filter(s => s.status === 'active'); break;
+                case 'paused': targets = allSubs.filter(s => s.status === 'paused'); break;
+                case 'cancelled': targets = allSubs.filter(s => s.status === 'cancelled'); break;
+                case 'next7d': targets = allSubs.filter(s => s.status === 'active' && s.next_charge_at && new Date(s.next_charge_at) <= in7); break;
+                default: targets = allSubs; break;
+            }
+            emailList = targets.map(s => ({ email: s.customer_email, name: s.customer_name || '' }));
+        }
+
+        // Deduplicate by email
+        const seen = new Set();
+        emailList = emailList.filter(e => {
+            const em = (e.email || '').toLowerCase();
+            if (!em || seen.has(em)) return false;
+            seen.add(em); return true;
+        });
+
+        if (!emailList.length) return res.json({ success: true, sent: 0, total_recipients: 0, message: 'No recipients in this segment' });
+
+        let sent = 0, errors = 0;
+        if (notifications.sendRaw) {
+            // Send in batches to avoid overloading
+            for (const recipient of emailList) {
+                try {
+                    await notifications.sendRaw({
+                        to: recipient.email, name: recipient.name, subject, message,
+                        cta_text: cta_text || 'Ver tienda',
+                        cta_url: cta_url || `https://${shop.replace('.myshopify.com', '')}.myshopify.com`
+                    });
+                    sent++;
+                } catch { errors++; }
+            }
+        } else {
+            // No SMTP — log and report
+            emailList.forEach(e => console.log(`[REMARKETING] Would send to: ${e.email}`));
+            sent = emailList.length;
+        }
+
+        console.log(`[REMARKETING] Segment: ${segment}, Recipients: ${emailList.length}, Sent: ${sent}, Errors: ${errors}`);
+        res.json({ success: true, sent, errors, total_recipients: emailList.length, segment });
+    } catch (e) {
+        console.error('[REMARKETING] Error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+
 
         const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
         if (!r.ok) return res.json({ customers: [], total: 0, error: 'Shopify API error: ' + r.status });
@@ -490,89 +681,15 @@ app.get('/api/customers', async (req, res) => {
             customers = customers.filter(c => c.next_charge_at && new Date(c.next_charge_at) <= in7);
         }
 
-        console.log(`[CUSTOMERS] ${customers.length} returned (segment: ${segment})`);
-        res.json({ customers, total: customers.length });
+        // Client-side sort when applying segment filter on a paginated page
+        if (sort === 'orders') customers.sort((a, b) => b.orders_count - a.orders_count);
+        else customers.sort((a, b) => b.total_spent - a.total_spent); // default: highest spenders
+
+        console.log(`[CUSTOMERS] ${customers.length} returned (sort:${sort}, segment:${segment}, has_more:${!!nextPageInfo})`);
+        res.json({ customers, total: customers.length, has_more: !!nextPageInfo, next_page_info: nextPageInfo });
     } catch (e) {
         console.error('[CUSTOMERS] Error:', e.message);
-        res.json({ customers: [], total: 0, error: e.message });
-    }
-});
-
-/* ── REMARKETING SEGMENTS — preview counts ── */
-app.get('/api/remarketing/segments', async (req, res) => {
-    try {
-        const allSubs = await db.getSubscriptions().catch(() => []);
-        const now = new Date();
-        const in7 = new Date(Date.now() + 7 * 86400000);
-
-        const counts = {
-            active: allSubs.filter(s => s.status === 'active').length,
-            paused: allSubs.filter(s => s.status === 'paused').length,
-            cancelled: allSubs.filter(s => s.status === 'cancelled').length,
-            next7d: allSubs.filter(s => s.status === 'active' && s.next_charge_at && new Date(s.next_charge_at) <= in7).length,
-            all_subscribers: allSubs.length
-        };
-        res.json(counts);
-    } catch (e) { res.json({ active: 0, paused: 0, cancelled: 0, next7d: 0, all_subscribers: 0 }); }
-});
-
-/* ── REMARKETING SEND — email campaigns to subscriber segments ── */
-app.post('/api/remarketing', async (req, res) => {
-    try {
-        const { segment = 'active', subject, message, cta_text, cta_url } = req.body;
-        if (!subject || !message) return res.status(400).json({ error: 'subject and message are required' });
-
-        const allSubs = await db.getSubscriptions().catch(() => []);
-        const in7 = new Date(Date.now() + 7 * 86400000);
-
-        let targets;
-        switch (segment) {
-            case 'active': targets = allSubs.filter(s => s.status === 'active'); break;
-            case 'paused': targets = allSubs.filter(s => s.status === 'paused'); break;
-            case 'cancelled': targets = allSubs.filter(s => s.status === 'cancelled'); break;
-            case 'next7d': targets = allSubs.filter(s => s.status === 'active' && s.next_charge_at && new Date(s.next_charge_at) <= in7); break;
-            default: targets = allSubs; break;
-        }
-
-        // Deduplicate by email
-        const seen = new Set();
-        targets = targets.filter(s => {
-            const email = (s.customer_email || '').toLowerCase();
-            if (!email || seen.has(email)) return false;
-            seen.add(email);
-            return true;
-        });
-
-        if (!targets.length) return res.json({ success: true, sent: 0, message: 'No recipients in this segment' });
-
-        // Send emails via notifications service if available
-        let sent = 0;
-        let errors = 0;
-        if (notifications.sendRaw) {
-            for (const sub of targets) {
-                try {
-                    await notifications.sendRaw({
-                        to: sub.customer_email,
-                        name: sub.customer_name,
-                        subject,
-                        message,
-                        cta_text: cta_text || 'Ver mis suscripciones',
-                        cta_url: cta_url || `${HOST}/portal`
-                    });
-                    sent++;
-                } catch { errors++; }
-            }
-        } else {
-            // Log recipients if SMTP not configured
-            targets.forEach(s => console.log(`[REMARKETING] Would send to: ${s.customer_email}`));
-            sent = targets.length;
-        }
-
-        console.log(`[REMARKETING] Segment: ${segment}, Sent: ${sent}, Errors: ${errors}`);
-        res.json({ success: true, sent, errors, total_recipients: targets.length, segment });
-    } catch (e) {
-        console.error('[REMARKETING] Error:', e.message);
-        res.status(500).json({ error: e.message });
+        res.json({ customers: [], total: 0, has_more: false, error: e.message });
     }
 });
 
