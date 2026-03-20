@@ -2011,11 +2011,56 @@
 
     async function toggleProd(id, active, title) {
       try {
+        // 1. Save active status
         await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_id: id, product_title: title, is_active: active }) });
-        toast(active ? '✅ Suscripción activada' : 'Widget desactivado');
-        loadProds();
+
+        if (active) {
+          // 2. Auto-assign plans when activating a product
+          const [allPlans, existingCfg] = await Promise.all([
+            api('/api/plans').catch(() => []),
+            api(`/api/products/${id}/config`).catch(() => ({}))
+          ]);
+          const activePlansGlobal = Array.isArray(allPlans) ? allPlans.filter(p => p.active !== false && p.frequency && p.permanence) : [];
+
+          // Only auto-assign if no config exists yet (or empty config)
+          const hasExistingConfig = existingCfg && existingCfg.plans && Object.keys(existingCfg.plans).length > 0;
+
+          if (!hasExistingConfig && activePlansGlobal.length) {
+            // Auto-assign all active plans with their global discounts
+            const plansConfig = {};
+            activePlansGlobal.forEach(plan => {
+              const key = plan.id || (`m${plan.frequency}_p${plan.permanence}`);
+              plansConfig[key] = {
+                enabled: true,
+                discount: plan.discount || 0,
+                frequency: plan.frequency,
+                permanence: plan.permanence,
+                label: (plan.frequency === 1 ? 'Mensual' : plan.frequency === 2 ? 'Bimestral' : `Cada ${plan.frequency} meses`) + ' · ' + plan.permanence + ' meses'
+              };
+            });
+            await api(`/api/products/${id}/config`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ plans: plansConfig, auto_assigned: true, updated_at: new Date().toISOString() })
+            }).catch(() => {});
+            toast('✅ Producto activado — planes asignados automáticamente. Personaliza los descuentos abajo.');
+          } else if (hasExistingConfig) {
+            toast('✅ Suscripción activada — configuración previa restaurada');
+          } else {
+            toast('✅ Producto activado. Crea planes en "Planes de Suscripción" primero, luego vuelve a Config.');
+          }
+
+          // 3. Reload products and open config drawer
+          await loadProds();
+          // Small delay so DOM updates
+          setTimeout(() => openConfig(id, title), 300);
+        } else {
+          toast('Widget desactivado para este producto');
+          loadProds();
+        }
       } catch (e) { toast('Error: ' + e.message, 'err'); }
     }
+
 
     // ──── PRODUCT CONFIG DRAWER ────
     let _drawerPlans = []; // planes activos cargados para el drawer
