@@ -830,21 +830,63 @@ app.post('/webhooks/mercadopago', async (req, res) => {
 /* También registrar en /api/webhooks/mercadopago para la URL de MP Dashboard */
 app.post('/api/webhooks/mercadopago', (req, res, next) => { req.url = '/webhooks/mercadopago'; next('route'); });
 
+/* ── Helper: Obtener dirección predeterminada del cliente en Shopify por email ── */
+async function getCustomerAddress(email, token, shop) {
+    try {
+        const url = `https://${shop}/admin/api/2026-01/customers/search.json?query=email:${encodeURIComponent(email)}&limit=1&fields=id,default_address`;
+        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+        if (!r.ok) return null;
+        const data = await r.json();
+        const addr = data.customers && data.customers[0] && data.customers[0].default_address;
+        if (!addr) return null;
+        return {
+            first_name: addr.first_name || '',
+            last_name: addr.last_name || '',
+            address1: addr.address1 || '',
+            address2: addr.address2 || '',
+            city: addr.city || '',
+            province: addr.province || '',
+            country: addr.country || 'PE',
+            country_code: addr.country_code || 'PE',
+            zip: addr.zip || '',
+            phone: addr.phone || ''
+        };
+    } catch (e) {
+        console.warn('[ADDR] Error buscando dirección:', e.message);
+        return null;
+    }
+}
+
 /* ── Helper: Crear orden en Shopify desde una suscripción ── */
-async function createShopifyOrderFromSub(sub, mpPaymentId = null) {
+async function createShopifyOrderFromSub(sub, mpPaymentId) {
     const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
     const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
     if (!token || !sub.variant_id) return null;
+
+    // Resolver dirección de envío
+    let shippingAddr = sub.shipping_address || null;
+    if (!shippingAddr && sub.customer_email) {
+        shippingAddr = await getCustomerAddress(sub.customer_email, token, shop);
+        if (shippingAddr) {
+            // Guardar para cobros futuros (fire & forget)
+            db.updateSubscription(sub.id, { shipping_address: shippingAddr }).catch(function() {});
+        }
+    }
+
+    const cycleLabel = sub.cycles_completed
+        ? ('Ciclo ' + sub.cycles_completed + '/' + (sub.cycles_required || '?'))
+        : 'Ciclo 1';
 
     const orderBody = {
         order: {
             email: sub.customer_email,
             financial_status: 'paid',
             send_receipt: true,
+            send_fulfillment_receipt: true,
             line_items: [{ variant_id: parseInt(sub.variant_id), quantity: 1, price: String(parseFloat(sub.final_price || sub.base_price).toFixed(2)) }],
-            note: `Suscripción LAB NUTRITION | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
+            note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
             tags: 'suscripcion,lab-nutrition,recurrente',
-            shipping_address: sub.shipping_address || undefined,
+            shipping_address: shippingAddr || undefined,
             shipping_lines: sub.free_shipping ? [{ title: 'Envío gratis (suscriptor)', price: '0.00', code: 'free_sub', source: 'lab_sub' }] : []
         }
     };
@@ -859,10 +901,12 @@ async function createShopifyOrderFromSub(sub, mpPaymentId = null) {
         const err = await r.text();
         throw new Error(`Shopify order API ${r.status}: ${err.slice(0, 300)}`);
     }
-    const { order } = await r.json();
-    console.log(`[SHOPIFY ORDER] ✅ Orden #${order.order_number} creada para ${sub.customer_email}`);
+    const result = await r.json();
+    const order = result.order;
+    console.log(`[SHOPIFY ORDER] ✅ Orden #${order.order_number} creada para ${sub.customer_email} | ${cycleLabel}`);
     return order;
 }
+
 
 /* ═══════════════════════════════════════════════
    ⏰ SCHEDULED NOTIFICATIONS (cron)
