@@ -18,10 +18,12 @@ try {
 }
 
 // Crash-proof service imports — server starts even without credentials
-let mp, notifications, shopify;
+let mp, notifications, shopify, sellingPlans, subscriptionContracts;
 try { mp = require('./services/mercadopago'); } catch (e) { console.warn('[MP] Not configured:', e.message); mp = {}; }
 try { notifications = require('./services/notifications'); } catch (e) { console.warn('[EMAIL] Not configured:', e.message); notifications = {}; }
 try { shopify = require('./services/shopify'); } catch (e) { console.warn('[SHOPIFY] Not configured:', e.message); shopify = {}; }
+try { sellingPlans = require('./services/selling-plans'); } catch (e) { console.warn('[SELLING_PLANS] Not loaded:', e.message); sellingPlans = {}; }
+try { subscriptionContracts = require('./services/subscription-contracts'); } catch (e) { console.warn('[CONTRACTS] Not loaded:', e.message); subscriptionContracts = {}; }
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -482,6 +484,225 @@ app.post('/api/products/:id/config', async (req, res) => {
         res.json({ success: true, config: allConfigs[req.params.id] });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+/* ═══════════════════════════════════════════════════════════════
+   🏷️ SHOPIFY SELLING PLANS — Native subscription UI on product page
+   Exactly like Skio / Recharge / Bold
+═══════════════════════════════════════════════════════════════ */
+
+/* Sync selling plan groups for all active products */
+app.post('/api/selling-plans/sync', async (req, res) => {
+    if (!sellingPlans.syncProductPlans) return res.status(503).json({ error: 'Selling Plans service not available' });
+    try {
+        const plans = await readFromShopify('lab_app', 'plans').catch(() => []);
+        const activePlans = Array.isArray(plans) ? plans.filter(p => p.active !== false && p.frequency && p.discount >= 0) : [];
+        if (!activePlans.length) return res.status(400).json({ error: 'No active plans configured. Add plans first.' });
+
+        const eligibleProducts = await readFromShopify('lab_app', 'eligible_products').catch(() => []);
+        const activeProds = Array.isArray(eligibleProducts) ? eligibleProducts.filter(p => p.is_active) : [];
+        if (!activeProds.length) return res.json({ synced: 0, message: 'No active products' });
+
+        const results = [];
+        for (const prod of activeProds) {
+            const productGid = `gid://shopify/Product/${prod.shopify_id}`;
+            try {
+                const result = await sellingPlans.syncProductPlans({
+                    productId: prod.shopify_id,
+                    productGid,
+                    productTitle: prod.product_title || '',
+                    plans: activePlans
+                });
+                results.push({ product: prod.product_title, ...result });
+                console.log('[SELLING_PLANS] Synced:', prod.product_title, result.synced);
+            } catch (e) {
+                results.push({ product: prod.product_title, synced: false, error: e.message });
+                console.error('[SELLING_PLANS] Error on', prod.product_title, ':', e.message);
+            }
+        }
+        res.json({ results, total: results.length, synced: results.filter(r => r.synced).length });
+    } catch (e) {
+        console.error('[SELLING_PLANS] Sync error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/* Get selling plans for a specific product */
+app.get('/api/selling-plans/:productId', async (req, res) => {
+    if (!sellingPlans.getProductSellingPlans) return res.json({ sellingPlanGroups: { nodes: [] } });
+    try {
+        const productGid = `gid://shopify/Product/${req.params.productId}`;
+        const product = await sellingPlans.getProductSellingPlans(productGid);
+        res.json(product || { sellingPlanGroups: { nodes: [] } });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/* Remove selling plans from a product */
+app.delete('/api/selling-plans/:productId', async (req, res) => {
+    if (!sellingPlans.getProductSellingPlans || !sellingPlans.deleteSellingPlanGroup) return res.json({ deleted: 0 });
+    try {
+        const productGid = `gid://shopify/Product/${req.params.productId}`;
+        const product = await sellingPlans.getProductSellingPlans(productGid);
+        const groups = product && product.sellingPlanGroups ? product.sellingPlanGroups.nodes : [];
+        let deleted = 0;
+        for (const g of groups) {
+            if (g.name && g.name.includes('LAB')) {
+                await sellingPlans.deleteSellingPlanGroup(g.id).catch(() => {});
+                deleted++;
+            }
+        }
+        res.json({ deleted });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   🛒 SHOPIFY WEBHOOK — orders/paid
+   When a customer completes checkout with a Selling Plan:
+   1. Create SubscriptionContract in Shopify (visible in admin + customer account)
+   2. Launch MP PreApproval for recurring billing
+═══════════════════════════════════════════════════════════════ */
+app.post('/webhooks/shopify/orders-paid', express.raw({ type: 'application/json' }), async (req, res) => {
+    res.sendStatus(200); // Always ack first
+
+    try {
+        const order = JSON.parse(req.body.toString());
+        console.log('[ORDER_PAID] Order #' + order.order_number + ' — checking for selling plans...');
+
+        // Find line items with selling plan allocations (= subscription purchases)
+        const subLines = (order.line_items || []).filter(li => li.selling_plan_allocation);
+        if (!subLines.length) {
+            console.log('[ORDER_PAID] No selling plan line items in order #' + order.order_number);
+            return;
+        }
+
+        const customer = order.customer;
+        const shippingAddr = order.shipping_address || null;
+        const customerId = customer && customer.id ? `gid://shopify/Customer/${customer.id}` : null;
+        const customerEmail = customer && customer.email ? customer.email : null;
+
+        for (const line of subLines) {
+            const alloc = line.selling_plan_allocation;
+            const sellingPlanId = alloc && alloc.selling_plan && alloc.selling_plan.id
+                ? `gid://shopify/SellingPlan/${alloc.selling_plan.id}` : null;
+            const variantGid = `gid://shopify/ProductVariant/${line.variant_id}`;
+            const linePrice = parseFloat(line.price || 0);
+            const frequency = alloc && alloc.selling_plan && alloc.selling_plan.billing_policy
+                ? (alloc.selling_plan.billing_policy.interval_count || 1) : 1;
+
+            // 1. Create SubscriptionContract in Shopify
+            let shopifyContractId = null;
+            if (subscriptionContracts.createContract && customerId) {
+                try {
+                    const contract = await subscriptionContracts.createContract({
+                        customerId,
+                        customerEmail,
+                        sellingPlanId,
+                        variantId: variantGid,
+                        linePrice,
+                        currencyCode: order.currency || 'PEN',
+                        shipAddress: shippingAddr,
+                        intervalCount: frequency
+                    });
+                    if (contract) {
+                        shopifyContractId = contract.id;
+                        console.log('[CONTRACT] Created Shopify SubscriptionContract:', shopifyContractId);
+                    }
+                } catch (e) {
+                    console.error('[CONTRACT] Failed to create contract:', e.message);
+                }
+            }
+
+            // 2. Look up the discount from the selling plan pricing policy
+            const discountPct = alloc && alloc.selling_plan && alloc.selling_plan.price_adjustments
+                ? (alloc.selling_plan.price_adjustments[0] && alloc.selling_plan.price_adjustments[0].value ? alloc.selling_plan.price_adjustments[0].value : 0)
+                : 0;
+
+            // 3. Create MP PreApproval subscription for recurring billing
+            let mpPlanId = null;
+            if (mp.createPlan) {
+                try {
+                    // Reload MP token dynamically
+                    const dynamicSettings = await readFromShopify('lab_app', 'settings').catch(() => ({}));
+                    if (dynamicSettings && dynamicSettings.mp_access_token) {
+                        process.env.MP_ACCESS_TOKEN = dynamicSettings.mp_access_token;
+                    }
+                    const productTitle = line.title || 'Producto LAB';
+                    const mpPlan = await mp.createPlan({
+                        frequency,
+                        permanence: frequency * 12, // max 12 cycles by default
+                        amount: linePrice,
+                        productTitle
+                    });
+                    mpPlanId = mpPlan && mpPlan.id ? mpPlan.id : null;
+                    console.log('[MP] PreApprovalPlan created:', mpPlanId);
+                } catch (e) {
+                    console.error('[MP] Failed to create PreApprovalPlan:', e.message);
+                }
+            }
+
+            // 4. Save subscription record to Shopify Metaobjects
+            if (db && db.createSubscription) {
+                try {
+                    const subRecord = {
+                        customer_email: customerEmail,
+                        customer_name: (customer && customer.first_name ? customer.first_name + ' ' + customer.last_name : null) || customerEmail,
+                        shopify_order_id: String(order.id),
+                        shopify_order_number: String(order.order_number),
+                        shopify_contract_id: shopifyContractId,
+                        variant_id: String(line.variant_id),
+                        product_id: String(line.product_id),
+                        product_title: line.title,
+                        product_image: null,
+                        base_price: parseFloat(line.price_set && line.price_set.shop_money ? line.price_set.shop_money.amount : line.price),
+                        final_price: linePrice,
+                        discount_pct: discountPct,
+                        frequency_months: frequency,
+                        permanence_months: frequency * 12,
+                        cycles_required: 12,
+                        cycles_completed: 1, // First cycle = the order just paid
+                        mp_plan_id: mpPlanId,
+                        shipping_address: shippingAddr,
+                        free_shipping: false,
+                        status: 'active',
+                        started_at: new Date().toISOString(),
+                        next_charge_at: new Date(Date.now() + frequency * 30 * 24 * 60 * 60 * 1000).toISOString()
+                    };
+                    await db.createSubscription(subRecord);
+                    console.log('[ORDER_PAID] Subscription record created for', customerEmail);
+                } catch (e) {
+                    console.error('[ORDER_PAID] Failed to save subscription record:', e.message);
+                }
+            }
+        }
+    } catch (e) {
+        console.error('[ORDER_PAID] Webhook processing error:', e.message);
+    }
+});
+
+/* ── Get Shopify contracts for a customer email ── */
+app.get('/api/contracts/:email', async (req, res) => {
+    if (!subscriptionContracts.getCustomerContracts) return res.json([]);
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        // Look up customer GID
+        const r = await fetch(`https://${shop}/admin/api/2026-01/customers/search.json?query=email:${encodeURIComponent(req.params.email)}&limit=1&fields=id`, {
+            headers: { 'X-Shopify-Access-Token': token }
+        });
+        const data = await r.json();
+        if (!data.customers || !data.customers.length) return res.json([]);
+        const customerGid = `gid://shopify/Customer/${data.customers[0].id}`;
+        const contracts = await subscriptionContracts.getCustomerContracts(customerGid);
+        res.json(contracts);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+
 
 /* ── SUBSCRIPTIONS LIST alias for admin panel ── */
 app.get('/api/subscriptions', async (req, res) => {

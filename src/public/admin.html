@@ -985,7 +985,12 @@
           <div class="pt">Planes de Suscripción</div>
           <div class="ps">Crea, edita y activa los planes disponibles para tus clientes</div>
         </div>
-        <button class="btn btn-r" onclick="openNewPlanModal()">+ Nuevo plan</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-r" onclick="openNewPlanModal()">+ Nuevo plan</button>
+          <button class="btn" style="background:#18181b;color:#fff;border:none" onclick="syncSellingPlans()" id="sync-btn" title="Sincroniza los planes con Shopify para que aparezcan nativamente en la página del producto">
+            <span id="sync-btn-label">⬆ Sync Shopify</span>
+          </button>
+        </div>
       </div>
       <div class="content">
         <div class="info-box">💡 Los planes definen la <strong>frecuencia de envío</strong> y la <strong>permanencia
@@ -1561,6 +1566,24 @@
       const t = document.getElementById('toast');
       t.textContent = msg; t.className = 'show ' + type;
       setTimeout(() => t.className = '', 3000);
+    }
+
+    async function syncSellingPlans() {
+      const btn = document.getElementById('sync-btn');
+      const lbl = document.getElementById('sync-btn-label');
+      if (!btn || !lbl) return;
+      btn.disabled = true; lbl.textContent = '⏳ Sincronizando...';
+      try {
+        const result = await api('/api/selling-plans/sync', { method: 'POST' });
+        const synced = result.synced || 0;
+        const total = result.total || 0;
+        toast(`✅ Selling Plans sincronizados: ${synced}/${total} productos actualizados en Shopify`);
+        lbl.textContent = `✅ Synced (${synced}/${total})`;
+        setTimeout(() => { lbl.textContent = '⬆ Sync Shopify'; btn.disabled = false; }, 4000);
+      } catch (e) {
+        toast('❌ Error al sincronizar: ' + e.message, 'err');
+        lbl.textContent = '⬆ Sync Shopify'; btn.disabled = false;
+      }
     }
 
     function nav(id) {
