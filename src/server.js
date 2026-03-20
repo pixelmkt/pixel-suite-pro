@@ -492,42 +492,72 @@ app.post('/api/products/:id/config', async (req, res) => {
    Exactly like Skio / Recharge / Bold
 ═══════════════════════════════════════════════════════════════ */
 
-/* Sync selling plan groups for all active products */
+/* Sync selling plan groups — global (all active products) OR per-product */
 app.post('/api/selling-plans/sync', async (req, res) => {
     if (!sellingPlans.syncProductPlans) return res.status(503).json({ error: 'Selling Plans service not available' });
     try {
-        // FIX: Sync now reads from 'plans_config' (same key used by POST /api/plans)
+        // Load plans from Metafields (plans_config = what admin created)
         const plans = await readFromShopify('lab_app', 'plans_config').catch(() => []);
-        const activePlans = Array.isArray(plans) ? plans.filter(p => p.active !== false && (p.frequency || p.frequency_months) && (p.discount !== undefined || p.discount_pct !== undefined)) : [];
-        if (!activePlans.length) return res.status(400).json({ error: 'No active plans configured. Create plans in admin first, then sync.' });
+        const activePlans = Array.isArray(plans) ? plans.filter(p =>
+            p.active !== false &&
+            (p.frequency || p.frequency_months) &&
+            (p.discount !== undefined || p.discount_pct !== undefined)
+        ) : [];
 
-        const eligibleProducts = await readFromShopify('lab_app', 'eligible_products').catch(() => []);
-        const activeProds = Array.isArray(eligibleProducts) ? eligibleProducts.filter(p => p.is_active) : [];
-        if (!activeProds.length) return res.json({ synced: 0, message: 'No active products' });
+        if (!activePlans.length) {
+            return res.status(400).json({ error: 'No hay planes activos. Crea planes primero en la sección Planes.' });
+        }
+
+        // Normalize plan fields (admin uses frequency_months/discount_pct, selling-plans uses frequency/discount)
+        const normalizedPlans = activePlans.map(p => ({
+            ...p,
+            frequency: p.frequency || p.frequency_months || 1,
+            permanence: p.permanence || p.permanence_months || 3,
+            discount: p.discount !== undefined ? p.discount : (p.discount_pct || 0),
+            active: p.active !== false
+        }));
+
+        let prodsToSync = [];
+
+        // CASE 1: Single product passed directly in body (from product card Sync button)
+        if (req.body && req.body.productId) {
+            prodsToSync = [{ shopify_id: req.body.productId, product_title: req.body.productTitle || 'Producto' }];
+            console.log('[SELLING_PLANS] Single product sync:', req.body.productId);
+        } else {
+            // CASE 2: Sync all active products from eligible_products Metafield
+            const eligibleProducts = await readFromShopify('lab_app', 'eligible_products').catch(() => []);
+            prodsToSync = Array.isArray(eligibleProducts) ? eligibleProducts.filter(p => p.is_active) : [];
+            if (!prodsToSync.length) {
+                return res.json({ synced: 0, total: 0, message: 'No hay productos activos. Activa productos en la sección Productos o usa el botón Sync de cada producto.' });
+            }
+        }
 
         const results = [];
-        for (const prod of activeProds) {
+        for (const prod of prodsToSync) {
             const productGid = `gid://shopify/Product/${prod.shopify_id}`;
             try {
                 const result = await sellingPlans.syncProductPlans({
                     productId: prod.shopify_id,
                     productGid,
                     productTitle: prod.product_title || '',
-                    plans: activePlans
+                    plans: normalizedPlans
                 });
-                results.push({ product: prod.product_title, ...result });
-                console.log('[SELLING_PLANS] Synced:', prod.product_title, result.synced);
+                results.push({ product: prod.product_title, productId: prod.shopify_id, ...result });
+                console.log('[SELLING_PLANS] Synced:', prod.product_title, '→ synced:', result.synced);
             } catch (e) {
-                results.push({ product: prod.product_title, synced: false, error: e.message });
+                results.push({ product: prod.product_title, productId: prod.shopify_id, synced: false, error: e.message });
                 console.error('[SELLING_PLANS] Error on', prod.product_title, ':', e.message);
             }
         }
-        res.json({ results, total: results.length, synced: results.filter(r => r.synced).length });
+
+        const syncedCount = results.filter(r => r.synced).length;
+        res.json({ results, total: results.length, synced: syncedCount });
     } catch (e) {
         console.error('[SELLING_PLANS] Sync error:', e.message);
         res.status(500).json({ error: e.message });
     }
 });
+
 
 /* Get selling plans for a specific product */
 app.get('/api/selling-plans/:productId', async (req, res) => {
@@ -1354,7 +1384,7 @@ function getEnvDefaults() {
 async function readFromShopify(ns, key) {
     const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
     const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
-    if (!token) return null;
+    if (!token) { console.warn('[SHOPIFY MF] No token — cannot read', ns, key); return null; }
     const namespace = ns || METAFIELD_NAMESPACE;
     const mfKey = key || METAFIELD_KEY;
     try {
@@ -1362,39 +1392,89 @@ async function readFromShopify(ns, key) {
             `https://${shop}/admin/api/2026-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${namespace}&metafield[key]=${mfKey}`,
             { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } }
         );
-        if (!r.ok) return null;
+        if (!r.ok) {
+            const errText = await r.text();
+            console.error(`[SHOPIFY MF] READ ERROR ${r.status} for ${namespace}/${mfKey}:`, errText.slice(0, 300));
+            return null;
+        }
         const data = await r.json();
         const mf = data.metafields?.[0];
-        if (mf?.value) return JSON.parse(mf.value);
-    } catch { }
-    return null;
+        if (mf?.value) {
+            try {
+                return JSON.parse(mf.value);
+            } catch (parseErr) {
+                console.error(`[SHOPIFY MF] JSON parse error for ${namespace}/${mfKey}:`, parseErr.message);
+                return null;
+            }
+        }
+        return null;
+    } catch (e) {
+        console.error(`[SHOPIFY MF] Network error reading ${namespace}/${mfKey}:`, e.message);
+        return null;
+    }
 }
 
 // Save to Shopify Shop Metafields
 async function saveToShopify(settings, ns, key) {
     const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
     const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
-    if (!token) return false;
+    if (!token) { console.error('[SHOPIFY MF] No token — CANNOT SAVE', ns, key); return false; }
     const namespace = ns || METAFIELD_NAMESPACE;
     const mfKey = key || METAFIELD_KEY;
     try {
+        // 1. Check if metafield exists
         const checkR = await fetch(
             `https://${shop}/admin/api/2026-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${namespace}&metafield[key]=${mfKey}`,
             { headers: { 'X-Shopify-Access-Token': token } }
         );
+        if (!checkR.ok) {
+            const errText = await checkR.text();
+            console.error(`[SHOPIFY MF] CHECK ERROR ${checkR.status} for ${namespace}/${mfKey}:`, errText.slice(0, 300));
+            return false;
+        }
         const checkData = await checkR.json();
         const existing = checkData.metafields?.[0];
+
+        // 2. Serialize value
+        const valueStr = JSON.stringify(settings);
+        if (valueStr.length > 65000) {
+            console.error(`[SHOPIFY MF] VALUE TOO LARGE for ${namespace}/${mfKey}: ${valueStr.length} bytes (max 65000)`);
+            return false;
+        }
+
+        // 3. PUT (update) or POST (create)
         const body = existing
-            ? { metafield: { id: existing.id, value: JSON.stringify(settings), type: 'json' } }
-            : { metafield: { namespace, key: mfKey, value: JSON.stringify(settings), type: 'json', owner_resource: 'shop' } };
+            ? { metafield: { id: existing.id, value: valueStr, type: 'json' } }
+            : { metafield: { namespace, key: mfKey, value: valueStr, type: 'json', owner_resource: 'shop' } };
         const method = existing ? 'PUT' : 'POST';
         const url = existing
             ? `https://${shop}/admin/api/2026-01/metafields/${existing.id}.json`
             : `https://${shop}/admin/api/2026-01/metafields.json`;
-        await fetch(url, { method, headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+        const saveR = await fetch(url, {
+            method,
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
+        if (!saveR.ok) {
+            const errText = await saveR.text();
+            console.error(`[SHOPIFY MF] SAVE ERROR ${saveR.status} for ${namespace}/${mfKey}:`, errText.slice(0, 500));
+            return false;
+        }
+        const saveData = await saveR.json();
+        if (saveData.errors) {
+            console.error(`[SHOPIFY MF] SAVE ERRORS for ${namespace}/${mfKey}:`, JSON.stringify(saveData.errors));
+            return false;
+        }
+        console.log(`[SHOPIFY MF] ✅ Saved ${namespace}/${mfKey} (${valueStr.length} bytes, ${method})`);
         return true;
-    } catch (e) { console.warn('[SETTINGS] Shopify metafield save error:', e.message); return false; }
+    } catch (e) {
+        console.error(`[SHOPIFY MF] Network error saving ${namespace}/${mfKey}:`, e.message);
+        return false;
+    }
 }
+
 
 // File fallback (in-memory across restarts via Railway volume if available)
 function readFromFile() {
