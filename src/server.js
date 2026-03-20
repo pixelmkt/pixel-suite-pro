@@ -213,6 +213,89 @@ app.post('/api/subscriptions/create', async (req, res) => {
     }
 });
 
+/* ── CHECKOUT — Crea PreApprovalPlan en MP y devuelve init_point para redirigir al cliente ── */
+app.post('/api/subscriptions/checkout', async (req, res) => {
+    try {
+        const {
+            variantId, productId, productTitle, productImage,
+            customerEmail, customerName, customerPhone,
+            frequencyMonths, permanenceMonths, discountPct, finalPrice, basePrice,
+            currency = 'PEN', freeShipping = false
+        } = req.body;
+
+        if (!customerEmail || !frequencyMonths || !permanenceMonths || !finalPrice) {
+            return res.status(400).json({ error: 'Faltan campos requeridos: email, frecuencia, permanencia, precio' });
+        }
+
+        const cyclesRequired = Math.ceil(permanenceMonths / frequencyMonths);
+        const backBase = process.env.BACKEND_URL || HOST || 'https://pixel-suite-pro-production.up.railway.app';
+
+        // 1. Crear PreApprovalPlan en MP — el plan tiene la freq y el monto
+        const plan = await mp.createPlan({
+            frequency: parseInt(frequencyMonths),
+            permanence: parseInt(permanenceMonths),
+            amount: parseFloat(parseFloat(finalPrice).toFixed(2)),
+            productTitle: productTitle || 'Suscripción LAB NUTRITION'
+        });
+
+        if (!plan || !plan.id) throw new Error('No se pudo crear el plan en Mercado Pago');
+
+        // 2. Guardar suscripción pendiente en Shopify Metaobjects (se activa cuando MP confirme)
+        const pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+        await db.createSubscription({
+            id: pendingId,
+            customer_email: customerEmail,
+            customer_name: customerName || '',
+            customer_phone: customerPhone || '',
+            variant_id: (variantId || '').toString(),
+            product_id: (productId || '').toString(),
+            product_title: productTitle || '',
+            product_image: productImage || '',
+            frequency_months: parseInt(frequencyMonths),
+            permanence_months: parseInt(permanenceMonths),
+            discount_pct: parseFloat(discountPct || 0),
+            base_price: parseFloat(basePrice || finalPrice),
+            final_price: parseFloat(parseFloat(finalPrice).toFixed(2)),
+            mp_plan_id: plan.id,
+            mp_preapproval_id: null,
+            status: 'pending_payment',
+            cycles_required: cyclesRequired,
+            cycles_completed: 0,
+            free_shipping: freeShipping,
+            next_charge_at: null,
+            created_at: new Date().toISOString()
+        }).catch(e => console.warn('[CHECKOUT] Could not save pending sub:', e.message));
+
+        // 3. El init_point del plan ES la URL de pago donde el cliente autoriza la suscripción con su tarjeta
+        const checkoutUrl = plan.init_point || plan.sandbox_init_point;
+        if (!checkoutUrl) throw new Error('Mercado Pago no devolvió URL de checkout');
+
+        console.log(`[CHECKOUT] Plan MP creado: ${plan.id} | ${checkoutUrl}`);
+        res.json({ success: true, init_point: checkoutUrl, plan_id: plan.id });
+
+    } catch (e) {
+        console.error('[CHECKOUT] Error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/* ── SUBSCRIPTION SUCCESS — retorno de MP tras pago aprobado ── */
+app.get('/subscriptions/success', async (req, res) => {
+    const { preapproval_id, external_reference } = req.query;
+    console.log('[CHECKOUT SUCCESS] preapproval_id:', preapproval_id);
+    res.send(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>¡Suscripción activa!</title><style>body{font-family:sans-serif;max-width:480px;margin:60px auto;padding:20px;text-align:center}.icon{font-size:60px;margin-bottom:16px}.title{font-size:24px;font-weight:800;color:#1a7a3a;margin-bottom:8px}.sub{color:#666;font-size:15px;margin-bottom:28px}.btn{display:inline-block;background:#9d2a23;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px}</style></head><body><div class="icon">✅</div><div class="title">¡Suscripción activada!</div><div class="sub">Tu suscripción fue confirmada. Recibirás un email de confirmación en breve. El primer envío se procesará automáticamente.</div><a class="btn" href="https://nutrition-lab-cluster.myshopify.com">Volver a la tienda →</a></body></html>`);
+});
+
+/* ── SUBSCRIPTION FAILURE — retorno de MP tras pago fallido ── */
+app.get('/subscriptions/failure', (req, res) => {
+    res.send(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pago no completado</title><style>body{font-family:sans-serif;max-width:480px;margin:60px auto;padding:20px;text-align:center}.icon{font-size:60px;margin-bottom:16px}.title{font-size:24px;font-weight:800;color:#9d2a23;margin-bottom:8px}.sub{color:#666;font-size:15px;margin-bottom:28px}.btn{display:inline-block;background:#9d2a23;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px}</style></head><body><div class="icon">❌</div><div class="title">Pago no completado</div><div class="sub">Hubo un problema al procesar tu pago. Puedes intentarlo de nuevo.</div><a class="btn" href="javascript:history.back()">← Intentar de nuevo</a></body></html>`);
+});
+
+/* ── SUBSCRIPTION PENDING ── */
+app.get('/subscriptions/pending', (req, res) => {
+    res.send(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Pago pendiente</title></head><body style="font-family:sans-serif;max-width:480px;margin:60px auto;padding:20px;text-align:center"><div style="font-size:60px">⏳</div><h2 style="color:#ea580c">Pago pendiente</h2><p style="color:#666">Tu pago está siendo procesado. Te notificaremos por email cuando se confirme.</p><a href="https://nutrition-lab-cluster.myshopify.com" style="display:inline-block;background:#9d2a23;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:20px">Volver a la tienda</a></body></html>`);
+});
+
 /* ── GET customer subscriptions ── */
 app.get('/api/subscriptions/customer/:customerId', async (req, res) => {
     try {
@@ -336,7 +419,7 @@ app.get('/api/products', async (req, res) => {
         const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
         const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
         if (!token) return res.json([]);
-        const url = `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,images,variants,status`;
+        const url = `https://${shop}/admin/api/2026-01/products.json?limit=250&fields=id,title,images,variants,status`;
         const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } });
         if (!r.ok) return res.json([]);
         const data = await r.json();
@@ -635,54 +718,151 @@ app.post('/api/remarketing', async (req, res) => {
 
 
 /* ═══════════════════════════════════════════════
-   🔔 MERCADO PAGO WEBHOOK
+   🔔 MERCADO PAGO WEBHOOK (v2 — 2026-01)
+   Maneja tanto activación de nuevas suscripciones (preapproval)
+   como cobros recurrentes (payment). Crea órdenes en Shopify automáticamente.
 ═══════════════════════════════════════════════ */
 app.post('/webhooks/mercadopago', async (req, res) => {
-    res.sendStatus(200); // Acknowledge immediately
-    const { type, data } = req.body;
-    if (type !== 'preapproval') return;
+    res.sendStatus(200); // Acknowledge immediately — evitar reintentos de MP
+    const { type, data, action } = req.body;
+    console.log('[MP WEBHOOK]', type, action, JSON.stringify(data || {}).slice(0, 200));
 
     try {
-        const preapprovalId = data?.id;
-        if (!preapprovalId) return;
+        const resourceId = data?.id;
+        if (!resourceId) return;
 
-        const mpSub = await mp.getSubscription(preapprovalId);
-        const allSubs = await db.getSubscriptions();
-        const sub = allSubs.find(s => s.mp_preapproval_id === preapprovalId);
+        // === CASO 1: Nueva preaprobación (cliente autorizó la suscripción con su tarjeta) ===
+        if (type === 'preapproval') {
+            const preapprovalId = resourceId;
+            let preapprovalInfo = null;
+            try { preapprovalInfo = await mp.getSubscription(preapprovalId); } catch (e) {
+                console.warn('[MP WEBHOOK] Could not get preapproval:', e.message);
+            }
 
-        if (!sub) return;
+            const allSubs = await db.getSubscriptions().catch(() => []);
+            // Buscar por preapproval_id o por plan_id (suscripción pendiente)
+            let sub = allSubs.find(s => s.mp_preapproval_id === preapprovalId);
+            if (!sub && preapprovalInfo?.preapproval_plan_id) {
+                sub = allSubs.find(s =>
+                    s.mp_plan_id === preapprovalInfo.preapproval_plan_id &&
+                    (s.status === 'pending_payment' || !s.mp_preapproval_id)
+                );
+            }
 
-        if (mpSub.status === 'authorized' && mpSub.last_modified) {
-            const cyclesCompleted = sub.cycles_completed + 1;
-            const nextCharge = new Date(sub.next_charge_at);
-            nextCharge.setMonth(nextCharge.getMonth() + sub.frequency_months);
-            const isComplete = cyclesCompleted >= sub.cycles_required;
+            if (!sub) { console.log('[MP WEBHOOK] No matching sub found for preapproval', preapprovalId); return; }
 
-            const order = await shopify.createSubscriptionOrder({ sub, cycleNumber: cyclesCompleted, mpPaymentId: mpSub.id });
+            if (preapprovalInfo?.status === 'authorized' || action === 'created') {
+                // Activar suscripción
+                const nextCharge = new Date();
+                nextCharge.setMonth(nextCharge.getMonth() + (parseInt(sub.frequency_months) || 1));
+
+                await db.updateSubscription(sub.id, {
+                    mp_preapproval_id: preapprovalId,
+                    status: 'active',
+                    next_charge_at: nextCharge.toISOString(),
+                    activated_at: new Date().toISOString(),
+                    cycles_completed: 0
+                }).catch(e => console.warn('[MP WEBHOOK] updateSub:', e.message));
+
+                await db.createEvent({ subscription_id: sub.id, event_type: 'activated',
+                    metadata: JSON.stringify({ mp_preapproval_id: preapprovalId }) }).catch(() => {});
+
+                // Crear primera orden en Shopify
+                await createShopifyOrderFromSub(sub, preapprovalId).catch(e => console.error('[MP WEBHOOK] Order error:', e.message));
+
+                // Email de bienvenida
+                if (notifications.sendWelcome) notifications.sendWelcome({ ...sub, mp_preapproval_id: preapprovalId }).catch(() => {});
+
+                // Tag customer en Shopify
+                if (sub.customer_id) shopify.tagCustomerAsSubscriber(sub.customer_id, true).catch(() => {});
+
+                console.log(`[MP WEBHOOK] ✅ Suscripción activada: ${sub.id} | ${sub.customer_email}`);
+
+            } else if (preapprovalInfo?.status === 'cancelled' || preapprovalInfo?.status === 'paused') {
+                await db.updateSubscription(sub.id, { status: preapprovalInfo.status }).catch(() => {});
+            }
+        }
+
+        // === CASO 2: Cobro recurrente (pago periódico de la suscripción activa) ===
+        if (type === 'payment') {
+            let paymentData = null;
+            try { paymentData = await mp.getPayment(resourceId); } catch (e) {
+                console.warn('[MP WEBHOOK] Could not get payment:', e.message);
+            }
+            if (!paymentData || paymentData.status !== 'approved') return;
+
+            const preapprovalId = paymentData.metadata?.preapproval_id || paymentData.external_reference;
+            if (!preapprovalId) return;
+
+            const allSubs = await db.getSubscriptions().catch(() => []);
+            const sub = allSubs.find(s => s.mp_preapproval_id === preapprovalId && s.status === 'active');
+            if (!sub) return;
+
+            const cyclesCompleted = (parseInt(sub.cycles_completed) || 0) + 1;
+            const nextCharge = new Date();
+            nextCharge.setMonth(nextCharge.getMonth() + (parseInt(sub.frequency_months) || 1));
+            const isComplete = cyclesCompleted >= (parseInt(sub.cycles_required) || 999);
 
             await db.updateSubscription(sub.id, {
                 cycles_completed: cyclesCompleted,
                 next_charge_at: nextCharge.toISOString(),
-                status: isComplete ? 'expired' : 'active'
-            });
-            await db.createEvent({
-                subscription_id: sub.id, event_type: 'charge_success',
-                amount: sub.final_price, mp_payment_id: mpSub.id,
-                shopify_order_id: order.id?.toString(), metadata: { cycle: cyclesCompleted }
+                status: isComplete ? 'completed' : 'active'
+            }).catch(() => {});
+
+            const order = await createShopifyOrderFromSub(sub, resourceId).catch(e => {
+                console.error('[MP WEBHOOK] Shopify order error:', e.message); return null;
             });
 
-            if (notifications.sendChargeSuccess) notifications.sendChargeSuccess(sub, order.order_number).catch(console.error);
-            if (isComplete && notifications.sendRenewalInvite) notifications.sendRenewalInvite(sub).catch(console.error);
+            await db.createEvent({ subscription_id: sub.id, event_type: 'charge_success',
+                metadata: JSON.stringify({ mp_payment_id: resourceId, cycle: cyclesCompleted,
+                    shopify_order_id: order?.id, amount: paymentData.transaction_amount }) }).catch(() => {});
 
-        } else if (mpSub.status === 'payment_required') {
-            await db.updateSubscription(sub.id, { status: 'payment_failed' });
-            await db.createEvent({ subscription_id: sub.id, event_type: 'charge_failed' });
-            if (notifications.sendChargeFailed) notifications.sendChargeFailed(sub).catch(console.error);
+            if (notifications.sendChargeSuccess) notifications.sendChargeSuccess(sub, order?.order_number).catch(() => {});
+            if (isComplete && notifications.sendRenewalInvite) notifications.sendRenewalInvite(sub).catch(() => {});
+
+            console.log(`[MP WEBHOOK] ✅ Cobro procesado: ${sub.customer_email} | ciclo ${cyclesCompleted}/${sub.cycles_required}`);
         }
     } catch (e) {
-        console.error('MP webhook error:', e.message);
+        console.error('[MP WEBHOOK] Error:', e.message);
     }
 });
+
+/* También registrar en /api/webhooks/mercadopago para la URL de MP Dashboard */
+app.post('/api/webhooks/mercadopago', (req, res, next) => { req.url = '/webhooks/mercadopago'; next('route'); });
+
+/* ── Helper: Crear orden en Shopify desde una suscripción ── */
+async function createShopifyOrderFromSub(sub, mpPaymentId = null) {
+    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+    const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+    if (!token || !sub.variant_id) return null;
+
+    const orderBody = {
+        order: {
+            email: sub.customer_email,
+            financial_status: 'paid',
+            send_receipt: true,
+            line_items: [{ variant_id: parseInt(sub.variant_id), quantity: 1, price: String(parseFloat(sub.final_price || sub.base_price).toFixed(2)) }],
+            note: `Suscripción LAB NUTRITION | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
+            tags: 'suscripcion,lab-nutrition,recurrente',
+            shipping_address: sub.shipping_address || undefined,
+            shipping_lines: sub.free_shipping ? [{ title: 'Envío gratis (suscriptor)', price: '0.00', code: 'free_sub', source: 'lab_sub' }] : []
+        }
+    };
+
+    const r = await fetch(`https://${shop}/admin/api/2026-01/orders.json`, {
+        method: 'POST',
+        headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderBody)
+    });
+
+    if (!r.ok) {
+        const err = await r.text();
+        throw new Error(`Shopify order API ${r.status}: ${err.slice(0, 300)}`);
+    }
+    const { order } = await r.json();
+    console.log(`[SHOPIFY ORDER] ✅ Orden #${order.order_number} creada para ${sub.customer_email}`);
+    return order;
+}
 
 /* ═══════════════════════════════════════════════
    ⏰ SCHEDULED NOTIFICATIONS (cron)
@@ -911,7 +1091,7 @@ async function readFromShopify(ns, key) {
     const mfKey = key || METAFIELD_KEY;
     try {
         const r = await fetch(
-            `https://${shop}/admin/api/2024-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${namespace}&metafield[key]=${mfKey}`,
+            `https://${shop}/admin/api/2026-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${namespace}&metafield[key]=${mfKey}`,
             { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } }
         );
         if (!r.ok) return null;
@@ -931,7 +1111,7 @@ async function saveToShopify(settings, ns, key) {
     const mfKey = key || METAFIELD_KEY;
     try {
         const checkR = await fetch(
-            `https://${shop}/admin/api/2025-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${namespace}&metafield[key]=${mfKey}`,
+            `https://${shop}/admin/api/2026-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=${namespace}&metafield[key]=${mfKey}`,
             { headers: { 'X-Shopify-Access-Token': token } }
         );
         const checkData = await checkR.json();
@@ -941,8 +1121,8 @@ async function saveToShopify(settings, ns, key) {
             : { metafield: { namespace, key: mfKey, value: JSON.stringify(settings), type: 'json', owner_resource: 'shop' } };
         const method = existing ? 'PUT' : 'POST';
         const url = existing
-            ? `https://${shop}/admin/api/2024-01/metafields/${existing.id}.json`
-            : `https://${shop}/admin/api/2024-01/metafields.json`;
+            ? `https://${shop}/admin/api/2026-01/metafields/${existing.id}.json`
+            : `https://${shop}/admin/api/2026-01/metafields.json`;
         await fetch(url, { method, headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         return true;
     } catch (e) { console.warn('[SETTINGS] Shopify metafield save error:', e.message); return false; }

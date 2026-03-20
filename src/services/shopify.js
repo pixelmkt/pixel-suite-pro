@@ -1,18 +1,23 @@
 require('dotenv').config();
 const axios = require('axios');
 
-const SHOP = process.env.SHOPIFY_SHOP;
-const TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
-const VER = process.env.SHOPIFY_API_VERSION || '2025-01';
-const BASE = `https://${SHOP}/admin/api/${VER}`;
-
-const client = axios.create({
-    baseURL: BASE,
-    headers: { 'X-Shopify-Access-Token': TOKEN, 'Content-Type': 'application/json' }
-});
+/**
+ * Shopify REST API service — dynamic token (reads process.env on each request)
+ * API version: 2026-01 (current stable as of March 2026)
+ */
+function getClient() {
+    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+    const token = process.env.SHOPIFY_ACCESS_TOKEN;
+    const ver = '2026-01';
+    return axios.create({
+        baseURL: `https://${shop}/admin/api/${ver}`,
+        headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' }
+    });
+}
 
 /* Create draft order for a subscription cycle */
 async function createSubscriptionOrder({ sub, cycleNumber, mpPaymentId }) {
+    const client = getClient();
     const unitPrice = sub.final_price;
     const note = `Suscripción LAB | Ciclo ${cycleNumber}/${sub.cycles_required} | ${sub.frequency_months === 1 ? 'Mensual' : 'Bimestral'} | ${sub.discount_pct}% OFF | MP: ${mpPaymentId}`;
 
@@ -45,7 +50,7 @@ async function createSubscriptionOrder({ sub, cycleNumber, mpPaymentId }) {
             variant_id: parseInt(sub.gift_variant_id),
             quantity: 1,
             price: '0.00',
-            title: '🎁 REGALO SUSCRIPCIÓN'
+            title: 'REGALO SUSCRIPCION'
         });
     }
 
@@ -55,6 +60,7 @@ async function createSubscriptionOrder({ sub, cycleNumber, mpPaymentId }) {
 
 /* Tag customer as subscriber in Shopify */
 async function tagCustomerAsSubscriber(customerId, add = true) {
+    const client = getClient();
     const res = await client.get(`/customers/${customerId}.json`);
     const customer = res.data.customer;
     let tags = (customer.tags || '').split(',').map(t => t.trim()).filter(Boolean);
@@ -68,6 +74,7 @@ async function tagCustomerAsSubscriber(customerId, add = true) {
 
 /* Get customer info from Shopify */
 async function getCustomer(email) {
+    const client = getClient();
     const res = await client.get(`/customers/search.json?query=email:${email}`);
     return res.data.customers?.[0] || null;
 }
