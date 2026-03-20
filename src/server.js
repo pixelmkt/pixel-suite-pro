@@ -375,21 +375,16 @@ app.post('/api/subscriptions/:id/cancel', async (req, res) => {
 });
 
 /* ── PLANS — stored as Shopify Metafields on the shop ── */
-const DEFAULT_PLANS = [
-    { id: 1, permanence_months: 3, frequency_months: 1, discount_pct: 10, cycles: 3, label: '3 meses' },
-    { id: 2, permanence_months: 6, frequency_months: 1, discount_pct: 15, cycles: 6, label: '6 meses' },
-    { id: 3, permanence_months: 12, frequency_months: 1, discount_pct: 20, cycles: 12, label: '12 meses' },
-    { id: 4, permanence_months: 3, frequency_months: 2, discount_pct: 12, cycles: 2, label: '3 meses bimestral' },
-    { id: 5, permanence_months: 6, frequency_months: 2, discount_pct: 18, cycles: 3, label: '6 meses bimestral' },
-    { id: 6, permanence_months: 12, frequency_months: 2, discount_pct: 25, cycles: 6, label: '12 meses bimestral' },
-];
-
+// NOTE: plans created by admin are stored in Metafield namespace='lab_app' key='plans_config'
 app.get('/api/plans', async (req, res) => {
     try {
         let saved = await readFromShopify('lab_app', 'plans_config');
-        if (!Array.isArray(saved)) saved = null;
-        res.json(saved || DEFAULT_PLANS);
-    } catch { res.json(DEFAULT_PLANS); }
+        if (!Array.isArray(saved)) saved = [];
+        res.json(saved); // Return exactly what the admin created — no hardcoded defaults
+    } catch (e) {
+        console.error('[PLANS] Error reading plans:', e.message);
+        res.json([]);
+    }
 });
 
 /* Guardar TODOS los planes (botón Guardar cambios en admin) */
@@ -398,21 +393,28 @@ app.post('/api/plans', async (req, res) => {
         const plans = Array.isArray(req.body) ? req.body : req.body.plans;
         if (!plans) return res.status(400).json({ error: 'Expected array of plans' });
         await saveToShopify(plans, 'lab_app', 'plans_config');
+        console.log('[PLANS] Saved', plans.length, 'plans to Shopify Metafields');
         res.json({ success: true, plans });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) {
+        console.error('[PLANS] Save error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 /* Guardar un plan individual por ID */
 app.put('/api/plans/:id', async (req, res) => {
     try {
         let current = await readFromShopify('lab_app', 'plans_config');
-        if (!Array.isArray(current)) current = [...DEFAULT_PLANS];
+        if (!Array.isArray(current)) current = [];
         const idx = current.findIndex(p => String(p.id) === String(req.params.id));
         if (idx >= 0) current[idx] = { ...current[idx], ...req.body, id: req.params.id };
         else current.push({ ...req.body, id: req.params.id });
         await saveToShopify(current, 'lab_app', 'plans_config');
-        res.json({ success: true, plan: current[idx] || req.body });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+        res.json({ success: true, plan: current[idx >= 0 ? idx : current.length - 1] });
+    } catch (e) {
+        console.error('[PLANS] PUT error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 /* ── ELIGIBLE PRODUCTS — fetch from Shopify Admin API ── */
@@ -494,9 +496,10 @@ app.post('/api/products/:id/config', async (req, res) => {
 app.post('/api/selling-plans/sync', async (req, res) => {
     if (!sellingPlans.syncProductPlans) return res.status(503).json({ error: 'Selling Plans service not available' });
     try {
-        const plans = await readFromShopify('lab_app', 'plans').catch(() => []);
-        const activePlans = Array.isArray(plans) ? plans.filter(p => p.active !== false && p.frequency && p.discount >= 0) : [];
-        if (!activePlans.length) return res.status(400).json({ error: 'No active plans configured. Add plans first.' });
+        // FIX: Sync now reads from 'plans_config' (same key used by POST /api/plans)
+        const plans = await readFromShopify('lab_app', 'plans_config').catch(() => []);
+        const activePlans = Array.isArray(plans) ? plans.filter(p => p.active !== false && (p.frequency || p.frequency_months) && (p.discount !== undefined || p.discount_pct !== undefined)) : [];
+        if (!activePlans.length) return res.status(400).json({ error: 'No active plans configured. Create plans in admin first, then sync.' });
 
         const eligibleProducts = await readFromShopify('lab_app', 'eligible_products').catch(() => []);
         const activeProds = Array.isArray(eligibleProducts) ? eligibleProducts.filter(p => p.is_active) : [];
