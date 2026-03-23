@@ -81,6 +81,33 @@ let _shopifyToken = process.env.SHOPIFY_ACCESS_TOKEN || null;
 let _shopifyShop = process.env.SHOPIFY_SHOP || null;
 if (_shopifyToken) console.log(`[OAUTH] Token loaded from env — shop: ${_shopifyShop}`);
 
+// ── Persistent token file (survives Railway restarts, not redeploys) ──
+const TOKEN_FILE = path.join(__dirname, '..', 'shopify_token.json');
+function loadTokenFromFile() {
+    try {
+        if (require('fs').existsSync(TOKEN_FILE)) {
+            const d = JSON.parse(require('fs').readFileSync(TOKEN_FILE, 'utf8'));
+            if (d.access_token && d.shop) {
+                _shopifyToken = d.access_token;
+                _shopifyShop = d.shop;
+                process.env.SHOPIFY_ACCESS_TOKEN = _shopifyToken;
+                process.env.SHOPIFY_SHOP = _shopifyShop;
+                console.log(`[OAUTH] Token loaded from token file — shop: ${_shopifyShop}`);
+                return true;
+            }
+        }
+    } catch (e) { console.warn('[OAUTH] Could not read token file:', e.message); }
+    return false;
+}
+function saveTokenToFile(token, shop) {
+    try {
+        require('fs').writeFileSync(TOKEN_FILE, JSON.stringify({ access_token: token, shop, saved_at: new Date().toISOString() }, null, 2));
+        console.log('[OAUTH] Token saved to file for restart persistence');
+    } catch (e) { console.warn('[OAUTH] Could not save token file:', e.message); }
+}
+// Load from file if not in env
+if (!_shopifyToken) loadTokenFromFile();
+
 // Start OAuth — redirect to Shopify
 app.get('/auth', (req, res) => {
     const shop = req.query.shop || _shopifyShop || process.env.SHOPIFY_SHOP;
@@ -109,10 +136,12 @@ app.get('/auth/callback', async (req, res) => {
         _shopifyShop = shop;
         process.env.SHOPIFY_ACCESS_TOKEN = _shopifyToken;
         process.env.SHOPIFY_SHOP = shop;
-        console.log(`\n✅ [OAUTH] ACCESS TOKEN CAPTURED!`);
+        // Persist token to file immediately (survives Railway restarts)
+        saveTokenToFile(_shopifyToken, shop);
+        console.log(`\n✅ [OAUTH] ACCESS TOKEN CAPTURED AND SAVED!`);
         console.log(`   Shop: ${shop}`);
         console.log(`   Token: ${_shopifyToken}`);
-        console.log(`   → Copy this to Railway Variables as SHOPIFY_ACCESS_TOKEN\n`);
+        console.log(`   → Token also saved to shopify_token.json for restart persistence\n`);
         res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">
             <h2>✅ Autorización exitosa</h2>
             <p>Token capturado correctamente.</p>
