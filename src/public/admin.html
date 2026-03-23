@@ -1751,8 +1751,14 @@
       if (_editingPlanId !== null) _plans[_editingPlanId] = plan;
       else _plans.push(plan);
       try {
-        await api('/api/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_plans) });
-        toast(_editingPlanId !== null ? '✅ Plan actualizado' : '✅ Plan creado');
+        const res = await api('/api/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_plans) });
+        if (res && res.error) {
+          // Rollback plan in memory if server failed
+          if (_editingPlanId !== null) _plans[_editingPlanId] = plan;
+          else _plans.pop();
+          toast('❌ Error al guardar en Shopify: ' + res.error, 'err'); return;
+        }
+        toast(_editingPlanId !== null ? '✅ Plan actualizado y guardado en Shopify' : '✅ Plan creado y guardado en Shopify');
         closePlanModal(); renderPlans();
       } catch (e) { toast('Error: ' + e.message, 'err'); }
     }
@@ -2015,12 +2021,11 @@
         await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_id: id, product_title: title, is_active: active }) });
 
         if (active) {
-          // 2. Auto-assign plans when activating a product
-          const [allPlans, existingCfg] = await Promise.all([
-            api('/api/plans').catch(() => []),
-            api(`/api/products/${id}/config`).catch(() => ({}))
-          ]);
-          const activePlansGlobal = Array.isArray(allPlans) ? allPlans.filter(p => p.active !== false && p.frequency && p.permanence) : [];
+          // 2. Use local _plans (already in memory) — avoids fetch to API which may return []
+          const rawPlans = _plans.length > 0 ? _plans : await api('/api/plans').catch(() => []);
+          if (_plans.length === 0 && Array.isArray(rawPlans)) _plans = rawPlans;
+          const existingCfg = await api(`/api/products/${id}/config`).catch(() => ({}));
+          const activePlansGlobal = Array.isArray(_plans) ? _plans.filter(p => p.active !== false && p.frequency && p.permanence) : [];
 
           // Only auto-assign if no config exists yet (or empty config)
           const hasExistingConfig = existingCfg && existingCfg.plans && Object.keys(existingCfg.plans).length > 0;
@@ -2074,13 +2079,16 @@
       document.getElementById('drawer-body-content').innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">Cargando planes...</div>';
 
       try {
-        // Cargar planes activos Y config guardada del producto en paralelo
-        const [allPlans, savedCfg] = await Promise.all([
-          api('/api/plans').catch(() => []),
-          api(`/api/products/${id}/config`).catch(() => ({}))
-        ]);
+        // CRITICAL FIX v6.1.0: Use local _plans (session memory) first, then fallback to API
+        // This prevents "No hay planes activos" when plans exist in memory but API returns []
+        const plansFetched = _plans.length > 0
+          ? _plans
+          : await api('/api/plans').catch(() => []);
+        if (_plans.length === 0 && Array.isArray(plansFetched)) _plans = plansFetched;
 
-        _drawerPlans = Array.isArray(allPlans) ? allPlans.filter(p => p.active !== false && p.frequency && p.permanence) : [];
+        const savedCfg = await api(`/api/products/${id}/config`).catch(() => ({}));
+
+        _drawerPlans = Array.isArray(_plans) ? _plans.filter(p => p.active !== false && p.frequency && p.permanence) : [];
         const savedPlans = (savedCfg && savedCfg.plans) ? savedCfg.plans : {}; // { planId: { enabled, discount } }
 
         if (!_drawerPlans.length) {

@@ -539,13 +539,14 @@ app.post('/api/products/:id/config', async (req, res) => {
 app.post('/api/selling-plans/sync', async (req, res) => {
     if (!sellingPlans.syncProductPlans) return res.status(503).json({ error: 'Selling Plans service not available' });
     try {
-        // Load plans from Metafields (plans_config = what admin created)
-        const plans = await readFromShopify('lab_app', 'plans_config').catch(() => []);
-        const activePlans = Array.isArray(plans) ? plans.filter(p =>
+        // Load plans from settings metafield sub-key (v6.0.0 unified storage)
+        const settingsData = await readFromShopify() || readFromFile() || {};
+        const plans = Array.isArray(settingsData.plans_config) ? settingsData.plans_config : [];
+        const activePlans = plans.filter(p =>
             p.active !== false &&
             (p.frequency || p.frequency_months) &&
             (p.discount !== undefined || p.discount_pct !== undefined)
-        ) : [];
+        );
 
         if (!activePlans.length) {
             return res.status(400).json({ error: 'No hay planes activos. Crea planes primero en la sección Planes.' });
@@ -567,9 +568,9 @@ app.post('/api/selling-plans/sync', async (req, res) => {
             prodsToSync = [{ shopify_id: req.body.productId, product_title: req.body.productTitle || 'Producto' }];
             console.log('[SELLING_PLANS] Single product sync:', req.body.productId);
         } else {
-            // CASE 2: Sync all active products from eligible_products Metafield
-            const eligibleProducts = await readFromShopify('lab_app', 'eligible_products').catch(() => []);
-            prodsToSync = Array.isArray(eligibleProducts) ? eligibleProducts.filter(p => p.is_active) : [];
+            // CASE 2: Sync all active products from settings.eligible_products sub-key
+            const eligibleProducts = Array.isArray(settingsData.eligible_products) ? settingsData.eligible_products : [];
+            prodsToSync = eligibleProducts.filter(p => p.is_active);
             if (!prodsToSync.length) {
                 return res.json({ synced: 0, total: 0, message: 'No hay productos activos. Activa productos en la sección Productos o usa el botón Sync de cada producto.' });
             }
@@ -1297,15 +1298,12 @@ app.post('/api/marketing/send', async (req, res) => {
                 sent++;
             } catch { failed++; }
         }
-
-        // Log campaign
         if (db && db.createEvent) {
             await db.createEvent({
                 subscription_id: 'campaign', event_type: 'campaign_sent',
                 metadata: JSON.stringify({ subject, segment, total: unique.length, sent, failed })
             }).catch(() => { });
         }
-
         res.json({ success: true, sent, failed, total: unique.length });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -1331,28 +1329,31 @@ app.get('/api/subscribers/export', async (req, res) => {
     res.send(header + rows);
 });
 
-/* ═══════════════════════════════════════════════
-   📦 STACKS API — Shopify Metafields
-═══════════════════════════════════════════════ */
+/* ── STACKS API — stored in settings metafield (v6.1.0) ── */
 app.get('/api/stacks', async (req, res) => {
-    try { res.json(await readFromShopify('lab_app', 'stacks') || []); } catch { res.json([]); }
+    try {
+        const s = await readFromShopify() || readFromFile() || {};
+        res.json(Array.isArray(s.stacks) ? s.stacks : []);
+    } catch { res.json([]); }
 });
 
 app.post('/api/stacks', async (req, res) => {
     try {
-        const current = await readFromShopify('lab_app', 'stacks') || [];
-        const idx = current.findIndex(s => s.id === req.body.id);
-        if (idx >= 0) current[idx] = req.body;
-        else current.push({ ...req.body, id: `stack_${Date.now()}`, created_at: new Date().toISOString() });
-        await saveToShopify(current, 'lab_app', 'stacks');
+        const s = await readFromShopify() || readFromFile() || {};
+        if (!Array.isArray(s.stacks)) s.stacks = [];
+        const idx = s.stacks.findIndex(st => st.id === req.body.id);
+        if (idx >= 0) s.stacks[idx] = req.body;
+        else s.stacks.push({ ...req.body, id: `stack_${Date.now()}`, created_at: new Date().toISOString() });
+        await saveToShopify(s); saveToFile(s);
         res.json(req.body);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.delete('/api/stacks/:id', async (req, res) => {
     try {
-        const current = (await readFromShopify('lab_app', 'stacks') || []).filter(s => s.id !== req.params.id);
-        await saveToShopify(current, 'lab_app', 'stacks');
+        const s = await readFromShopify() || readFromFile() || {};
+        s.stacks = (Array.isArray(s.stacks) ? s.stacks : []).filter(st => st.id !== req.params.id);
+        await saveToShopify(s); saveToFile(s);
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1374,7 +1375,7 @@ app.get('/api/shopify/products', async (req, res) => {
         if (!token) {
             return res.json({ products: [], error: 'SHOPIFY_ACCESS_TOKEN not set. Visit /auth?shop=' + shop + ' to authorize.' });
         }
-        const url = `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,images,variants,status`;
+        const url = `https://${shop}/admin/api/2026-01/products.json?limit=250&fields=id,title,images,variants,status`;
         const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } });
         if (!r.ok) {
             const errText = await r.text();
@@ -1642,23 +1643,277 @@ app.post('/api/subscriptions/:id/resume', async (req, res) => {
 });
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.1.0', ts: new Date() }));
 
 /* ── Catch-all: serve admin.html for Shopify embedded app ── */
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+/* ══════════════════════════════════════════════════════
+   ⚡ MOTOR DE COBROS RECURRENTES REALES v6.1.0
+   Shopify Native Subscription Billing Engine
+   • Daily cron: queries ALL active contracts with nextBillingDate <= today
+   • Triggers subscriptionBillingAttemptCreate for each due contract
+   • Upon success: Shopify creates a real order automatically
+   • Email automations: reminder 7d before, charge success/failure
+   • Scales to unlimited subscribers via Shopify infrastructure
+══════════════════════════════════════════════════════ */
+
+/** Send transactional email via configured SMTP */
+async function sendAutoEmail({ to, subject, html }) {
+    try {
+        const settings = (await readFromShopify()).settings || await readFromShopify() || {};
+        const nodemailer = require('nodemailer');
+        const host = process.env.SMTP_HOST || settings.smtp_host || 'smtp.gmail.com';
+        const user = process.env.SMTP_USER || settings.smtp_user || '';
+        const pass = process.env.SMTP_PASS || settings.smtp_pass || '';
+        const from = process.env.EMAIL_FROM || settings.email_from || user;
+        if (!user || !pass) { console.warn('[EMAIL] SMTP not configured'); return; }
+        const t = nodemailer.createTransport({ host, port: parseInt(process.env.SMTP_PORT || '587'), secure: false, auth: { user, pass } });
+        await t.sendMail({ from: `LAB NUTRITION <${from}>`, to, subject, html });
+        console.log(`[EMAIL] Sent: ${subject} → ${to}`);
+    } catch (e) { console.error('[EMAIL] Error:', e.message); }
+}
+
+/** Email: Cobro exitoso — pedido generado */
+function tplChargeSuccess(name, product, amount, currency, orderName, nextDate) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:Montserrat,sans-serif;background:#f5f5f5;padding:20px">
+    <div style="max-width:580px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 20px rgba(0,0,0,.1)">
+    <div style="background:#9d2a23;color:#fff;padding:28px 32px;font-size:22px;font-weight:900">✅ Suscripción renovada — LAB NUTRITION</div>
+    <div style="padding:32px;line-height:1.7;color:#222">
+    <p>Hola <strong>${name}</strong>,</p>
+    <div style="background:#d1fae5;border:1.5px solid #6ee7b7;border-radius:10px;padding:16px 20px;margin:16px 0;color:#065f46;font-weight:700">
+    ✅ Tu suscripción de <strong>${product}</strong> se renovó exitosamente.</div>
+    <p>Pedido: <strong style="font-size:18px;color:#9d2a23">${orderName}</strong><br>Monto: <strong>${amount} ${currency}</strong></p>
+    <p>Tu producto está siendo preparado para envío a tu dirección registrada.</p>
+    <p>Próxima renovación: <strong>${nextDate ? new Date(nextDate).toLocaleDateString('es-PE') : '—'}</strong></p>
+    </div>
+    <div style="background:#f2f2f2;padding:14px 32px;text-align:center;font-size:11px;color:#aaa">LAB NUTRITION</div>
+    </div></body></html>`;
+}
+
+/** Email: Cobro fallido */
+function tplChargeFailed(name, product, errorMsg) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:Montserrat,sans-serif;background:#f5f5f5;padding:20px">
+    <div style="max-width:580px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 20px rgba(0,0,0,.1)">
+    <div style="background:#7e201a;color:#fff;padding:28px 32px;font-size:22px;font-weight:900">⚠️ Problema con tu suscripción</div>
+    <div style="padding:32px;line-height:1.7;color:#222">
+    <p>Hola <strong>${name}</strong>,</p>
+    <div style="background:#fee2e2;border:1.5px solid #fca5a5;border-radius:10px;padding:16px;margin:16px 0;color:#991b1b">
+    ⚠️ No pudimos renovar tu suscripción de <strong>${product}</strong>.<br><small>${errorMsg || 'Método de pago rechazado'}</small></div>
+    <p>Por favor actualiza tu método de pago para continuar recibiendo tu pedido mensual.</p>
+    </div>
+    <div style="background:#f2f2f2;padding:14px 32px;text-align:center;font-size:11px;color:#aaa">LAB NUTRITION</div>
+    </div></body></html>`;
+}
+
+/** Email: Recordatorio 7 días antes */
+function tplReminder(name, product, amount, currency, nextDate) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:Montserrat,sans-serif;background:#f5f5f5;padding:20px">
+    <div style="max-width:580px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 20px rgba(0,0,0,.1)">
+    <div style="background:#9d2a23;color:#fff;padding:28px 32px;font-size:22px;font-weight:900">📦 Tu suscripción se renueva pronto</div>
+    <div style="padding:32px;line-height:1.7;color:#222">
+    <p>Hola <strong>${name}</strong>,</p>
+    <p>Tu suscripción de <strong>${product}</strong> se renovará automáticamente en <strong>7 días</strong>.</p>
+    <div style="background:#9d2a23;color:#fff;padding:10px 20px;border-radius:8px;display:inline-block;font-weight:800;margin:12px 0">
+    Próximo cobro: ${amount} ${currency} · ${new Date(nextDate).toLocaleDateString('es-PE')}</div>
+    <p>Tu pedido se generará y enviará a tu dirección registrada automáticamente. No necesitas hacer nada.</p>
+    </div>
+    <div style="background:#f2f2f2;padding:14px 32px;text-align:center;font-size:11px;color:#aaa">LAB NUTRITION</div>
+    </div></body></html>`;
+}
+
+/** BILLING CRON: runs daily at 2am Lima — charges all due subscription contracts */
+async function runDailyBillingCron() {
+    const now = new Date();
+    console.log('[BILLING CRON] Starting —', now.toISOString());
+    let charged = 0, failed = 0;
+    let cursor = null;
+
+    try {
+        do {
+            const { due, hasNextPage, endCursor } = await subscriptionContracts.getContractsDueForBilling(cursor);
+            cursor = hasNextPage ? endCursor : null;
+
+            for (const contract of due) {
+                const email = contract.customer?.email;
+                const name = `${contract.customer?.firstName || ''} ${contract.customer?.lastName || ''}`.trim() || email;
+                const line = contract.lines?.nodes?.[0];
+                const product = line?.title || 'Producto LAB';
+                const amount = line?.currentPrice?.amount || '0';
+                const currency = line?.currentPrice?.currencyCode || 'PEN';
+                const billingDate = (contract.nextBillingDate || now.toISOString()).split('T')[0];
+                const idempotencyKey = `${contract.id.replace(/\W/g, '')}-${billingDate}`;
+
+                try {
+                    const attempt = await subscriptionContracts.createBillingAttempt(contract.id, idempotencyKey);
+                    if (attempt?.order?.name) {
+                        charged++;
+                        console.log(`[BILLING CRON] ✅ ${email} charged — Order: ${attempt.order.name}`);
+                        // Calculate next billing date
+                        const nextD = new Date(contract.nextBillingDate || now);
+                        nextD.setMonth(nextD.getMonth() + (contract.deliveryPolicy?.intervalCount || 1));
+                        await sendAutoEmail({
+                            to: email,
+                            subject: `✅ Tu suscripción LAB se renovó — Pedido ${attempt.order.name}`,
+                            html: tplChargeSuccess(name, product, amount, currency, attempt.order.name, nextD.toISOString())
+                        });
+                        if (db?.createEvent) await db.createEvent({ subscription_id: contract.id, event_type: 'charge_success', metadata: JSON.stringify({ order: attempt.order.name, amount, currency }) }).catch(() => {});
+                    } else if (attempt?.errorMessage) {
+                        failed++;
+                        console.warn(`[BILLING CRON] ❌ ${email}: ${attempt.errorMessage}`);
+                        await sendAutoEmail({ to: email, subject: '⚠️ Problema con tu suscripción LAB', html: tplChargeFailed(name, product, attempt.errorMessage) });
+                        if (db?.createEvent) await db.createEvent({ subscription_id: contract.id, event_type: 'charge_failed', metadata: JSON.stringify({ error: attempt.errorMessage }) }).catch(() => {});
+                    }
+                } catch (err) {
+                    failed++;
+                    console.error(`[BILLING CRON] ${contract.id} error:`, err.message);
+                }
+                // Respect Shopify API rate limits (2 req/sec)
+                await new Promise(r => setTimeout(r, 500));
+            }
+        } while (cursor);
+
+        console.log(`[BILLING CRON] Done — charged:${charged} failed:${failed}`);
+    } catch (e) {
+        console.error('[BILLING CRON] Fatal:', e.message);
+    }
+}
+
+/** REMINDER CRON: runs daily at 9am Lima — sends 7-day advance reminders */
+async function runReminderCron() {
+    console.log('[REMINDER CRON] Checking 7-day upcoming billing');
+    try {
+        const in7 = new Date(Date.now() + 7 * 86400000);
+        const in8 = new Date(Date.now() + 8 * 86400000);
+        const { gql } = require('./services/shopify-storage');
+        let cursor = null;
+        do {
+            const data = await gql(`
+                query Upcoming($after: String) {
+                    subscriptionContracts(first: 100, after: $after, query: "status:ACTIVE") {
+                        pageInfo { hasNextPage endCursor }
+                        nodes {
+                            id nextBillingDate
+                            customer { email firstName lastName }
+                            lines(first: 1) { nodes { title currentPrice { amount currencyCode } } }
+                        }
+                    }
+                }
+            `, { after: cursor }).catch(() => null);
+            if (!data) break;
+            const result = data.subscriptionContracts;
+            cursor = result?.pageInfo?.hasNextPage ? result.pageInfo.endCursor : null;
+            for (const c of (result?.nodes || [])) {
+                const bd = c.nextBillingDate ? new Date(c.nextBillingDate) : null;
+                if (!bd || bd < in7 || bd > in8) continue;
+                const email = c.customer?.email;
+                if (!email) continue;
+                const name = `${c.customer.firstName || ''} ${c.customer.lastName || ''}`.trim() || email;
+                const line = c.lines?.nodes?.[0];
+                await sendAutoEmail({ to: email, subject: '📦 Tu suscripción LAB se renueva en 7 días', html: tplReminder(name, line?.title || 'Producto LAB', line?.currentPrice?.amount || '', line?.currentPrice?.currencyCode || 'PEN', c.nextBillingDate) });
+            }
+        } while (cursor);
+    } catch (e) { console.error('[REMINDER CRON] Error:', e.message); }
+}
+
+/** Schedule a function to run at a specific hour:minute daily (Lima time UTC-5) */
+function scheduleDailyCron(hourLima, minuteLima, fn) {
+    const hourUTC = (hourLima + 5) % 24;
+    const now = new Date();
+    const next = new Date();
+    next.setUTCHours(hourUTC, minuteLima, 0, 0);
+    if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+    const ms = next.getTime() - now.getTime();
+    setTimeout(() => { fn(); setInterval(fn, 24 * 60 * 60 * 1000); }, ms);
+    console.log(`[CRON] "${fn.name}" scheduled: next run in ${Math.round(ms / 60000)}min (${next.toISOString()})`);
+}
+
+/** SHOPIFY SUBSCRIPTION WEBHOOKS */
+// billing_attempts/success — called by Shopify when charge succeeds and order is created
+app.post('/webhooks/shopify/subscription_billing_attempts_success',
+    express.raw({ type: 'application/json' }),
+    async (req, res) => {
+        res.status(200).send('ok'); // Ack immediately to prevent Shopify retries
+        try {
+            const data = JSON.parse(req.body.toString('utf8'));
+            console.log('[WEBHOOK] billing_success — order:', data.order_name, 'contract:', data.subscription_contract_id);
+            if (db?.getSubscriptions) {
+                const subs = await db.getSubscriptions({ shopify_contract_id: data.subscription_contract_id }).catch(() => []);
+                for (const s of (subs || [])) {
+                    const nextCharge = new Date();
+                    nextCharge.setMonth(nextCharge.getMonth() + (s.frequency_months || 1));
+                    await db.updateSubscription(s.id, { cycles_completed: (s.cycles_completed || 0) + 1, last_charge_at: new Date().toISOString(), next_charge_at: nextCharge.toISOString() }).catch(() => {});
+                    await db.createEvent({ subscription_id: s.id, event_type: 'charge_success', metadata: JSON.stringify({ order: data.order_name }) }).catch(() => {});
+                }
+            }
+        } catch (e) { console.error('[WEBHOOK] billing_success error:', e.message); }
+    });
+
+// billing_attempts/failure — called when Shopify fails to charge
+app.post('/webhooks/shopify/subscription_billing_attempts_failure',
+    express.raw({ type: 'application/json' }),
+    async (req, res) => {
+        res.status(200).send('ok');
+        try {
+            const data = JSON.parse(req.body.toString('utf8'));
+            console.warn('[WEBHOOK] billing_failure —', data.error_message, 'contract:', data.subscription_contract_id);
+            if (db?.getSubscriptions) {
+                const subs = await db.getSubscriptions({ shopify_contract_id: data.subscription_contract_id }).catch(() => []);
+                for (const s of (subs || [])) {
+                    await db.updateSubscription(s.id, { status: 'payment_failed' }).catch(() => {});
+                    await db.createEvent({ subscription_id: s.id, event_type: 'charge_failed', metadata: JSON.stringify({ error: data.error_message }) }).catch(() => {});
+                }
+            }
+        } catch (e) { console.error('[WEBHOOK] billing_failure error:', e.message); }
+    });
+
+// contracts/cancel
+app.post('/webhooks/shopify/subscription_contracts_cancel',
+    express.raw({ type: 'application/json' }),
+    async (req, res) => {
+        res.status(200).send('ok');
+        try {
+            const data = JSON.parse(req.body.toString('utf8'));
+            if (db?.getSubscriptions) {
+                const subs = await db.getSubscriptions({ shopify_contract_id: data.admin_graphql_api_id }).catch(() => []);
+                for (const s of (subs || [])) {
+                    await db.updateSubscription(s.id, { status: 'cancelled' }).catch(() => {});
+                    await db.createEvent({ subscription_id: s.id, event_type: 'cancelled' }).catch(() => {});
+                }
+            }
+        } catch (e) {}
+    });
+
+/** Manual trigger for testing */
+app.post('/api/billing/run-now', async (req, res) => {
+    res.json({ started: true, message: 'Billing cron triggered manually' });
+    runDailyBillingCron().catch(console.error);
+});
+
 /* ── START SERVER ── */
 const server = app.listen(PORT, '0.0.0.0', async () => {
-    console.log(`\nLAB NUTRITION Backend running on 0.0.0.0:${PORT}`);
-    console.log(`Admin dashboard: /`);
-    console.log(`Shopify store: ${process.env.SHOPIFY_SHOP}\n`);
-    // Auto-initialize Shopify Metaobject types on boot
-    if (db && db.initializeTypes) {
+    console.log(`\nLAB NUTRITION Backend v6.1.0 running on 0.0.0.0:${PORT}`);
+    console.log(`Admin: / | Store: ${process.env.SHOPIFY_SHOP}\n`);
+    if (db?.initializeTypes) {
         try { await db.initializeTypes(); } catch (e) { console.warn('[DB] Init:', e.message); }
     }
+    // Start daily billing crons
+    if (process.env.NODE_ENV !== 'test') {
+        scheduleDailyCron(2, 0, runDailyBillingCron);  // 2am Lima
+        scheduleDailyCron(9, 0, runReminderCron);       // 9am Lima
+    }
+    // Register Shopify webhooks for subscription events
+    const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+    const backendUrl = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
+    if (token && subscriptionContracts?.registerSubscriptionWebhooks) {
+        subscriptionContracts.registerSubscriptionWebhooks(backendUrl)
+            .then(r => console.log('[WEBHOOKS] Registered:', r.filter(x => x.status !== 'already_registered').length, 'new'))
+            .catch(e => console.warn('[WEBHOOKS] (non-fatal):', e.message));
+    }
 });
+
 
 server.on('error', (err) => {
     console.error(`[FATAL] Server failed to start: ${err.message}`);
