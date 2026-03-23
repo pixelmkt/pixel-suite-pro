@@ -403,26 +403,35 @@ app.post('/api/subscriptions/:id/cancel', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* ── PLANS — stored as Shopify Metafields on the shop ── */
-// NOTE: plans created by admin are stored in Metafield namespace='lab_app' key='plans_config'
+/* ── PLANS — stored inside the proven settings metafield as 'plans_config' sub-key ── */
+// FIX 2026-03-23: New separate metafields fail silently in API 2026-01 (owner_resource bug).
+// Solution: store plans/products/configs as sub-keys of the EXISTING settings metafield.
 app.get('/api/plans', async (req, res) => {
     try {
-        let saved = await readFromShopify('lab_app', 'plans_config');
-        if (!Array.isArray(saved)) saved = [];
-        res.json(saved); // Return exactly what the admin created — no hardcoded defaults
+        const data = await readFromShopify() || readFromFile() || {};
+        const saved = data.plans_config;
+        console.log('[PLANS] Read', Array.isArray(saved) ? saved.length : 0, 'plans from settings metafield');
+        res.json(Array.isArray(saved) ? saved : []);
     } catch (e) {
         console.error('[PLANS] Error reading plans:', e.message);
         res.json([]);
     }
 });
 
-/* Guardar TODOS los planes (botón Guardar cambios en admin) */
+/* Guardar TODOS los planes — usa el metafield settings (probado) */
 app.post('/api/plans', async (req, res) => {
     try {
         const plans = Array.isArray(req.body) ? req.body : req.body.plans;
         if (!plans) return res.status(400).json({ error: 'Expected array of plans' });
-        await saveToShopify(plans, 'lab_app', 'plans_config');
-        console.log('[PLANS] Saved', plans.length, 'plans to Shopify Metafields');
+        const current = await readFromShopify() || readFromFile() || {};
+        current.plans_config = plans;
+        const saved = await saveToShopify(current);
+        saveToFile(current); // local fallback
+        if (!saved) {
+            console.error('[PLANS] ❌ Failed to save plans to Shopify Metafields');
+            return res.status(500).json({ error: 'No se pudo guardar en Shopify Metafields. Verifica SHOPIFY_ACCESS_TOKEN en Railway.' });
+        }
+        console.log('[PLANS] ✅ Saved', plans.length, 'plans to Shopify Metafields (settings sub-key)');
         res.json({ success: true, plans });
     } catch (e) {
         console.error('[PLANS] Save error:', e.message);
@@ -433,12 +442,14 @@ app.post('/api/plans', async (req, res) => {
 /* Guardar un plan individual por ID */
 app.put('/api/plans/:id', async (req, res) => {
     try {
-        let current = await readFromShopify('lab_app', 'plans_config');
-        if (!Array.isArray(current)) current = [];
+        const data = await readFromShopify() || readFromFile() || {};
+        let current = Array.isArray(data.plans_config) ? data.plans_config : [];
         const idx = current.findIndex(p => String(p.id) === String(req.params.id));
         if (idx >= 0) current[idx] = { ...current[idx], ...req.body, id: req.params.id };
         else current.push({ ...req.body, id: req.params.id });
-        await saveToShopify(current, 'lab_app', 'plans_config');
+        data.plans_config = current;
+        await saveToShopify(data);
+        saveToFile(data);
         res.json({ success: true, plan: current[idx >= 0 ? idx : current.length - 1] });
     } catch (e) {
         console.error('[PLANS] PUT error:', e.message);
@@ -453,13 +464,13 @@ app.get('/api/products', async (req, res) => {
         const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
         if (!token) return res.json([]);
         const url = `https://${shop}/admin/api/2026-01/products.json?limit=250&fields=id,title,images,variants,status`;
-        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } });
+        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
         if (!r.ok) return res.json([]);
         const data = await r.json();
-        // Read saved eligible products from Shopify Metafields
-        let saved = await readFromShopify('lab_app', 'eligible_products').catch(() => null);
-        if (!Array.isArray(saved)) saved = [];
-        const activeIds = new Set(saved.filter(p => p.is_active).map(p => String(p.shopify_id)));
+        // Read eligible_products from the proven settings metafield (sub-key)
+        const settings = await readFromShopify() || readFromFile() || {};
+        const savedEligible = Array.isArray(settings.eligible_products) ? settings.eligible_products : [];
+        const activeIds = new Set(savedEligible.filter(p => p.is_active).map(p => String(p.shopify_id)));
         const products = (data.products || []).map(p => ({
             shopify_id: String(p.id),
             title: p.title,
@@ -478,16 +489,17 @@ app.get('/api/products', async (req, res) => {
 
 app.post('/api/products', async (req, res) => {
     try {
-        // Always force array — readFromShopify can return {} if metafield was stored incorrectly
-        let current = await readFromShopify('lab_app', 'eligible_products') || [];
-        if (!Array.isArray(current)) current = [];
+        const settings = await readFromShopify() || readFromFile() || {};
+        if (!Array.isArray(settings.eligible_products)) settings.eligible_products = [];
         const pid = req.body.shopify_id || req.body.shopify_product_id;
-        const idx = current.findIndex(p => (p.shopify_id || p.shopify_product_id) === pid);
+        const idx = settings.eligible_products.findIndex(p => (p.shopify_id || p.shopify_product_id) === pid);
         const entry = { shopify_id: pid, product_title: req.body.product_title, is_active: req.body.is_active !== false, updated_at: new Date().toISOString() };
-        if (idx >= 0) current[idx] = { ...current[idx], ...entry };
-        else current.push({ ...entry, created_at: new Date().toISOString() });
-        await saveToShopify(current, 'lab_app', 'eligible_products');
-        console.log('[PRODUCTS] Saved ' + current.length + ' eligible products, toggled ' + pid + ' to ' + entry.is_active);
+        if (idx >= 0) settings.eligible_products[idx] = { ...settings.eligible_products[idx], ...entry };
+        else settings.eligible_products.push({ ...entry, created_at: new Date().toISOString() });
+        const saved = await saveToShopify(settings);
+        saveToFile(settings);
+        if (!saved) return res.status(500).json({ error: 'No se pudo guardar en Shopify Metafields' });
+        console.log('[PRODUCTS] ✅ Saved eligible products, toggled ' + pid + ' to ' + entry.is_active);
         res.json({ success: true, product: entry });
     } catch (e) {
         console.error('[PRODUCTS] Save error:', e.message);
@@ -498,21 +510,23 @@ app.post('/api/products', async (req, res) => {
 /* ── PER-PRODUCT CONFIG — descuentos individuales por producto ── */
 app.get('/api/products/:id/config', async (req, res) => {
     try {
-        let allConfigs = await readFromShopify('lab_app', 'product_configs').catch(() => null);
-        if (!allConfigs || typeof allConfigs !== 'object' || Array.isArray(allConfigs)) allConfigs = {};
+        const settings = await readFromShopify() || readFromFile() || {};
+        const allConfigs = (typeof settings.product_configs === 'object' && !Array.isArray(settings.product_configs)) ? settings.product_configs : {};
         const cfg = allConfigs[req.params.id];
-        res.json(cfg || { min_permanence: 3, discounts: { m1_p3: 10, m1_p6: 15, m1_p12: 25, m2_p3: 12, m2_p6: 18, m2_p12: 30 } });
+        res.json(cfg || {});
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/products/:id/config', async (req, res) => {
     try {
-        let allConfigs = await readFromShopify('lab_app', 'product_configs').catch(() => null);
-        if (!allConfigs || typeof allConfigs !== 'object' || Array.isArray(allConfigs)) allConfigs = {};
-        allConfigs[req.params.id] = { ...req.body, updated_at: new Date().toISOString() };
-        await saveToShopify(allConfigs, 'lab_app', 'product_configs');
-        console.log('[PRODUCT CONFIG] Saved config for product', req.params.id);
-        res.json({ success: true, config: allConfigs[req.params.id] });
+        const settings = await readFromShopify() || readFromFile() || {};
+        if (!settings.product_configs || typeof settings.product_configs !== 'object' || Array.isArray(settings.product_configs)) settings.product_configs = {};
+        settings.product_configs[req.params.id] = { ...req.body, updated_at: new Date().toISOString() };
+        const saved = await saveToShopify(settings);
+        saveToFile(settings);
+        if (!saved) return res.status(500).json({ error: 'No se pudo guardar en Shopify Metafields' });
+        console.log('[PRODUCT CONFIG] ✅ Saved config for product', req.params.id);
+        res.json({ success: true, config: settings.product_configs[req.params.id] });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
