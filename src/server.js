@@ -244,71 +244,98 @@ app.post('/api/subscriptions/create', async (req, res) => {
     }
 });
 
-/* ── CHECKOUT — Crea PreApprovalPlan en MP y devuelve init_point para redirigir al cliente ── */
+/* ── CHECKOUT — Crea MP PreApproval y devuelve init_point para redirigir al cliente ──
+   Acepta snake_case (widget actual) y camelCase (compatibilidad retroactiva)
+   Flujo: createCheckout() → PreApprovalPlan + PreApproval → init_point → cliente autoriza tarjeta
+   → MP cobra mensualmente → webhook /webhooks/mp → crear pedido Shopify automático ── */
 app.post('/api/subscriptions/checkout', async (req, res) => {
     try {
-        const {
-            variantId, productId, productTitle, productImage,
-            customerEmail, customerName, customerPhone,
-            frequencyMonths, permanenceMonths, discountPct, finalPrice, basePrice,
-            currency = 'PEN', freeShipping = false
-        } = req.body;
+        const b = req.body;
 
-        if (!customerEmail || !frequencyMonths || !permanenceMonths || !finalPrice) {
-            return res.status(400).json({ error: 'Faltan campos requeridos: email, frecuencia, permanencia, precio' });
+        // Acepta snake_case del widget actual O camelCase de versiones anteriores
+        const email        = b.customer_email   || b.customerEmail;
+        const name         = b.customer_name    || b.customerName   || '';
+        const phone        = b.phone            || b.customerPhone  || '';
+        const pId          = b.product_id       || b.productId      || '';
+        const vId          = b.variant_id       || b.variantId      || '';
+        const title        = b.product_title    || b.productTitle   || 'Producto LAB';
+        const image        = b.product_image    || b.productImage   || '';
+        const finalPrice   = parseFloat(b.final_price   || b.finalPrice  || 0);
+        const basePrice    = parseFloat(b.base_price    || b.basePrice   || finalPrice);
+        const discPct      = parseFloat(b.discount_pct  || b.discountPct || 0);
+        const freq         = parseInt(b.frequency_months  || b.frequencyMonths  || 1);
+        const perm         = parseInt(b.permanence_months || b.permanenceMonths || 3);
+        const freeShip     = b.free_shipping    || b.freeShipping   || false;
+
+        if (!email || !freq || !perm || !finalPrice) {
+            return res.status(400).json({ error: 'Faltan datos: email, frecuencia, permanencia y precio son obligatorios.' });
         }
 
-        const cyclesRequired = Math.ceil(permanenceMonths / frequencyMonths);
-        const backBase = process.env.BACKEND_URL || HOST || 'https://pixel-suite-pro-production.up.railway.app';
+        // Refresh MP token from Shopify settings at runtime
+        const dynSettings = await readFromShopify().catch(() => ({}));
+        if (dynSettings?.mp_access_token) process.env.MP_ACCESS_TOKEN = dynSettings.mp_access_token;
 
-        // 1. Crear PreApprovalPlan en MP — el plan tiene la freq y el monto
-        const plan = await mp.createPlan({
-            frequency: parseInt(frequencyMonths),
-            permanence: parseInt(permanenceMonths),
-            amount: parseFloat(parseFloat(finalPrice).toFixed(2)),
-            productTitle: productTitle || 'Suscripción LAB NUTRITION'
+        const backUrl = `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/subscriptions/success?email=${encodeURIComponent(email)}&product=${encodeURIComponent(title)}`;
+
+        // Create MP PreApprovalPlan + PreApproval → returns real init_point
+        const checkout = await mp.createCheckout({
+            frequency: freq,
+            permanence: perm,
+            amount: parseFloat(finalPrice.toFixed(2)),
+            productTitle: title,
+            customerEmail: email,
+            backUrl
         });
 
-        if (!plan || !plan.id) throw new Error('No se pudo crear el plan en Mercado Pago');
+        if (!checkout || !checkout.init_point) {
+            throw new Error('Mercado Pago no devolvió URL de checkout');
+        }
 
-        // 2. Guardar suscripción pendiente en Shopify Metaobjects (se activa cuando MP confirme)
-        const pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
-        await db.createSubscription({
+        // Save pending subscription record
+        const pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const subRecord = {
             id: pendingId,
-            customer_email: customerEmail,
-            customer_name: customerName || '',
-            customer_phone: customerPhone || '',
-            variant_id: (variantId || '').toString(),
-            product_id: (productId || '').toString(),
-            product_title: productTitle || '',
-            product_image: productImage || '',
-            frequency_months: parseInt(frequencyMonths),
-            permanence_months: parseInt(permanenceMonths),
-            discount_pct: parseFloat(discountPct || 0),
-            base_price: parseFloat(basePrice || finalPrice),
-            final_price: parseFloat(parseFloat(finalPrice).toFixed(2)),
-            mp_plan_id: plan.id,
-            mp_preapproval_id: null,
+            customer_email: email,
+            customer_name: name,
+            customer_phone: phone,
+            variant_id: String(vId),
+            product_id: String(pId),
+            product_title: title,
+            product_image: image,
+            frequency_months: freq,
+            permanence_months: perm,
+            discount_pct: discPct,
+            base_price: basePrice,
+            final_price: parseFloat(finalPrice.toFixed(2)),
+            mp_plan_id: checkout.plan_id || '',
+            mp_preapproval_id: checkout.subscription_id || '',
             status: 'pending_payment',
-            cycles_required: cyclesRequired,
+            cycles_required: Math.ceil(perm / freq),
             cycles_completed: 0,
-            free_shipping: freeShipping,
+            free_shipping: freeShip,
             next_charge_at: null,
             created_at: new Date().toISOString()
-        }).catch(e => console.warn('[CHECKOUT] Could not save pending sub:', e.message));
+        };
 
-        // 3. El init_point del plan ES la URL de pago donde el cliente autoriza la suscripción con su tarjeta
-        const checkoutUrl = plan.init_point || plan.sandbox_init_point;
-        if (!checkoutUrl) throw new Error('Mercado Pago no devolvió URL de checkout');
+        if (db?.createSubscription) {
+            await db.createSubscription(subRecord).catch(e => console.warn('[CHECKOUT] DB save error:', e.message));
+        } else {
+            const settings = await readFromShopify().catch(() => ({}));
+            if (!settings.pending_subscriptions) settings.pending_subscriptions = [];
+            settings.pending_subscriptions.push(subRecord);
+            await saveToShopify(settings).catch(() => {});
+        }
 
-        console.log(`[CHECKOUT] Plan MP creado: ${plan.id} | ${checkoutUrl}`);
-        res.json({ success: true, init_point: checkoutUrl, plan_id: plan.id });
+        console.log(`[CHECKOUT] ✅ ${email} → plan:${checkout.plan_id} sub:${checkout.subscription_id} → ${checkout.init_point}`);
+        res.json({ success: true, init_point: checkout.init_point, plan_id: checkout.plan_id, subscription_id: checkout.subscription_id });
 
     } catch (e) {
         console.error('[CHECKOUT] Error:', e.message);
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ error: e.message || 'Error al crear el checkout de suscripción' });
     }
 });
+
+
 
 /* ── SUBSCRIPTION SUCCESS — retorno de MP tras pago aprobado ── */
 app.get('/subscriptions/success', async (req, res) => {
