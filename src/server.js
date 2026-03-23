@@ -1642,13 +1642,313 @@ app.post('/api/subscriptions/:id/resume', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ══════════════════════════════════════════════════════
+   🛒 MP CHECKOUT — Suscripción recurrente real con Mercado Pago
+   Widget (modal) → POST /api/subscriptions/checkout →
+   MP PreApproval (init_point) → cliente autoriza tarjeta →
+   MP cobra mensualmente → webhook /webhooks/mp →
+   backend crea pedido Shopify por cada cobro automático
+══════════════════════════════════════════════════════ */
+
+/* Helper: create a Shopify order for each MP recurring payment */
+async function createShopifyOrderFromSubscription({ customerEmail, customerName, variantId, price, productTitle, subscriptionNote }) {
+    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+    const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+    if (!token) throw new Error('No Shopify token for order creation');
+
+    const body = {
+        order: {
+            email: customerEmail,
+            financial_status: 'paid',
+            send_receipt: true,
+            send_fulfillment_receipt: true,
+            note: subscriptionNote || 'LAB NUTRITION — Cobro automático de suscripción',
+            tags: 'suscripcion,cobro-automatico,mercadopago',
+            line_items: [{
+                variant_id: parseInt(variantId),
+                quantity: 1,
+                price: parseFloat(price).toFixed(2),
+                requires_shipping: true,
+                title: productTitle || 'Suscripción LAB'
+            }],
+            customer: { email: customerEmail }
+        }
+    };
+    const r = await fetch(`https://${shop}/admin/api/2026-01/orders.json`, {
+        method: 'POST',
+        headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!r.ok) {
+        const errTxt = await r.text();
+        throw new Error(`Shopify order failed ${r.status}: ${errTxt.slice(0, 200)}`);
+    }
+    return (await r.json()).order;
+}
+
+/* POST /api/subscriptions/checkout
+   Called by the widget modal when customer clicks "Suscribirme".
+   Creates a MP PreApprovalPlan + PreApproval → returns init_point. */
+app.post('/api/subscriptions/checkout', async (req, res) => {
+    try {
+        const {
+            customer_name, customer_email, phone,
+            product_id, variant_id, product_title,
+            base_price, final_price, discount_pct,
+            frequency_months, permanence_months
+        } = req.body;
+
+        if (!customer_email || !product_id || !final_price) {
+            return res.status(400).json({ error: 'Faltan datos: email, product_id y final_price son obligatorios.' });
+        }
+
+        // Refresh MP token from settings at runtime
+        const dynSettings = await readFromShopify().catch(() => ({}));
+        if (dynSettings?.mp_access_token) process.env.MP_ACCESS_TOKEN = dynSettings.mp_access_token;
+
+        const backUrl = `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/subscriptions/success?email=${encodeURIComponent(customer_email)}&product=${encodeURIComponent(product_title || '')}`;
+
+        // Create MP PreApproval checkout
+        const checkout = await mp.createCheckout({
+            frequency: parseInt(frequency_months) || 1,
+            permanence: parseInt(permanence_months) || 3,
+            amount: parseFloat(final_price),
+            productTitle: product_title || 'Producto LAB',
+            customerEmail: customer_email,
+            backUrl
+        });
+
+        // Save pending subscription record in Shopify Metaobjects
+        const subRecord = {
+            customer_name: customer_name || '',
+            customer_email,
+            phone: phone || '',
+            product_id: String(product_id),
+            variant_id: String(variant_id || ''),
+            product_title: product_title || '',
+            base_price: parseFloat(base_price) || parseFloat(final_price),
+            final_price: parseFloat(final_price),
+            discount_pct: parseInt(discount_pct) || 0,
+            frequency_months: parseInt(frequency_months) || 1,
+            permanence_months: parseInt(permanence_months) || 3,
+            status: 'pending',
+            mp_preapproval_id: checkout.subscription_id || '',
+            mp_plan_id: checkout.plan_id || '',
+            created_at: new Date().toISOString(),
+            next_charge_at: new Date().toISOString()
+        };
+
+        if (db?.createSubscription) {
+            await db.createSubscription(subRecord).catch(e => console.warn('[CHECKOUT] createSubscription error:', e.message));
+        } else {
+            // Fallback: store in settings metafield
+            const settings = await readFromShopify().catch(() => ({}));
+            if (!settings.pending_subscriptions) settings.pending_subscriptions = [];
+            settings.pending_subscriptions.push(subRecord);
+            await saveToShopify(settings).catch(() => {});
+        }
+
+        console.log(`[CHECKOUT] ✅ MP checkout created for ${customer_email} — plan:${checkout.plan_id} sub:${checkout.subscription_id}`);
+        res.json({
+            init_point: checkout.init_point,
+            subscription_id: checkout.subscription_id,
+            plan_id: checkout.plan_id
+        });
+    } catch (e) {
+        console.error('[CHECKOUT] Error:', e.message);
+        res.status(500).json({ error: e.message || 'Error al crear el checkout de MP' });
+    }
+});
+
+/* GET /subscriptions/success — Confirmation page after MP PreApproval */
+app.get('/subscriptions/success', (req, res) => {
+    const email = req.query.email || '';
+    const product = req.query.product || 'tu producto LAB';
+    res.send(`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Suscripción Activada — LAB NUTRITION</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Montserrat,sans-serif;background:#f5f5f5;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:#fff;border-radius:16px;padding:40px 36px;max-width:480px;width:100%;box-shadow:0 4px 32px rgba(0,0,0,.1);text-align:center}
+.icon{width:64px;height:64px;background:#d1fae5;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:28px}
+h1{font-size:22px;font-weight:900;color:#1a1a1a;margin-bottom:10px}
+p{color:#555;font-size:14px;line-height:1.6;margin-bottom:8px}
+.brand{color:#9d2a23;font-weight:800}
+.btn{display:inline-block;margin-top:24px;background:#9d2a23;color:#fff;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;letter-spacing:.5px}
+</style></head><body>
+<div class="card">
+  <div class="icon">✅</div>
+  <h1>¡Suscripción activada!</h1>
+  <p>Tu suscripción de <strong class="brand">${product}</strong> ha sido procesada correctamente.</p>
+  <p>Mercado Pago gestionará los cobros automáticos según tu plan. Recibirás una confirmación en <strong>${email}</strong>.</p>
+  <p style="margin-top:12px;font-size:12px;color:#999">Cada mes se generará un pedido automáticamente y recibirás tu producto sin hacer nada.</p>
+  <a href="https://labnutrition.com" class="btn">Volver a la tienda →</a>
+</div>
+</body></html>`);
+});
+
+/* ──────────────────────────────────────────────────────────────────────────
+   📡 MP WEBHOOKS — Maneja todos los eventos de Mercado Pago
+   
+   IMPORTANTE: Configurar en MP Developer Dashboard → Aplicación → Webhooks:
+   URL: https://pixel-suite-pro-production.up.railway.app/webhooks/mp
+   Eventos: preapproval, payment
+   
+   Flujo:
+   • preapproval (status=authorized) → suscripción activada → notificar cliente
+   • payment (created by MP for a subscription) → crear pedido Shopify
+   • preapproval (status=cancelled/paused) → actualizar estado en BD
+──────────────────────────────────────────────────────────────────────────── */
+app.post('/webhooks/mp', express.json(), async (req, res) => {
+    res.status(200).send('ok'); // Always ack immediately to prevent MP retries
+
+    const { type, action, data } = req.body || {};
+    const resourceId = data?.id;
+
+    if (!type || !resourceId) return;
+    console.log(`[MP WEBHOOK] type:${type} action:${action} id:${resourceId}`);
+
+    try {
+        // ── PAYMENT EVENT: MP charged a subscription → create Shopify order ──
+        if (type === 'payment') {
+            const payment = await mp.getPayment(resourceId).catch(() => null);
+            if (!payment) return console.warn('[MP WEBHOOK] Could not fetch payment:', resourceId);
+
+            // Only process approved subscription payments
+            if (payment.status !== 'approved') {
+                console.log(`[MP WEBHOOK] Payment ${resourceId} status: ${payment.status} — skipped`);
+                return;
+            }
+
+            const preapprovalId = payment.preapproval_id || payment.metadata?.preapproval_id;
+            const payerEmail = payment.payer?.email;
+            const transAmount = payment.transaction_amount;
+
+            console.log(`[MP WEBHOOK] ✅ Payment approved — preapproval:${preapprovalId} amount:${transAmount} email:${payerEmail}`);
+
+            // Find subscription record by MP preapproval_id
+            let sub = null;
+            if (db?.getSubscriptions) {
+                const subs = await db.getSubscriptions({ mp_preapproval_id: preapprovalId }).catch(() => []);
+                sub = subs?.[0] || null;
+            }
+            if (!sub) {
+                // Fallback: check settings metafield
+                const settings = await readFromShopify().catch(() => ({}));
+                sub = (settings.pending_subscriptions || []).find(s => s.mp_preapproval_id === preapprovalId);
+            }
+
+            if (!sub) {
+                console.warn('[MP WEBHOOK] No subscription found for preapproval:', preapprovalId);
+                return;
+            }
+
+            // Create Shopify order for this payment
+            try {
+                const order = await createShopifyOrderFromSubscription({
+                    customerEmail: sub.customer_email || payerEmail,
+                    customerName: sub.customer_name || '',
+                    variantId: sub.variant_id,
+                    price: transAmount || sub.final_price,
+                    productTitle: sub.product_title,
+                    subscriptionNote: `Suscripción LAB — Cobro automático MP (${sub.frequency_months === 1 ? 'Mensual' : `Cada ${sub.frequency_months} meses`}) — Pago MP #${resourceId}`
+                });
+
+                console.log(`[MP WEBHOOK] ✅ Shopify order created: ${order.name} for ${sub.customer_email}`);
+
+                // Update subscription cycles count
+                if (db?.updateSubscription && sub.id) {
+                    const nextCharge = new Date();
+                    nextCharge.setMonth(nextCharge.getMonth() + (sub.frequency_months || 1));
+                    await db.updateSubscription(sub.id, {
+                        status: 'active',
+                        cycles_completed: (sub.cycles_completed || 0) + 1,
+                        last_charge_at: new Date().toISOString(),
+                        next_charge_at: nextCharge.toISOString(),
+                        last_order_name: order.name
+                    }).catch(() => {});
+                }
+
+                // Send charge confirmation email
+                await sendAutoEmail({
+                    to: sub.customer_email || payerEmail,
+                    subject: `✅ Tu suscripción LAB se renovó — Pedido ${order.name}`,
+                    html: tplChargeSuccess(
+                        sub.customer_name || payerEmail,
+                        sub.product_title || 'Producto LAB',
+                        transAmount?.toFixed(2) || sub.final_price,
+                        'PEN',
+                        order.name,
+                        new Date(Date.now() + (sub.frequency_months || 1) * 30 * 86400000).toISOString()
+                    )
+                }).catch(() => {});
+
+            } catch (orderErr) {
+                console.error('[MP WEBHOOK] Order creation failed:', orderErr.message);
+            }
+        }
+
+        // ── PREAPPROVAL EVENT: subscription status changed ──
+        if (type === 'preapproval') {
+            const preapproval = await mp.getSubscription(resourceId).catch(() => null);
+            if (!preapproval) return;
+
+            const status = preapproval.status; // authorized, paused, cancelled, pending
+            const payerEmail = preapproval.payer_email;
+            console.log(`[MP WEBHOOK] PreApproval ${resourceId} → status:${status} email:${payerEmail}`);
+
+            // Find local subscription record
+            let sub = null;
+            if (db?.getSubscriptions) {
+                const subs = await db.getSubscriptions({ mp_preapproval_id: resourceId }).catch(() => []);
+                sub = subs?.[0] || null;
+            }
+
+            if (sub && db?.updateSubscription) {
+                const newStatus = status === 'authorized' ? 'active'
+                    : status === 'paused' ? 'paused'
+                    : status === 'cancelled' ? 'cancelled'
+                    : sub.status;
+                await db.updateSubscription(sub.id, { status: newStatus }).catch(() => {});
+
+                if (status === 'authorized' && sub.status === 'pending') {
+                    // First authorization — send welcome email
+                    await sendAutoEmail({
+                        to: sub.customer_email || payerEmail,
+                        subject: '🎉 Tu suscripción LAB está activa',
+                        html: `<!DOCTYPE html><html><body style="font-family:Montserrat,sans-serif;background:#f5f5f5;padding:20px">
+                        <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 20px rgba(0,0,0,.1)">
+                        <div style="background:#9d2a23;color:#fff;padding:28px 32px;font-size:20px;font-weight:900">🎉 ¡Bienvenido a LAB NUTRITION!</div>
+                        <div style="padding:32px;line-height:1.7;color:#222">
+                        <p>Hola <strong>${sub.customer_name || payerEmail}</strong>,</p>
+                        <p>Tu suscripción de <strong>${sub.product_title}</strong> está activa. recibirás tu producto cada ${sub.frequency_months === 1 ? 'mes' : `${sub.frequency_months} meses`} automáticamente.</p>
+                        <div style="background:#d1fae5;border-radius:10px;padding:14px 18px;margin:16px 0;color:#065f46;font-weight:700">
+                        ✅ Descuento: ${sub.discount_pct || 0}% OFF cada pedido<br>
+                        📦 Permanencia: ${sub.permanence_months} meses<br>
+                        💳 Cobro automático: ${sub.frequency_months === 1 ? 'Mensual' : `Cada ${sub.frequency_months} meses`}
+                        </div>
+                        <p>Mercado Pago se encargará de los cobros automáticamente. No necesitas hacer nada.</p>
+                        </div>
+                        <div style="background:#f2f2f2;padding:14px 32px;text-align:center;font-size:11px;color:#aaa">LAB NUTRITION</div>
+                        </div></body></html>`
+                    }).catch(() => {});
+                }
+            }
+        }
+    } catch (e) {
+        console.error('[MP WEBHOOK] Processing error:', e.message);
+    }
+});
+
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.1.0', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.2.0', ts: new Date() }));
 
 /* ── Catch-all: serve admin.html for Shopify embedded app ── */
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
+
 
 /* ══════════════════════════════════════════════════════
    ⚡ MOTOR DE COBROS RECURRENTES REALES v6.1.0
