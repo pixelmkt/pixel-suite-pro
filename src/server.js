@@ -510,25 +510,37 @@ app.post('/api/products', async (req, res) => {
 /* ── PER-PRODUCT CONFIG — descuentos individuales por producto ── */
 app.get('/api/products/:id/config', async (req, res) => {
     try {
+        const id = req.params.id;
         const settings = await readFromShopify() || readFromFile() || {};
-        const allConfigs = (typeof settings.product_configs === 'object' && !Array.isArray(settings.product_configs)) ? settings.product_configs : {};
-        const cfg = allConfigs[req.params.id];
-        res.json(cfg || {});
+        // NEW format: settings.product_configs[id]
+        const newFmt = (typeof settings.product_configs === 'object' && !Array.isArray(settings.product_configs)) ? settings.product_configs : {};
+        // OLD format: settings[id] (saved by server versions before v6.0.0)
+        const oldFmt = (typeof settings[id] === 'object' && settings[id]?.plans) ? settings[id] : null;
+        const cfg = newFmt[id] || oldFmt || {};
+        res.json(cfg);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/products/:id/config', async (req, res) => {
     try {
+        const id = req.params.id;
         const settings = await readFromShopify() || readFromFile() || {};
         if (!settings.product_configs || typeof settings.product_configs !== 'object' || Array.isArray(settings.product_configs)) settings.product_configs = {};
-        settings.product_configs[req.params.id] = { ...req.body, updated_at: new Date().toISOString() };
+        // Migrate old format if it exists
+        if (typeof settings[id] === 'object' && settings[id]?.plans) {
+            settings.product_configs[id] = { ...settings[id], ...req.body, updated_at: new Date().toISOString() };
+            delete settings[id]; // Remove old key to clean up
+        } else {
+            settings.product_configs[id] = { ...req.body, updated_at: new Date().toISOString() };
+        }
         const saved = await saveToShopify(settings);
         saveToFile(settings);
         if (!saved) return res.status(500).json({ error: 'No se pudo guardar en Shopify Metafields' });
-        console.log('[PRODUCT CONFIG] ✅ Saved config for product', req.params.id);
-        res.json({ success: true, config: settings.product_configs[req.params.id] });
+        console.log('[PRODUCT CONFIG] ✅ Saved config for product', id);
+        res.json({ success: true, config: settings.product_configs[id] });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
 
 /* ═══════════════════════════════════════════════════════════════
    🏷️ SHOPIFY SELLING PLANS — Native subscription UI on product page
