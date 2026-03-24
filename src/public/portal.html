@@ -31,8 +31,12 @@
 
     /* BENEFITS */
     .benefits-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+    .benefits-grid.layout-list { grid-template-columns: 1fr; }
     .benefit { background: var(--card2); border-radius: 12px; padding: 20px 16px; text-align: center; border: 1px solid var(--bdr); transition: .2s; }
     .benefit:hover { border-color: var(--pri); transform: translateY(-2px); }
+    .layout-list .benefit { display: flex; text-align: left; align-items: center; gap: 16px; padding: 16px 20px; }
+    .layout-list .benefit-icon { font-size: 28px; margin-bottom: 0; flex-shrink: 0; }
+    .layout-list .benefit-title { margin-bottom: 2px; }
     .benefit-icon { font-size: 32px; margin-bottom: 10px; }
     .benefit-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
     .benefit-desc { font-size: 11px; color: var(--mut); line-height: 1.4; }
@@ -142,8 +146,9 @@
         `;
 
         // BENEFITS
+        const layout = config.benefits_layout || 'grid';
         if (benefits.length) {
-          html += `<div class="section-title">Tus Beneficios</div><div class="card"><div class="card-inner"><div class="benefits-grid">`;
+          html += `<div class="section-title">Tus Beneficios</div><div class="card"><div class="card-inner"><div class="benefits-grid ${layout === 'list' ? 'layout-list' : ''}">`;
           html += benefits.map(b => `
             <div class="benefit">
               <div class="benefit-icon">${b.icon}</div>

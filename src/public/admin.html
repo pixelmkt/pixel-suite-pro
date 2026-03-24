@@ -1145,9 +1145,15 @@
           <div class="pt">Portal del Suscriptor</div>
           <div class="ps">Configura beneficios, promos, cupones y eventos que verán tus suscriptores</div>
         </div>
-        <button class="btn btn-r" onclick="savePortalConfig()">💾 Guardar todo</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-g" onclick="refreshPortalPreview()" title="Actualizar preview">👁 Preview</button>
+          <a class="btn btn-b" href="/portal" target="_blank" style="text-decoration:none">↗ Ver Portal</a>
+          <button class="btn btn-r" onclick="savePortalConfig()">💾 Guardar todo</button>
+        </div>
       </div>
-      <div class="content">
+      <div class="content" style="display:flex;gap:20px;flex-wrap:wrap">
+        <!-- LEFT: CONFIG -->
+        <div style="flex:1;min-width:340px">
 
         <!-- PERMISOS -->
         <div class="card">
@@ -1174,7 +1180,13 @@
         <div class="card">
           <div class="card-head">
             <span class="card-title">🎁 Beneficios del suscriptor</span>
-            <button class="btn btn-g btn-sm" onclick="addBenefit()">+ Agregar</button>
+            <div style="display:flex;gap:6px;align-items:center">
+              <select id="benefits-layout" onchange="refreshPortalPreview()" style="border:1.5px solid var(--bdr);border-radius:6px;padding:5px 10px;font-size:12px;font-family:inherit;background:#fff">
+                <option value="grid">Cuadrícula</option>
+                <option value="list">Lista</option>
+              </select>
+              <button class="btn btn-g btn-sm" onclick="addBenefit()">+ Agregar</button>
+            </div>
           </div>
           <div style="padding:20px">
             <div class="info-box">Define los beneficios que verán tus suscriptores en su portal. Usa emojis como icono.</div>
@@ -1212,6 +1224,25 @@
           <div style="padding:20px">
             <div class="info-box">Crea eventos, lanzamientos y promos que verán tus suscriptores en el portal.</div>
             <div id="events-list" style="display:flex;flex-direction:column;gap:10px"></div>
+          </div>
+        </div>
+
+        </div><!-- /LEFT CONFIG -->
+
+        <!-- RIGHT: LIVE PREVIEW -->
+        <div style="flex:1;min-width:320px;max-width:480px;position:sticky;top:0;align-self:flex-start">
+          <div class="card" style="overflow:hidden">
+            <div class="card-head" style="background:#1a1a1a">
+              <span class="card-title" style="color:#fff;font-size:11px;letter-spacing:1px">📱 VISTA PREVIA DEL PORTAL</span>
+              <div style="display:flex;gap:4px">
+                <div style="width:8px;height:8px;border-radius:50%;background:#ff5f57"></div>
+                <div style="width:8px;height:8px;border-radius:50%;background:#ffbd2e"></div>
+                <div style="width:8px;height:8px;border-radius:50%;background:#28c940"></div>
+              </div>
+            </div>
+            <div style="background:#0f0f0f;padding:0">
+              <iframe id="portal-preview" src="/portal" style="width:100%;height:600px;border:none;transform-origin:top left" title="Vista previa del portal"></iframe>
+            </div>
           </div>
         </div>
 
@@ -2381,6 +2412,7 @@
           { icon: '🎁', title: 'Regalos sorpresa', description: 'Muestras gratis en cada envío' }
         ];
         _portalEvents = d.events || [];
+        if (d.benefits_layout) document.getElementById('benefits-layout').value = d.benefits_layout;
         renderBenefits();
         renderEvents();
         if (d.product_of_week) {
@@ -2402,6 +2434,7 @@
           allow_pause: document.getElementById('p-allow-pause').checked,
           allow_cancel: document.getElementById('p-allow-cancel').checked,
           allow_freq_change: document.getElementById('p-allow-freq').checked,
+          benefits_layout: document.getElementById('benefits-layout').value,
           benefits: _portalBenefits,
           events: _portalEvents,
           product_of_week: {
@@ -2421,6 +2454,13 @@
         });
         toast('✅ Configuración del portal guardada');
       } catch (e) { toast('Error: ' + e.message, 'err'); }
+    }
+
+    // ──── PORTAL PREVIEW ────
+    function refreshPortalPreview() {
+      const iframe = document.getElementById('portal-preview');
+      if (iframe) iframe.src = '/portal?_t=' + Date.now();
+      toast('👁 Preview actualizado');
     }
 
     // ──── BRANDING ────
