@@ -244,6 +244,27 @@ app.post('/api/subscriptions/create', async (req, res) => {
     }
 });
 
+/* ── PORTAL CONFIG — Beneficios, Producto semana, Eventos (EARLY REGISTRATION) ── */
+app.get('/api/portal/config', async (req, res) => {
+    try {
+        const settings = await readFromShopify().catch(() => ({}));
+        res.json(settings.portal_config || {});
+    } catch (e) { res.json({}); }
+});
+
+app.put('/api/portal/config', async (req, res) => {
+    try {
+        const settings = await readFromShopify().catch(() => ({}));
+        settings.portal_config = req.body;
+        await saveToShopify(settings);
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/portal', (req, res) => {
+    res.sendFile(require('path').join(__dirname, 'public', 'portal.html'));
+});
+
 /* ── CHECKOUT — Crea MP PreApproval y devuelve init_point para redirigir al cliente ──
    Acepta snake_case (widget actual) y camelCase (compatibilidad retroactiva)
    Flujo: createCheckout() → PreApprovalPlan + PreApproval → init_point → cliente autoriza tarjeta
@@ -2231,27 +2252,7 @@ app.post('/api/billing/run-now', async (req, res) => {
     runDailyBillingCron().catch(console.error);
 });
 
-/* ── PORTAL CONFIG — Beneficios, Producto semana, Eventos ── */
-app.get('/api/portal/config', async (req, res) => {
-    try {
-        const settings = await readFromShopify().catch(() => ({}));
-        res.json(settings.portal_config || {});
-    } catch (e) { res.json({}); }
-});
-
-app.put('/api/portal/config', async (req, res) => {
-    try {
-        const settings = await readFromShopify().catch(() => ({}));
-        settings.portal_config = req.body;
-        await saveToShopify(settings);
-        res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-/* ── PORTAL PÚBLICO — Página del suscriptor ── */
-app.get('/portal', (req, res) => {
-    res.sendFile(require('path').join(__dirname, 'public', 'portal.html'));
-});
+/* Portal endpoints moved to early registration above checkout */
 
 /* ── START SERVER ── */
 const server = app.listen(PORT, '0.0.0.0', async () => {
