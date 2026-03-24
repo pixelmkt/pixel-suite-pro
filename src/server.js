@@ -245,14 +245,14 @@ app.post('/api/subscriptions/create', async (req, res) => {
 });
 
 /* ── PORTAL CONFIG — Beneficios, Producto semana, Eventos (EARLY REGISTRATION) ── */
-app.get('/api/portal/config', async (req, res) => {
+app.get('/api/portal-config', async (req, res) => {
     try {
         const settings = await readFromShopify().catch(() => ({}));
         res.json(settings.portal_config || {});
     } catch (e) { res.json({}); }
 });
 
-app.put('/api/portal/config', async (req, res) => {
+app.put('/api/portal-config', async (req, res) => {
     try {
         const settings = await readFromShopify().catch(() => ({}));
         settings.portal_config = req.body;

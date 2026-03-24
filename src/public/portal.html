@@ -109,7 +109,7 @@
       try {
         // Load portal config (branding, benefits, events, product of the week)
         const [config, settings] = await Promise.all([
-          fetch(BACKEND + '/api/portal/config').then(r => r.json()).catch(() => ({})),
+          fetch(BACKEND + '/api/portal-config').then(r => r.json()).catch(() => ({})),
           fetch(BACKEND + '/api/settings').then(r => r.json()).catch(() => ({}))
         ]);
 

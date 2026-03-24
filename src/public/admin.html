@@ -2370,7 +2370,7 @@
 
     async function loadPortalConfig() {
       try {
-        const d = await api('/api/portal/config').catch(() => ({}));
+        const d = await api('/api/portal-config').catch(() => ({}));
         document.getElementById('p-allow-pause').checked = d.allow_pause !== false;
         document.getElementById('p-allow-cancel').checked = d.allow_cancel !== false;
         document.getElementById('p-allow-freq').checked = !!d.allow_freq_change;
@@ -2414,7 +2414,7 @@
             description: document.getElementById('pw-desc').value
           }
         };
-        await api('/api/portal/config', {
+        await api('/api/portal-config', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
