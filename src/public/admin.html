@@ -1138,55 +1138,83 @@
       </div>
     </div>
 
-    <!-- PORTAL CLIENTE -->
+    <!-- PORTAL CLIENTE — Config completa: permisos + beneficios + producto de la semana + eventos -->
     <div id="p-portal" class="panel">
       <div class="ph">
         <div>
-          <div class="pt">Portal del Cliente</div>
-          <div class="ps">Configura lo que el cliente puede hacer en su portal de suscripciones</div>
+          <div class="pt">Portal del Suscriptor</div>
+          <div class="ps">Configura beneficios, promos, cupones y eventos que verán tus suscriptores</div>
         </div>
+        <button class="btn btn-r" onclick="savePortalConfig()">💾 Guardar todo</button>
       </div>
       <div class="content">
-        <div class="info-box">👤 El portal del cliente permite a los suscriptores ver, pausar y cancelar sus
-          suscripciones.</div>
+
+        <!-- PERMISOS -->
         <div class="card">
-          <div class="card-head"><span class="card-title">Permisos del portal</span></div>
+          <div class="card-head"><span class="card-title">⚙️ Permisos del portal</span></div>
           <div style="padding:20px">
             <div style="display:flex;flex-direction:column;gap:14px">
-              <label
-                style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
-                <div>
-                  <div style="font-weight:600;font-size:13px">Pausar suscripción</div>
-                  <div style="font-size:11px;color:var(--mut)">El cliente puede pausar hasta X meses (configurable en
-                    Ajustes)</div>
-                </div>
-                <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-pause" checked><span
-                      class="tslide"></span></label>
+              <label style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+                <div><div style="font-weight:600;font-size:13px">Pausar suscripción</div><div style="font-size:11px;color:var(--mut)">El cliente puede pausar hasta X meses</div></div>
+                <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-pause" checked><span class="tslide"></span></label>
               </label>
-              <label
-                style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
-                <div>
-                  <div style="font-weight:600;font-size:13px">Cancelar suscripción</div>
-                  <div style="font-size:11px;color:var(--mut)">El cliente puede cancelar dentro de la ventana permitida
-                  </div>
-                </div>
-                <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-cancel" checked><span
-                      class="tslide"></span></label>
+              <label style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+                <div><div style="font-weight:600;font-size:13px">Cancelar suscripción</div><div style="font-size:11px;color:var(--mut)">El cliente puede cancelar dentro de la ventana permitida</div></div>
+                <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-cancel" checked><span class="tslide"></span></label>
               </label>
-              <label
-                style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
-                <div>
-                  <div style="font-weight:600;font-size:13px">Cambiar frecuencia</div>
-                  <div style="font-size:11px;color:var(--mut)">El cliente puede cambiar de mensual a bimestral o
-                    viceversa</div>
-                </div>
-                <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-freq"><span
-                      class="tslide"></span></label>
+              <label style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+                <div><div style="font-weight:600;font-size:13px">Cambiar frecuencia</div><div style="font-size:11px;color:var(--mut)">El cliente puede cambiar de mensual a bimestral</div></div>
+                <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-freq"><span class="tslide"></span></label>
               </label>
             </div>
-            <button class="btn btn-r" onclick="savePortalConfig()" style="margin-top:16px">Guardar permisos</button>
           </div>
         </div>
+
+        <!-- BENEFICIOS DEL SUSCRIPTOR -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">🎁 Beneficios del suscriptor</span>
+            <button class="btn btn-g btn-sm" onclick="addBenefit()">+ Agregar</button>
+          </div>
+          <div style="padding:20px">
+            <div class="info-box">Define los beneficios que verán tus suscriptores en su portal. Usa emojis como icono.</div>
+            <div id="benefits-list" style="display:flex;flex-direction:column;gap:10px"></div>
+          </div>
+        </div>
+
+        <!-- PRODUCTO DE LA SEMANA + CUPÓN -->
+        <div class="card">
+          <div class="card-head"><span class="card-title">⭐ Producto de la semana + Cupón</span></div>
+          <div style="padding:20px">
+            <div class="info-box">Destaca un producto con descuento exclusivo para suscriptores. Se muestra en el portal.</div>
+            <div class="frow">
+              <div class="fg"><label class="fl">Nombre del producto</label><input class="fi" id="pw-name" placeholder="Ej: Whey Protein Isolate"></div>
+              <div class="fg"><label class="fl">URL de imagen</label><input class="fi" id="pw-image" placeholder="https://..."></div>
+            </div>
+            <div class="frow">
+              <div class="fg"><label class="fl">Precio original (PEN)</label><input class="fi" type="number" id="pw-price" placeholder="Ej: 179"></div>
+              <div class="fg"><label class="fl">Precio suscriptor (PEN)</label><input class="fi" type="number" id="pw-sub-price" placeholder="Ej: 129"></div>
+            </div>
+            <div class="frow">
+              <div class="fg"><label class="fl">Código de cupón</label><input class="fi" id="pw-coupon" placeholder="Ej: SUSCRIPTOR20"></div>
+              <div class="fg"><label class="fl">URL del producto en tienda</label><input class="fi" id="pw-url" placeholder="https://labnutrition.com/products/..."></div>
+            </div>
+            <div class="fg"><label class="fl">Descripción corta</label><input class="fi" id="pw-desc" placeholder="Exclusivo para suscriptores — solo esta semana"></div>
+          </div>
+        </div>
+
+        <!-- EVENTOS Y PROMOS -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">📅 Eventos y promociones</span>
+            <button class="btn btn-g btn-sm" onclick="addEvent()">+ Agregar</button>
+          </div>
+          <div style="padding:20px">
+            <div class="info-box">Crea eventos, lanzamientos y promos que verán tus suscriptores en el portal.</div>
+            <div id="events-list" style="display:flex;flex-direction:column;gap:10px"></div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -1431,6 +1459,26 @@
                 type="number" class="fi" id="cfg-close" value="15"></div>
             <div class="fg"><label class="fl">Pausa máxima (meses)</label><input type="number" class="fi" id="cfg-pause"
                 value="2"></div>
+          </div>
+        </div>
+
+        <!-- BRANDING -->
+        <div class="settings-section">
+          <div class="settings-title">🎨 Branding</div>
+          <div class="info-box">Personaliza nombre, colores y logo. Se refleja en sidebar, widget y portal público.</div>
+          <div class="frow">
+            <div class="fg"><label class="fl">Nombre de la App</label><input class="fi" id="brand-name" placeholder="Mi App de Suscripciones"></div>
+            <div class="fg"><label class="fl">Eslogan</label><input class="fi" id="brand-slogan" placeholder="Tu membresía premium"></div>
+          </div>
+          <div class="frow">
+            <div class="fg"><label class="fl">Color primario</label><input class="fi" id="brand-color" type="color" value="#D4502A"></div>
+            <div class="fg"><label class="fl">Color secundario</label><input class="fi" id="brand-color2" type="color" value="#2E7D49"></div>
+          </div>
+          <div class="fg"><label class="fl">URL del Logo</label><input class="fi" id="brand-logo" placeholder="https://cdn.shopify.com/s/.../logo.png">
+            <div class="fin">Se muestra en el sidebar admin y el portal público del suscriptor</div>
+          </div>
+          <div style="margin-top:12px">
+            <button class="btn btn-g btn-sm" onclick="previewBranding()">👁 Vista previa</button>
           </div>
         </div>
       </div>
@@ -2191,6 +2239,9 @@
         if (data.cancellation_window_open) document.getElementById('cfg-open').value = data.cancellation_window_open;
         if (data.cancellation_window_close) document.getElementById('cfg-close').value = data.cancellation_window_close;
         if (data.max_pause_months) document.getElementById('cfg-pause').value = data.max_pause_months;
+        // Branding
+        applyBranding(data);
+        if (data.mp_access_token) { const st = document.getElementById('mp-status'); if(st) { st.style.display='block'; st.style.background='#d1fae5'; st.style.color='#065f46'; st.textContent='\u2705 Token configurado'; }}
       } catch (e) { }
     }
 
@@ -2206,10 +2257,16 @@
         cancellation_window_open: parseInt(document.getElementById('cfg-open').value),
         cancellation_window_close: parseInt(document.getElementById('cfg-close').value),
         max_pause_months: parseInt(document.getElementById('cfg-pause').value),
+        brand_name: document.getElementById('brand-name').value,
+        brand_slogan: document.getElementById('brand-slogan').value,
+        brand_color: document.getElementById('brand-color').value,
+        brand_color2: document.getElementById('brand-color2').value,
+        brand_logo: document.getElementById('brand-logo').value,
       };
       try {
         await api('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        toast('💾 Ajustes guardados correctamente');
+        applyBranding(body);
+        toast('💾 Ajustes y branding guardados correctamente');
       } catch (e) { toast('Error: ' + e.message, 'err'); }
     }
 
@@ -2263,6 +2320,134 @@
         // 2. Verify immediately
         await testMP();
       } catch (e) { toast('Error al guardar: ' + e.message, 'err'); }
+    }
+
+    // ──── PORTAL CONFIG: Beneficios, Producto semana, Eventos ────
+    let _portalBenefits = [], _portalEvents = [];
+
+    function addBenefit() {
+      _portalBenefits.push({ icon: '🎁', title: '', description: '' });
+      renderBenefits();
+    }
+    function removeBenefit(i) { _portalBenefits.splice(i, 1); renderBenefits(); }
+
+    function renderBenefits() {
+      const el = document.getElementById('benefits-list');
+      if (!el) return;
+      el.innerHTML = _portalBenefits.map((b, i) => `
+        <div style="display:flex;gap:8px;align-items:flex-start;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+          <input value="${b.icon}" onchange="_portalBenefits[${i}].icon=this.value" style="width:40px;border:1.5px solid var(--bdr);border-radius:6px;padding:6px;text-align:center;font-size:18px">
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+            <input value="${b.title||''}" placeholder="Título del beneficio" onchange="_portalBenefits[${i}].title=this.value" style="border:1.5px solid var(--bdr);border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit">
+            <input value="${b.description||''}" placeholder="Descripción breve" onchange="_portalBenefits[${i}].description=this.value" style="border:1.5px solid var(--bdr);border-radius:6px;padding:6px 10px;font-size:12px;font-family:inherit;color:#666">
+          </div>
+          <button onclick="removeBenefit(${i})" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--red)">✕</button>
+        </div>
+      `).join('');
+    }
+
+    function addEvent() {
+      _portalEvents.push({ title: '', date: '', description: '', badge: '🔥' });
+      renderEvents();
+    }
+    function removeEvent(i) { _portalEvents.splice(i, 1); renderEvents(); }
+
+    function renderEvents() {
+      const el = document.getElementById('events-list');
+      if (!el) return;
+      el.innerHTML = _portalEvents.map((ev, i) => `
+        <div style="display:flex;gap:8px;align-items:flex-start;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+          <input value="${ev.badge}" onchange="_portalEvents[${i}].badge=this.value" style="width:40px;border:1.5px solid var(--bdr);border-radius:6px;padding:6px;text-align:center;font-size:18px">
+          <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <input value="${ev.title||''}" placeholder="Título del evento" onchange="_portalEvents[${i}].title=this.value" style="border:1.5px solid var(--bdr);border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit">
+            <input type="date" value="${ev.date||''}" onchange="_portalEvents[${i}].date=this.value" style="border:1.5px solid var(--bdr);border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit">
+            <input value="${ev.description||''}" placeholder="Descripción" onchange="_portalEvents[${i}].description=this.value" style="grid-column:1/-1;border:1.5px solid var(--bdr);border-radius:6px;padding:6px 10px;font-size:12px;font-family:inherit;color:#666">
+          </div>
+          <button onclick="removeEvent(${i})" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--red)">✕</button>
+        </div>
+      `).join('');
+    }
+
+    async function loadPortalConfig() {
+      try {
+        const d = await api('/api/portal/config').catch(() => ({}));
+        document.getElementById('p-allow-pause').checked = d.allow_pause !== false;
+        document.getElementById('p-allow-cancel').checked = d.allow_cancel !== false;
+        document.getElementById('p-allow-freq').checked = !!d.allow_freq_change;
+        _portalBenefits = d.benefits || [
+          { icon: '🚚', title: 'Envío prioritario', description: 'Recibe tus productos antes que nadie' },
+          { icon: '💰', title: 'Descuento exclusivo', description: 'Hasta 40% de descuento permanente' },
+          { icon: '🎯', title: 'Acceso anticipado', description: 'Sé el primero en probar nuevos lanzamientos' },
+          { icon: '🎁', title: 'Regalos sorpresa', description: 'Muestras gratis en cada envío' }
+        ];
+        _portalEvents = d.events || [];
+        renderBenefits();
+        renderEvents();
+        if (d.product_of_week) {
+          const pw = d.product_of_week;
+          document.getElementById('pw-name').value = pw.name || '';
+          document.getElementById('pw-image').value = pw.image || '';
+          document.getElementById('pw-price').value = pw.price || '';
+          document.getElementById('pw-sub-price').value = pw.sub_price || '';
+          document.getElementById('pw-coupon').value = pw.coupon || '';
+          document.getElementById('pw-url').value = pw.url || '';
+          document.getElementById('pw-desc').value = pw.description || '';
+        }
+      } catch (e) { console.warn('Portal config load error:', e); }
+    }
+
+    async function savePortalConfig() {
+      try {
+        const payload = {
+          allow_pause: document.getElementById('p-allow-pause').checked,
+          allow_cancel: document.getElementById('p-allow-cancel').checked,
+          allow_freq_change: document.getElementById('p-allow-freq').checked,
+          benefits: _portalBenefits,
+          events: _portalEvents,
+          product_of_week: {
+            name: document.getElementById('pw-name').value,
+            image: document.getElementById('pw-image').value,
+            price: parseFloat(document.getElementById('pw-price').value) || 0,
+            sub_price: parseFloat(document.getElementById('pw-sub-price').value) || 0,
+            coupon: document.getElementById('pw-coupon').value,
+            url: document.getElementById('pw-url').value,
+            description: document.getElementById('pw-desc').value
+          }
+        };
+        await api('/api/portal/config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        toast('✅ Configuración del portal guardada');
+      } catch (e) { toast('Error: ' + e.message, 'err'); }
+    }
+
+    // ──── BRANDING ────
+    function previewBranding() {
+      const name = document.getElementById('brand-name').value || 'Suscriptions MP';
+      const color = document.getElementById('brand-color').value || '#D4502A';
+      const color2 = document.getElementById('brand-color2').value || '#2E7D49';
+      const logo = document.getElementById('brand-logo').value;
+      document.documentElement.style.setProperty('--red', color);
+      document.documentElement.style.setProperty('--red2', color);
+      document.documentElement.style.setProperty('--grn', color2);
+      const sbName = document.querySelector('.sb-name');
+      if (sbName) sbName.textContent = name;
+      toast('👁 Vista previa aplicada. Guarda todo para persistir.');
+    }
+
+    function applyBranding(s) {
+      if (!s) return;
+      if (s.brand_name) {
+        const sbName = document.querySelector('.sb-name');
+        if (sbName) sbName.textContent = s.brand_name;
+        document.getElementById('brand-name').value = s.brand_name;
+      }
+      if (s.brand_slogan) document.getElementById('brand-slogan').value = s.brand_slogan;
+      if (s.brand_color) { document.getElementById('brand-color').value = s.brand_color; document.documentElement.style.setProperty('--red', s.brand_color); document.documentElement.style.setProperty('--red2', s.brand_color); }
+      if (s.brand_color2) { document.getElementById('brand-color2').value = s.brand_color2; document.documentElement.style.setProperty('--grn', s.brand_color2); }
+      if (s.brand_logo) document.getElementById('brand-logo').value = s.brand_logo;
     }
 
     // INIT

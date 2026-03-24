@@ -2231,6 +2231,28 @@ app.post('/api/billing/run-now', async (req, res) => {
     runDailyBillingCron().catch(console.error);
 });
 
+/* ── PORTAL CONFIG — Beneficios, Producto semana, Eventos ── */
+app.get('/api/portal/config', async (req, res) => {
+    try {
+        const settings = await readFromShopify().catch(() => ({}));
+        res.json(settings.portal_config || {});
+    } catch (e) { res.json({}); }
+});
+
+app.put('/api/portal/config', async (req, res) => {
+    try {
+        const settings = await readFromShopify().catch(() => ({}));
+        settings.portal_config = req.body;
+        await saveToShopify(settings);
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── PORTAL PÚBLICO — Página del suscriptor ── */
+app.get('/portal', (req, res) => {
+    res.sendFile(require('path').join(__dirname, 'public', 'portal.html'));
+});
+
 /* ── START SERVER ── */
 const server = app.listen(PORT, '0.0.0.0', async () => {
     console.log(`\nLAB NUTRITION Backend v6.1.0 running on 0.0.0.0:${PORT}`);
