@@ -13,6 +13,10 @@
  */
 
 const SHOPIFY_API_VERSION = '2026-01';
+<<<<<<< HEAD
+=======
+
+>>>>>>> 26cdd0f1d78aa8135a6ef1fa76539fe7a34e0a90
 const SUBSCRIPTION_TYPE = 'lab_subscription';
 const EVENT_TYPE = 'lab_sub_event';
 

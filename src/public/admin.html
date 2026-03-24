@@ -985,7 +985,12 @@
           <div class="pt">Planes de Suscripción</div>
           <div class="ps">Crea, edita y activa los planes disponibles para tus clientes</div>
         </div>
-        <button class="btn btn-r" onclick="openNewPlanModal()">+ Nuevo plan</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-r" onclick="openNewPlanModal()">+ Nuevo plan</button>
+          <button class="btn" style="background:#18181b;color:#fff;border:none" onclick="syncSellingPlans()" id="sync-btn" title="Sincroniza los planes con Shopify para que aparezcan nativamente en la página del producto">
+            <span id="sync-btn-label">⬆ Sync Shopify</span>
+          </button>
+        </div>
       </div>
       <div class="content">
         <div class="info-box">💡 Los planes definen la <strong>frecuencia de envío</strong> y la <strong>permanencia
@@ -1133,55 +1138,83 @@
       </div>
     </div>
 
-    <!-- PORTAL CLIENTE -->
+    <!-- PORTAL CLIENTE — Config completa: permisos + beneficios + producto de la semana + eventos -->
     <div id="p-portal" class="panel">
       <div class="ph">
         <div>
-          <div class="pt">Portal del Cliente</div>
-          <div class="ps">Configura lo que el cliente puede hacer en su portal de suscripciones</div>
+          <div class="pt">Portal del Suscriptor</div>
+          <div class="ps">Configura beneficios, promos, cupones y eventos que verán tus suscriptores</div>
         </div>
+        <button class="btn btn-r" onclick="savePortalConfig()">💾 Guardar todo</button>
       </div>
       <div class="content">
-        <div class="info-box">👤 El portal del cliente permite a los suscriptores ver, pausar y cancelar sus
-          suscripciones.</div>
+
+        <!-- PERMISOS -->
         <div class="card">
-          <div class="card-head"><span class="card-title">Permisos del portal</span></div>
+          <div class="card-head"><span class="card-title">⚙️ Permisos del portal</span></div>
           <div style="padding:20px">
             <div style="display:flex;flex-direction:column;gap:14px">
-              <label
-                style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
-                <div>
-                  <div style="font-weight:600;font-size:13px">Pausar suscripción</div>
-                  <div style="font-size:11px;color:var(--mut)">El cliente puede pausar hasta X meses (configurable en
-                    Ajustes)</div>
-                </div>
-                <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-pause" checked><span
-                      class="tslide"></span></label>
+              <label style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+                <div><div style="font-weight:600;font-size:13px">Pausar suscripción</div><div style="font-size:11px;color:var(--mut)">El cliente puede pausar hasta X meses</div></div>
+                <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-pause" checked><span class="tslide"></span></label>
               </label>
-              <label
-                style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
-                <div>
-                  <div style="font-weight:600;font-size:13px">Cancelar suscripción</div>
-                  <div style="font-size:11px;color:var(--mut)">El cliente puede cancelar dentro de la ventana permitida
-                  </div>
-                </div>
-                <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-cancel" checked><span
-                      class="tslide"></span></label>
+              <label style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+                <div><div style="font-weight:600;font-size:13px">Cancelar suscripción</div><div style="font-size:11px;color:var(--mut)">El cliente puede cancelar dentro de la ventana permitida</div></div>
+                <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-cancel" checked><span class="tslide"></span></label>
               </label>
-              <label
-                style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
-                <div>
-                  <div style="font-weight:600;font-size:13px">Cambiar frecuencia</div>
-                  <div style="font-size:11px;color:var(--mut)">El cliente puede cambiar de mensual a bimestral o
-                    viceversa</div>
-                </div>
-                <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-freq"><span
-                      class="tslide"></span></label>
+              <label style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+                <div><div style="font-weight:600;font-size:13px">Cambiar frecuencia</div><div style="font-size:11px;color:var(--mut)">El cliente puede cambiar de mensual a bimestral</div></div>
+                <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-freq"><span class="tslide"></span></label>
               </label>
             </div>
-            <button class="btn btn-r" onclick="savePortalConfig()" style="margin-top:16px">Guardar permisos</button>
           </div>
         </div>
+
+        <!-- BENEFICIOS DEL SUSCRIPTOR -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">🎁 Beneficios del suscriptor</span>
+            <button class="btn btn-g btn-sm" onclick="addBenefit()">+ Agregar</button>
+          </div>
+          <div style="padding:20px">
+            <div class="info-box">Define los beneficios que verán tus suscriptores en su portal. Usa emojis como icono.</div>
+            <div id="benefits-list" style="display:flex;flex-direction:column;gap:10px"></div>
+          </div>
+        </div>
+
+        <!-- PRODUCTO DE LA SEMANA + CUPÓN -->
+        <div class="card">
+          <div class="card-head"><span class="card-title">⭐ Producto de la semana + Cupón</span></div>
+          <div style="padding:20px">
+            <div class="info-box">Destaca un producto con descuento exclusivo para suscriptores. Se muestra en el portal.</div>
+            <div class="frow">
+              <div class="fg"><label class="fl">Nombre del producto</label><input class="fi" id="pw-name" placeholder="Ej: Whey Protein Isolate"></div>
+              <div class="fg"><label class="fl">URL de imagen</label><input class="fi" id="pw-image" placeholder="https://..."></div>
+            </div>
+            <div class="frow">
+              <div class="fg"><label class="fl">Precio original (PEN)</label><input class="fi" type="number" id="pw-price" placeholder="Ej: 179"></div>
+              <div class="fg"><label class="fl">Precio suscriptor (PEN)</label><input class="fi" type="number" id="pw-sub-price" placeholder="Ej: 129"></div>
+            </div>
+            <div class="frow">
+              <div class="fg"><label class="fl">Código de cupón</label><input class="fi" id="pw-coupon" placeholder="Ej: SUSCRIPTOR20"></div>
+              <div class="fg"><label class="fl">URL del producto en tienda</label><input class="fi" id="pw-url" placeholder="https://labnutrition.com/products/..."></div>
+            </div>
+            <div class="fg"><label class="fl">Descripción corta</label><input class="fi" id="pw-desc" placeholder="Exclusivo para suscriptores — solo esta semana"></div>
+          </div>
+        </div>
+
+        <!-- EVENTOS Y PROMOS -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">📅 Eventos y promociones</span>
+            <button class="btn btn-g btn-sm" onclick="addEvent()">+ Agregar</button>
+          </div>
+          <div style="padding:20px">
+            <div class="info-box">Crea eventos, lanzamientos y promos que verán tus suscriptores en el portal.</div>
+            <div id="events-list" style="display:flex;flex-direction:column;gap:10px"></div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -1428,6 +1461,26 @@
                 value="2"></div>
           </div>
         </div>
+
+        <!-- BRANDING -->
+        <div class="settings-section">
+          <div class="settings-title">🎨 Branding</div>
+          <div class="info-box">Personaliza nombre, colores y logo. Se refleja en sidebar, widget y portal público.</div>
+          <div class="frow">
+            <div class="fg"><label class="fl">Nombre de la App</label><input class="fi" id="brand-name" placeholder="Mi App de Suscripciones"></div>
+            <div class="fg"><label class="fl">Eslogan</label><input class="fi" id="brand-slogan" placeholder="Tu membresía premium"></div>
+          </div>
+          <div class="frow">
+            <div class="fg"><label class="fl">Color primario</label><input class="fi" id="brand-color" type="color" value="#D4502A"></div>
+            <div class="fg"><label class="fl">Color secundario</label><input class="fi" id="brand-color2" type="color" value="#2E7D49"></div>
+          </div>
+          <div class="fg"><label class="fl">URL del Logo</label><input class="fi" id="brand-logo" placeholder="https://cdn.shopify.com/s/.../logo.png">
+            <div class="fin">Se muestra en el sidebar admin y el portal público del suscriptor</div>
+          </div>
+          <div style="margin-top:12px">
+            <button class="btn btn-g btn-sm" onclick="previewBranding()">👁 Vista previa</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1443,69 +1496,8 @@
       </div>
       <button class="btn btn-g btn-sm" onclick="closeDrawer()">✕ Cerrar</button>
     </div>
-    <div class="drawer-body">
-      <div class="fg">
-        <label class="fl">Permanencia mínima</label>
-        <select class="fsl" id="dr-min-perm">
-          <option value="3">3 meses</option>
-          <option value="6">6 meses</option>
-          <option value="12">12 meses</option>
-        </select>
-        <div class="fin">Meses mínimos que debe mantener la suscripción</div>
-      </div>
-      <div
-        style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin-bottom:10px;margin-top:4px">
-        Descuentos por permanencia</div>
-      <div class="disc-matrix">
-        <div class="disc-row">
-          <div>
-            <div class="disc-label">📦 Mensual · 3 meses</div>
-            <div class="disc-sublabel">1 envío/mes, permanencia 3M</div>
-          </div>
-          <div style="display:flex;align-items:center"><input class="disc-input" type="number" id="d-m1-p3" min="0"
-              max="60" value="10"><span class="disc-pct">%</span></div>
-        </div>
-        <div class="disc-row">
-          <div>
-            <div class="disc-label">📦 Mensual · 6 meses</div>
-            <div class="disc-sublabel">1 envío/mes, permanencia 6M</div>
-          </div>
-          <div style="display:flex;align-items:center"><input class="disc-input" type="number" id="d-m1-p6" min="0"
-              max="60" value="15"><span class="disc-pct">%</span></div>
-        </div>
-        <div class="disc-row">
-          <div>
-            <div class="disc-label">📦 Mensual · 12 meses</div>
-            <div class="disc-sublabel">1 envío/mes, permanencia 12M</div>
-          </div>
-          <div style="display:flex;align-items:center"><input class="disc-input" type="number" id="d-m1-p12" min="0"
-              max="60" value="25"><span class="disc-pct">%</span></div>
-        </div>
-        <div class="disc-row">
-          <div>
-            <div class="disc-label">📦 Bimestral · 3 meses</div>
-            <div class="disc-sublabel">1 envío/2 meses, permanencia 3M</div>
-          </div>
-          <div style="display:flex;align-items:center"><input class="disc-input" type="number" id="d-m2-p3" min="0"
-              max="60" value="12"><span class="disc-pct">%</span></div>
-        </div>
-        <div class="disc-row">
-          <div>
-            <div class="disc-label">📦 Bimestral · 6 meses</div>
-            <div class="disc-sublabel">1 envío/2 meses, permanencia 6M</div>
-          </div>
-          <div style="display:flex;align-items:center"><input class="disc-input" type="number" id="d-m2-p6" min="0"
-              max="60" value="18"><span class="disc-pct">%</span></div>
-        </div>
-        <div class="disc-row">
-          <div>
-            <div class="disc-label">📦 Bimestral · 12 meses</div>
-            <div class="disc-sublabel">1 envío/2 meses, permanencia 12M</div>
-          </div>
-          <div style="display:flex;align-items:center"><input class="disc-input" type="number" id="d-m2-p12" min="0"
-              max="60" value="30"><span class="disc-pct">%</span></div>
-        </div>
-      </div>
+    <div class="drawer-body" id="drawer-body-content">
+      <div style="text-align:center;padding:32px;color:var(--mut)" id="drawer-loading">Cargando planes...</div>
     </div>
     <div class="drawer-foot">
       <button class="btn btn-r" style="width:100%" onclick="saveProductConfig()">💾 Guardar configuración</button>
@@ -1561,6 +1553,24 @@
       const t = document.getElementById('toast');
       t.textContent = msg; t.className = 'show ' + type;
       setTimeout(() => t.className = '', 3000);
+    }
+
+    async function syncSellingPlans() {
+      const btn = document.getElementById('sync-btn');
+      const lbl = document.getElementById('sync-btn-label');
+      if (!btn || !lbl) return;
+      btn.disabled = true; lbl.textContent = '⏳ Sincronizando...';
+      try {
+        const result = await api('/api/selling-plans/sync', { method: 'POST' });
+        const synced = result.synced || 0;
+        const total = result.total || 0;
+        toast(`✅ Selling Plans sincronizados: ${synced}/${total} productos actualizados en Shopify`);
+        lbl.textContent = `✅ Synced (${synced}/${total})`;
+        setTimeout(() => { lbl.textContent = '⬆ Sync Shopify'; btn.disabled = false; }, 4000);
+      } catch (e) {
+        toast('❌ Error al sincronizar: ' + e.message, 'err');
+        lbl.textContent = '⬆ Sync Shopify'; btn.disabled = false;
+      }
     }
 
     function nav(id) {
@@ -1789,8 +1799,14 @@
       if (_editingPlanId !== null) _plans[_editingPlanId] = plan;
       else _plans.push(plan);
       try {
-        await api('/api/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_plans) });
-        toast(_editingPlanId !== null ? '✅ Plan actualizado' : '✅ Plan creado');
+        const res = await api('/api/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_plans) });
+        if (res && res.error) {
+          // Rollback plan in memory if server failed
+          if (_editingPlanId !== null) _plans[_editingPlanId] = plan;
+          else _plans.pop();
+          toast('❌ Error al guardar en Shopify: ' + res.error, 'err'); return;
+        }
+        toast(_editingPlanId !== null ? '✅ Plan actualizado y guardado en Shopify' : '✅ Plan creado y guardado en Shopify');
         closePlanModal(); renderPlans();
       } catch (e) { toast('Error: ' + e.message, 'err'); }
     }
@@ -2049,32 +2065,135 @@
 
     async function toggleProd(id, active, title) {
       try {
+        // 1. Save active status
         await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_id: id, product_title: title, is_active: active }) });
-        toast(active ? '✅ Suscripción activada' : 'Widget desactivado');
-        loadProds();
+
+        if (active) {
+          // 2. Use local _plans (already in memory) — avoids fetch to API which may return []
+          const rawPlans = _plans.length > 0 ? _plans : await api('/api/plans').catch(() => []);
+          if (_plans.length === 0 && Array.isArray(rawPlans)) _plans = rawPlans;
+          const existingCfg = await api(`/api/products/${id}/config`).catch(() => ({}));
+          const activePlansGlobal = Array.isArray(_plans) ? _plans.filter(p => p.active !== false && p.frequency && p.permanence) : [];
+
+          // Only auto-assign if no config exists yet (or empty config)
+          const hasExistingConfig = existingCfg && existingCfg.plans && Object.keys(existingCfg.plans).length > 0;
+
+          if (!hasExistingConfig && activePlansGlobal.length) {
+            // Auto-assign all active plans with their global discounts
+            const plansConfig = {};
+            activePlansGlobal.forEach(plan => {
+              const key = plan.id || (`m${plan.frequency}_p${plan.permanence}`);
+              plansConfig[key] = {
+                enabled: true,
+                discount: plan.discount || 0,
+                frequency: plan.frequency,
+                permanence: plan.permanence,
+                label: (plan.frequency === 1 ? 'Mensual' : plan.frequency === 2 ? 'Bimestral' : `Cada ${plan.frequency} meses`) + ' · ' + plan.permanence + ' meses'
+              };
+            });
+            await api(`/api/products/${id}/config`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ plans: plansConfig, auto_assigned: true, updated_at: new Date().toISOString() })
+            }).catch(() => {});
+            toast('✅ Producto activado — planes asignados automáticamente. Personaliza los descuentos abajo.');
+          } else if (hasExistingConfig) {
+            toast('✅ Suscripción activada — configuración previa restaurada');
+          } else {
+            toast('✅ Producto activado. Crea planes en "Planes de Suscripción" primero, luego vuelve a Config.');
+          }
+
+          // 3. Reload products and open config drawer
+          await loadProds();
+          // Small delay so DOM updates
+          setTimeout(() => openConfig(id, title), 300);
+        } else {
+          toast('Widget desactivado para este producto');
+          loadProds();
+        }
       } catch (e) { toast('Error: ' + e.message, 'err'); }
     }
 
+
     // ──── PRODUCT CONFIG DRAWER ────
+    let _drawerPlans = []; // planes activos cargados para el drawer
+
     async function openConfig(id, title) {
       _currentProdId = id;
       document.getElementById('drawer-prod-name').textContent = title;
       document.getElementById('drawer-prod-id').textContent = 'ID: ' + id;
       document.getElementById('drawer-overlay').classList.add('open');
       document.getElementById('config-drawer').classList.add('open');
-      // Load existing config
+      document.getElementById('drawer-body-content').innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">Cargando planes...</div>';
+
       try {
-        const cfg = await api(`/api/products/${id}/config`).catch(() => null);
-        if (cfg && cfg.discounts) {
-          document.getElementById('d-m1-p3').value = cfg.discounts.m1_p3 ?? 10;
-          document.getElementById('d-m1-p6').value = cfg.discounts.m1_p6 ?? 15;
-          document.getElementById('d-m1-p12').value = cfg.discounts.m1_p12 ?? 25;
-          document.getElementById('d-m2-p3').value = cfg.discounts.m2_p3 ?? 12;
-          document.getElementById('d-m2-p6').value = cfg.discounts.m2_p6 ?? 18;
-          document.getElementById('d-m2-p12').value = cfg.discounts.m2_p12 ?? 30;
-          if (cfg.min_permanence) document.getElementById('dr-min-perm').value = cfg.min_permanence;
+        // CRITICAL FIX v6.1.0: Use local _plans (session memory) first, then fallback to API
+        // This prevents "No hay planes activos" when plans exist in memory but API returns []
+        const plansFetched = _plans.length > 0
+          ? _plans
+          : await api('/api/plans').catch(() => []);
+        if (_plans.length === 0 && Array.isArray(plansFetched)) _plans = plansFetched;
+
+        const savedCfg = await api(`/api/products/${id}/config`).catch(() => ({}));
+
+        _drawerPlans = Array.isArray(_plans) ? _plans.filter(p => p.active !== false && p.frequency && p.permanence) : [];
+        const savedPlans = (savedCfg && savedCfg.plans) ? savedCfg.plans : {}; // { planId: { enabled, discount } }
+
+        if (!_drawerPlans.length) {
+          document.getElementById('drawer-body-content').innerHTML =
+            '<div style="padding:20px;background:#fffbeb;border-radius:8px;border:1px solid #fde68a;color:#92400e;font-size:13px">' +
+            '⚠️ No hay planes activos. Ve a <strong>Planes de Suscripción</strong> y crea al menos un plan primero.</div>';
+          return;
         }
-      } catch (e) { }
+
+        const freqLabel = f => f === 1 ? 'Mensual' : f === 2 ? 'Bimestral' : `Cada ${f} meses`;
+        const html = `
+          <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin-bottom:10px">
+            Planes disponibles — activa y configura el descuento para este producto
+          </div>
+          <div style="font-size:11px;color:var(--mut);margin-bottom:14px;background:#f8f8f8;padding:8px 12px;border-radius:6px">
+            ✓ Activa los planes que quieres para este producto. El descuento puede ser diferente al del plan global.
+          </div>
+          <div class="disc-matrix" id="plan-assign-matrix">
+            ${_drawerPlans.map(plan => {
+              const key = plan.id || (`m${plan.frequency}_p${plan.permanence}`);
+              const saved = savedPlans[key] || {};
+              const enabled = saved.enabled !== undefined ? saved.enabled : true;
+              const disc = saved.discount !== undefined ? saved.discount : (plan.discount || 0);
+              return `<div class="disc-row" style="align-items:flex-start;flex-direction:column;gap:8px;padding:12px;border-radius:8px;border:1.5px solid ${enabled ? 'var(--red)' : 'var(--bdr)'};background:${enabled ? '#fff5f5' : '#fff'}" id="plan-row-${key}">
+                <div style="display:flex;width:100%;align-items:center;gap:10px">
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1">
+                    <input type="checkbox" id="plan-en-${key}" ${enabled ? 'checked' : ''}
+                      onchange="togglePlanRow('${key}', this.checked)"
+                      style="width:16px;height:16px;accent-color:var(--red);cursor:pointer">
+                    <div>
+                      <div class="disc-label" style="margin:0">${freqLabel(plan.frequency)} · ${plan.permanence} meses</div>
+                      <div class="disc-sublabel" style="margin:0">Plan base: ${plan.discount || 0}% OFF</div>
+                    </div>
+                  </label>
+                  <div style="display:flex;align-items:center;gap:4px">
+                    <input class="disc-input" type="number" id="plan-disc-${key}"
+                      min="0" max="70" value="${disc}"
+                      ${!enabled ? 'disabled' : ''}
+                      style="width:56px">
+                    <span class="disc-pct">%</span>
+                  </div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>`;
+
+        document.getElementById('drawer-body-content').innerHTML = html;
+      } catch (e) {
+        document.getElementById('drawer-body-content').innerHTML = '<div style="color:red;padding:16px">Error: ' + e.message + '</div>';
+      }
+    }
+
+    function togglePlanRow(key, enabled) {
+      const row = document.getElementById('plan-row-' + key);
+      const inp = document.getElementById('plan-disc-' + key);
+      if (row) { row.style.border = '1.5px solid ' + (enabled ? 'var(--red)' : 'var(--bdr)'); row.style.background = enabled ? '#fff5f5' : '#fff'; }
+      if (inp) inp.disabled = !enabled;
     }
 
     function closeDrawer() {
@@ -2084,21 +2203,25 @@
     }
 
     async function saveProductConfig() {
-      if (!_currentProdId) return;
-      const config = {
-        min_permanence: parseInt(document.getElementById('dr-min-perm').value),
-        discounts: {
-          m1_p3: parseInt(document.getElementById('d-m1-p3').value) || 0,
-          m1_p6: parseInt(document.getElementById('d-m1-p6').value) || 0,
-          m1_p12: parseInt(document.getElementById('d-m1-p12').value) || 0,
-          m2_p3: parseInt(document.getElementById('d-m2-p3').value) || 0,
-          m2_p6: parseInt(document.getElementById('d-m2-p6').value) || 0,
-          m2_p12: parseInt(document.getElementById('d-m2-p12').value) || 0,
-        }
-      };
+      if (!_currentProdId || !_drawerPlans.length) return;
+      const plansConfig = {};
+      _drawerPlans.forEach(plan => {
+        const key = plan.id || (`m${plan.frequency}_p${plan.permanence}`);
+        const enabledEl = document.getElementById('plan-en-' + key);
+        const discEl = document.getElementById('plan-disc-' + key);
+        if (!enabledEl || !discEl) return;
+        plansConfig[key] = {
+          enabled: enabledEl.checked,
+          discount: parseInt(discEl.value) || 0,
+          frequency: plan.frequency,
+          permanence: plan.permanence,
+          label: (plan.frequency === 1 ? 'Mensual' : plan.frequency === 2 ? 'Bimestral' : `Cada ${plan.frequency} meses`) + ' · ' + plan.permanence + ' meses'
+        };
+      });
+      const config = { plans: plansConfig, updated_at: new Date().toISOString() };
       try {
         await api(`/api/products/${_currentProdId}/config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
-        toast('💾 Configuración guardada');
+        toast('✅ Configuración guardada — el widget ahora usará estos planes y descuentos');
         closeDrawer();
       } catch (e) { toast('Error: ' + e.message, 'err'); }
     }
@@ -2116,6 +2239,9 @@
         if (data.cancellation_window_open) document.getElementById('cfg-open').value = data.cancellation_window_open;
         if (data.cancellation_window_close) document.getElementById('cfg-close').value = data.cancellation_window_close;
         if (data.max_pause_months) document.getElementById('cfg-pause').value = data.max_pause_months;
+        // Branding
+        applyBranding(data);
+        if (data.mp_access_token) { const st = document.getElementById('mp-status'); if(st) { st.style.display='block'; st.style.background='#d1fae5'; st.style.color='#065f46'; st.textContent='\u2705 Token configurado'; }}
       } catch (e) { }
     }
 
@@ -2131,10 +2257,16 @@
         cancellation_window_open: parseInt(document.getElementById('cfg-open').value),
         cancellation_window_close: parseInt(document.getElementById('cfg-close').value),
         max_pause_months: parseInt(document.getElementById('cfg-pause').value),
+        brand_name: document.getElementById('brand-name').value,
+        brand_slogan: document.getElementById('brand-slogan').value,
+        brand_color: document.getElementById('brand-color').value,
+        brand_color2: document.getElementById('brand-color2').value,
+        brand_logo: document.getElementById('brand-logo').value,
       };
       try {
         await api('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        toast('💾 Ajustes guardados correctamente');
+        applyBranding(body);
+        toast('💾 Ajustes y branding guardados correctamente');
       } catch (e) { toast('Error: ' + e.message, 'err'); }
     }
 
@@ -2188,6 +2320,134 @@
         // 2. Verify immediately
         await testMP();
       } catch (e) { toast('Error al guardar: ' + e.message, 'err'); }
+    }
+
+    // ──── PORTAL CONFIG: Beneficios, Producto semana, Eventos ────
+    let _portalBenefits = [], _portalEvents = [];
+
+    function addBenefit() {
+      _portalBenefits.push({ icon: '🎁', title: '', description: '' });
+      renderBenefits();
+    }
+    function removeBenefit(i) { _portalBenefits.splice(i, 1); renderBenefits(); }
+
+    function renderBenefits() {
+      const el = document.getElementById('benefits-list');
+      if (!el) return;
+      el.innerHTML = _portalBenefits.map((b, i) => `
+        <div style="display:flex;gap:8px;align-items:flex-start;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+          <input value="${b.icon}" onchange="_portalBenefits[${i}].icon=this.value" style="width:40px;border:1.5px solid var(--bdr);border-radius:6px;padding:6px;text-align:center;font-size:18px">
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+            <input value="${b.title||''}" placeholder="Título del beneficio" onchange="_portalBenefits[${i}].title=this.value" style="border:1.5px solid var(--bdr);border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit">
+            <input value="${b.description||''}" placeholder="Descripción breve" onchange="_portalBenefits[${i}].description=this.value" style="border:1.5px solid var(--bdr);border-radius:6px;padding:6px 10px;font-size:12px;font-family:inherit;color:#666">
+          </div>
+          <button onclick="removeBenefit(${i})" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--red)">✕</button>
+        </div>
+      `).join('');
+    }
+
+    function addEvent() {
+      _portalEvents.push({ title: '', date: '', description: '', badge: '🔥' });
+      renderEvents();
+    }
+    function removeEvent(i) { _portalEvents.splice(i, 1); renderEvents(); }
+
+    function renderEvents() {
+      const el = document.getElementById('events-list');
+      if (!el) return;
+      el.innerHTML = _portalEvents.map((ev, i) => `
+        <div style="display:flex;gap:8px;align-items:flex-start;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+          <input value="${ev.badge}" onchange="_portalEvents[${i}].badge=this.value" style="width:40px;border:1.5px solid var(--bdr);border-radius:6px;padding:6px;text-align:center;font-size:18px">
+          <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <input value="${ev.title||''}" placeholder="Título del evento" onchange="_portalEvents[${i}].title=this.value" style="border:1.5px solid var(--bdr);border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit">
+            <input type="date" value="${ev.date||''}" onchange="_portalEvents[${i}].date=this.value" style="border:1.5px solid var(--bdr);border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit">
+            <input value="${ev.description||''}" placeholder="Descripción" onchange="_portalEvents[${i}].description=this.value" style="grid-column:1/-1;border:1.5px solid var(--bdr);border-radius:6px;padding:6px 10px;font-size:12px;font-family:inherit;color:#666">
+          </div>
+          <button onclick="removeEvent(${i})" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--red)">✕</button>
+        </div>
+      `).join('');
+    }
+
+    async function loadPortalConfig() {
+      try {
+        const d = await api('/api/portal/config').catch(() => ({}));
+        document.getElementById('p-allow-pause').checked = d.allow_pause !== false;
+        document.getElementById('p-allow-cancel').checked = d.allow_cancel !== false;
+        document.getElementById('p-allow-freq').checked = !!d.allow_freq_change;
+        _portalBenefits = d.benefits || [
+          { icon: '🚚', title: 'Envío prioritario', description: 'Recibe tus productos antes que nadie' },
+          { icon: '💰', title: 'Descuento exclusivo', description: 'Hasta 40% de descuento permanente' },
+          { icon: '🎯', title: 'Acceso anticipado', description: 'Sé el primero en probar nuevos lanzamientos' },
+          { icon: '🎁', title: 'Regalos sorpresa', description: 'Muestras gratis en cada envío' }
+        ];
+        _portalEvents = d.events || [];
+        renderBenefits();
+        renderEvents();
+        if (d.product_of_week) {
+          const pw = d.product_of_week;
+          document.getElementById('pw-name').value = pw.name || '';
+          document.getElementById('pw-image').value = pw.image || '';
+          document.getElementById('pw-price').value = pw.price || '';
+          document.getElementById('pw-sub-price').value = pw.sub_price || '';
+          document.getElementById('pw-coupon').value = pw.coupon || '';
+          document.getElementById('pw-url').value = pw.url || '';
+          document.getElementById('pw-desc').value = pw.description || '';
+        }
+      } catch (e) { console.warn('Portal config load error:', e); }
+    }
+
+    async function savePortalConfig() {
+      try {
+        const payload = {
+          allow_pause: document.getElementById('p-allow-pause').checked,
+          allow_cancel: document.getElementById('p-allow-cancel').checked,
+          allow_freq_change: document.getElementById('p-allow-freq').checked,
+          benefits: _portalBenefits,
+          events: _portalEvents,
+          product_of_week: {
+            name: document.getElementById('pw-name').value,
+            image: document.getElementById('pw-image').value,
+            price: parseFloat(document.getElementById('pw-price').value) || 0,
+            sub_price: parseFloat(document.getElementById('pw-sub-price').value) || 0,
+            coupon: document.getElementById('pw-coupon').value,
+            url: document.getElementById('pw-url').value,
+            description: document.getElementById('pw-desc').value
+          }
+        };
+        await api('/api/portal/config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        toast('✅ Configuración del portal guardada');
+      } catch (e) { toast('Error: ' + e.message, 'err'); }
+    }
+
+    // ──── BRANDING ────
+    function previewBranding() {
+      const name = document.getElementById('brand-name').value || 'Suscriptions MP';
+      const color = document.getElementById('brand-color').value || '#D4502A';
+      const color2 = document.getElementById('brand-color2').value || '#2E7D49';
+      const logo = document.getElementById('brand-logo').value;
+      document.documentElement.style.setProperty('--red', color);
+      document.documentElement.style.setProperty('--red2', color);
+      document.documentElement.style.setProperty('--grn', color2);
+      const sbName = document.querySelector('.sb-name');
+      if (sbName) sbName.textContent = name;
+      toast('👁 Vista previa aplicada. Guarda todo para persistir.');
+    }
+
+    function applyBranding(s) {
+      if (!s) return;
+      if (s.brand_name) {
+        const sbName = document.querySelector('.sb-name');
+        if (sbName) sbName.textContent = s.brand_name;
+        document.getElementById('brand-name').value = s.brand_name;
+      }
+      if (s.brand_slogan) document.getElementById('brand-slogan').value = s.brand_slogan;
+      if (s.brand_color) { document.getElementById('brand-color').value = s.brand_color; document.documentElement.style.setProperty('--red', s.brand_color); document.documentElement.style.setProperty('--red2', s.brand_color); }
+      if (s.brand_color2) { document.getElementById('brand-color2').value = s.brand_color2; document.documentElement.style.setProperty('--grn', s.brand_color2); }
+      if (s.brand_logo) document.getElementById('brand-logo').value = s.brand_logo;
     }
 
     // INIT
