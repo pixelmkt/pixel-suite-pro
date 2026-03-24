@@ -48,28 +48,27 @@ async function createPlan({ frequency, permanence, amount, productTitle }) {
 
 /**
  * ──────────────────────────────────────────────────────────────────────
- * createCheckout — The CORRECT MP PreApproval flow for recurring billing
+ * createCheckout — MP PreApproval flow via plan.init_point
  * ──────────────────────────────────────────────────────────────────────
- * Flow:
- *   1. Creates PreApprovalPlan (template with frequency + amount)
- *   2. Creates PreApproval linked to the plan WITHOUT card token
- *      → MP generates init_point URL
- *   3. Customer goes to init_point, enters card, authorizes subscription
- *   4. MP charges first payment immediately
- *   5. MP sends webhook to /webhooks/mp for each subsequent payment
- *   6. Backend creates Shopify order for each MP payment
+ * CORRECT FLOW (no card_token_id required):
+ *   1. Creates PreApprovalPlan → gets plan.init_point
+ *   2. Redirects customer to plan.init_point (MP's own checkout page)
+ *   3. Customer enters card on MP's page and authorizes
+ *   4. MP creates the subscription + fires webhook automatically
+ *   5. Webhook /webhooks/mp → backend creates Shopify order
  *
- * Returns: { init_point, subscription_id, plan_id }
+ * NOTE: Creating PreApproval programmatically requires card_token_id.
+ *       Using plan.init_point avoids this — MP handles everything.
  */
 async function createCheckout({ frequency, permanence, amount, productTitle, customerEmail, backUrl }) {
     const mp = getMP();
     const planApi = new PreApprovalPlan(mp);
-    const subApi = new PreApproval(mp);
     const cycles = Math.ceil(permanence / frequency);
     const reason = `LAB NUTRITION — ${productTitle} (${frequency === 1 ? 'Mensual' : `Cada ${frequency} meses`} × ${permanence} meses)`;
     const back = backUrl || `${BACKEND_URL()}/subscriptions/success`;
 
-    // 1. Create PreApprovalPlan (defines billing terms)
+    // Create PreApprovalPlan — the plan's init_point IS the checkout page
+    // The customer goes there, enters their card, and authorizes the subscription
     const plan = await planApi.create({
         body: {
             reason,
@@ -89,24 +88,13 @@ async function createCheckout({ frequency, permanence, amount, productTitle, cus
 
     if (!plan || !plan.id) throw new Error('MP: no se pudo crear el plan de suscripción');
 
-    // 2. Create PreApproval (subscription instance) — NO card token needed
-    // MP returns init_point where customer enters card and authorizes
-    const sub = await subApi.create({
-        body: {
-            preapproval_plan_id: plan.id,
-            payer_email: customerEmail,
-            back_url: back,
-            reason,
-            status: 'pending'  // customer activates via init_point
-        }
-    });
-
-    if (!sub || !sub.init_point) throw new Error('MP: no se pudo obtener el link de pago');
+    const init_point = plan.init_point || plan.sandbox_init_point;
+    if (!init_point) throw new Error('MP: el plan no devolvió URL de checkout');
 
     return {
         plan_id: plan.id,
-        subscription_id: sub.id,
-        init_point: sub.init_point  // redirect customer here
+        subscription_id: null,   // MP creates this when customer authorizes
+        init_point               // Redirect customer here — no card_token needed
     };
 }
 
