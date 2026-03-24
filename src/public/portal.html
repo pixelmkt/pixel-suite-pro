@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -196,4 +197,209 @@
     load();
   </script>
 </body>
+=======
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mi Membresía — Portal del Suscriptor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+  <style>
+    :root { --pri: #D4502A; --pri2: #B3401F; --grn: #2E7D49; --bg: #0f0f0f; --card: #1a1a1a; --card2: #232323; --txt: #f0f0f0; --mut: #888; --bdr: #333; --r: 14px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter',-apple-system,sans-serif; background: var(--bg); color: var(--txt); min-height: 100vh; }
+
+    /* HERO */
+    .hero { padding: 60px 24px 40px; text-align: center; background: linear-gradient(135deg, rgba(212,80,42,.15) 0%, rgba(46,125,73,.1) 100%); border-bottom: 1px solid var(--bdr); position: relative; overflow: hidden; }
+    .hero::before { content:''; position:absolute; top:-50%; left:-50%; width:200%; height:200%; background:radial-gradient(circle at 30% 40%, rgba(212,80,42,.08) 0%, transparent 50%); animation: heroGlow 8s ease-in-out infinite alternate; }
+    @keyframes heroGlow { to { transform: translate(10%,5%) scale(1.1); } }
+    .hero-logo { width: 64px; height: 64px; border-radius: 16px; object-fit: contain; margin: 0 auto 16px; display: block; position: relative; }
+    .hero-title { font-family: 'Playfair Display',serif; font-size: clamp(28px,5vw,42px); font-weight: 900; letter-spacing: -.5px; position: relative; }
+    .hero-sub { font-size: 15px; color: var(--mut); margin-top: 8px; position: relative; }
+    .hero-badge { display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, var(--pri), var(--pri2)); color: #fff; padding: 8px 18px; border-radius: 24px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top: 20px; position: relative; }
+    .hero-badge::before { content:''; width:8px; height:8px; border-radius:50%; background:#4ade80; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .container { max-width: 800px; margin: 0 auto; padding: 32px 20px 60px; }
+
+    /* CARDS */
+    .section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: var(--mut); margin: 0 0 14px 2px; }
+    .card { background: var(--card); border: 1px solid var(--bdr); border-radius: var(--r); overflow: hidden; margin-bottom: 24px; transition: border-color .2s; }
+    .card:hover { border-color: #444; }
+    .card-inner { padding: 24px; }
+
+    /* BENEFITS */
+    .benefits-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+    .benefits-grid.layout-list { grid-template-columns: 1fr; }
+    .benefit { background: var(--card2); border-radius: 12px; padding: 20px 16px; text-align: center; border: 1px solid var(--bdr); transition: .2s; }
+    .benefit:hover { border-color: var(--pri); transform: translateY(-2px); }
+    .layout-list .benefit { display: flex; text-align: left; align-items: center; gap: 16px; padding: 16px 20px; }
+    .layout-list .benefit-icon { font-size: 28px; margin-bottom: 0; flex-shrink: 0; }
+    .layout-list .benefit-title { margin-bottom: 2px; }
+    .benefit-icon { font-size: 32px; margin-bottom: 10px; }
+    .benefit-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+    .benefit-desc { font-size: 11px; color: var(--mut); line-height: 1.4; }
+
+    /* PRODUCT OF THE WEEK */
+    .potw { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+    .potw-img { width: 180px; height: 180px; border-radius: 12px; object-fit: cover; border: 2px solid var(--bdr); flex-shrink: 0; }
+    .potw-info { flex: 1; min-width: 200px; }
+    .potw-badge { display: inline-block; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; padding: 4px 12px; border-radius: 20px; margin-bottom: 12px; }
+    .potw-name { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
+    .potw-desc { font-size: 13px; color: var(--mut); margin-bottom: 14px; }
+    .potw-prices { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+    .potw-price-new { font-size: 28px; font-weight: 900; color: var(--grn); }
+    .potw-price-old { font-size: 16px; color: var(--mut); text-decoration: line-through; }
+    .potw-coupon { display: inline-flex; align-items: center; gap: 8px; background: var(--card2); border: 2px dashed var(--pri); border-radius: 10px; padding: 10px 18px; }
+    .potw-coupon-code { font-family: monospace; font-size: 18px; font-weight: 900; color: var(--pri); letter-spacing: 2px; }
+    .potw-coupon-label { font-size: 11px; color: var(--mut); }
+    .potw-btn { display: inline-block; background: var(--pri); color: #fff; padding: 12px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; text-decoration: none; margin-top: 14px; transition: .15s; }
+    .potw-btn:hover { background: var(--pri2); transform: translateY(-1px); }
+
+    /* EVENTS TIMELINE */
+    .timeline { position: relative; padding-left: 28px; }
+    .timeline::before { content: ''; position: absolute; left: 8px; top: 8px; bottom: 8px; width: 2px; background: linear-gradient(to bottom, var(--pri), var(--grn)); border-radius: 2px; }
+    .event { position: relative; margin-bottom: 20px; padding: 16px 20px; background: var(--card2); border-radius: 12px; border: 1px solid var(--bdr); }
+    .event::before { content: ''; position: absolute; left: -24px; top: 20px; width: 12px; height: 12px; border-radius: 50%; background: var(--pri); border: 2px solid var(--bg); }
+    .event-badge { font-size: 20px; margin-bottom: 6px; }
+    .event-title { font-size: 14px; font-weight: 700; }
+    .event-date { font-size: 11px; color: var(--pri); font-weight: 600; margin-top: 3px; }
+    .event-desc { font-size: 12px; color: var(--mut); margin-top: 6px; line-height: 1.5; }
+
+    /* STATUS */
+    .status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+    .status-item { background: var(--card2); border-radius: 10px; padding: 16px; text-align: center; border: 1px solid var(--bdr); }
+    .status-val { font-size: 20px; font-weight: 900; }
+    .status-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--mut); margin-top: 4px; }
+
+    /* FOOTER */
+    .footer { text-align: center; padding: 40px 20px; border-top: 1px solid var(--bdr); font-size: 11px; color: #555; }
+
+    /* LOADING */
+    .loading { text-align: center; padding: 60px 20px; color: var(--mut); }
+    .loading-spinner { width: 32px; height: 32px; border: 3px solid var(--bdr); border-top-color: var(--pri); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* NO SUB */
+    .no-sub { text-align: center; padding: 40px; background: var(--card2); border-radius: var(--r); border: 1px solid var(--bdr); }
+    .no-sub-icon { font-size: 48px; margin-bottom: 16px; }
+    .no-sub-title { font-size: 18px; font-weight: 800; margin-bottom: 8px; }
+    .no-sub-desc { font-size: 13px; color: var(--mut); max-width: 360px; margin: 0 auto; }
+
+    @media (max-width: 600px) {
+      .hero { padding: 40px 16px 28px; }
+      .container { padding: 20px 14px 40px; }
+      .potw { flex-direction: column; }
+      .potw-img { width: 100%; height: auto; aspect-ratio: 1; }
+      .benefits-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="loading" id="loading-state">
+      <div class="loading-spinner"></div>
+      <div>Cargando tu membresía...</div>
+    </div>
+  </div>
+
+  <script>
+    const BACKEND = location.origin;
+    const params = new URLSearchParams(location.search);
+    const email = params.get('email') || '';
+
+    async function load() {
+      try {
+        // Load portal config (branding, benefits, events, product of the week)
+        const [config, settings] = await Promise.all([
+          fetch(BACKEND + '/api/portal-config').then(r => r.json()).catch(() => ({})),
+          fetch(BACKEND + '/api/settings').then(r => r.json()).catch(() => ({}))
+        ]);
+
+        // Apply branding
+        if (settings.brand_color) document.documentElement.style.setProperty('--pri', settings.brand_color);
+        if (settings.brand_color2) document.documentElement.style.setProperty('--grn', settings.brand_color2);
+        const brandName = settings.brand_name || 'Tu Membresía Premium';
+        const brandSlogan = settings.brand_slogan || 'Beneficios exclusivos para suscriptores';
+        const brandLogo = settings.brand_logo || '';
+
+        const benefits = config.benefits || [
+          { icon: '🚚', title: 'Envío prioritario', description: 'Recibe tus productos antes que nadie' },
+          { icon: '💰', title: 'Descuento exclusivo', description: 'Hasta 40% de descuento permanente' },
+          { icon: '🎯', title: 'Acceso anticipado', description: 'Sé el primero en probar lanzamientos' },
+          { icon: '🎁', title: 'Regalos sorpresa', description: 'Muestras gratis en cada envío' }
+        ];
+        const events = config.events || [];
+        const pw = config.product_of_week || null;
+
+        document.title = brandName + ' — Portal del Suscriptor';
+
+        let html = `
+          <div class="hero">
+            ${brandLogo ? `<img src="${brandLogo}" alt="Logo" class="hero-logo">` : ''}
+            <div class="hero-title">${brandName}</div>
+            <div class="hero-sub">${brandSlogan}</div>
+            <div class="hero-badge">Miembro activo</div>
+          </div>
+          <div class="container">
+        `;
+
+        // BENEFITS
+        const layout = config.benefits_layout || 'grid';
+        if (benefits.length) {
+          html += `<div class="section-title">Tus Beneficios</div><div class="card"><div class="card-inner"><div class="benefits-grid ${layout === 'list' ? 'layout-list' : ''}">`;
+          html += benefits.map(b => `
+            <div class="benefit">
+              <div class="benefit-icon">${b.icon}</div>
+              <div class="benefit-title">${b.title}</div>
+              <div class="benefit-desc">${b.description}</div>
+            </div>
+          `).join('');
+          html += `</div></div></div>`;
+        }
+
+        // PRODUCT OF THE WEEK
+        if (pw && pw.name) {
+          html += `<div class="section-title">⭐ Producto de la Semana</div><div class="card"><div class="card-inner"><div class="potw">`;
+          if (pw.image) html += `<img src="${pw.image}" alt="${pw.name}" class="potw-img">`;
+          html += `<div class="potw-info">
+            <div class="potw-badge">Exclusivo suscriptores</div>
+            <div class="potw-name">${pw.name}</div>
+            ${pw.description ? `<div class="potw-desc">${pw.description}</div>` : ''}
+            <div class="potw-prices">
+              <span class="potw-price-new">S/ ${pw.sub_price || pw.price}</span>
+              ${pw.price && pw.sub_price ? `<span class="potw-price-old">S/ ${pw.price}</span>` : ''}
+            </div>
+            ${pw.coupon ? `<div class="potw-coupon"><div><div class="potw-coupon-code">${pw.coupon}</div><div class="potw-coupon-label">Código exclusivo</div></div></div>` : ''}
+            ${pw.url ? `<a href="${pw.url}" class="potw-btn" target="_blank">Comprar ahora →</a>` : ''}
+          </div></div></div></div>`;
+        }
+
+        // EVENTS
+        if (events.length) {
+          html += `<div class="section-title">📅 Próximos Eventos y Promos</div><div class="card"><div class="card-inner"><div class="timeline">`;
+          html += events.map(ev => `
+            <div class="event">
+              <div class="event-badge">${ev.badge || '🔥'}</div>
+              <div class="event-title">${ev.title}</div>
+              ${ev.date ? `<div class="event-date">${new Date(ev.date).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' })}</div>` : ''}
+              ${ev.description ? `<div class="event-desc">${ev.description}</div>` : ''}
+            </div>
+          `).join('');
+          html += `</div></div></div>`;
+        }
+
+        html += `</div><div class="footer">${brandName} · Portal del Suscriptor<br>Powered by Suscriptions MP</div>`;
+        document.getElementById('app').innerHTML = html;
+
+      } catch (e) {
+        document.getElementById('app').innerHTML = `<div class="container"><div class="no-sub"><div class="no-sub-icon">⚠️</div><div class="no-sub-title">Error al cargar</div><div class="no-sub-desc">${e.message}</div></div></div>`;
+      }
+    }
+
+    load();
+  </script>
+</body>
+>>>>>>> 481cd65cb981dc8326c0e1792ea0542614911d02
 </html>
