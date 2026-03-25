@@ -257,6 +257,73 @@ app.put('/api/portal-config', async (req, res) => {
         const settings = await readFromShopify().catch(() => ({}));
         settings.portal_config = req.body;
         await saveToShopify(settings);
+
+        // ALSO save as a public shop metafield for Storefront API access
+        // The Customer Account UI Extension reads this via Storefront API
+        try {
+            const shop = getShopifyShop();
+            const token = getShopifyToken();
+            if (shop && token) {
+                // Merge portal_config + settings branding for the extension
+                const extensionData = {
+                    ...req.body,
+                    brand_name: settings.brand_name || 'Suscriptions MP',
+                    brand_slogan: settings.brand_slogan || 'Beneficios exclusivos para suscriptores',
+                    brand_color: settings.brand_color || '#D4502A',
+                    brand_color2: settings.brand_color2 || '#2E7D49',
+                    brand_logo: settings.brand_logo || '',
+                };
+                const metafieldMutation = `mutation {
+                    metafieldsSet(metafields: [{
+                        namespace: "suscriptions_mp",
+                        key: "portal_config",
+                        type: "json",
+                        value: ${JSON.stringify(JSON.stringify(extensionData))},
+                        ownerId: "gid://shopify/Shop/${shop.replace('.myshopify.com','').replace(/[^0-9]/g,'') || '97503248465'}"
+                    }]) {
+                        metafields { id namespace key }
+                        userErrors { field message }
+                    }
+                }`;
+                // Need shop numeric ID - get it
+                const shopIdRes = await fetch(`https://${shop}/admin/api/2026-01/shop.json`, {
+                    headers: { 'X-Shopify-Access-Token': token }
+                });
+                const shopData = await shopIdRes.json();
+                const shopGid = `gid://shopify/Shop/${shopData?.shop?.id || '97503248465'}`;
+
+                await fetch(`https://${shop}/admin/api/2026-01/graphql.json`, {
+                    method: 'POST',
+                    headers: {
+                        'X-Shopify-Access-Token': token,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: `mutation {
+                            metafieldsSet(metafields: [{
+                                namespace: "suscriptions_mp",
+                                key: "portal_config",
+                                type: "json",
+                                value: ${JSON.stringify(JSON.stringify(extensionData))},
+                                ownerId: "${shopGid}"
+                            }]) {
+                                metafields { id namespace key }
+                                userErrors { field message }
+                            }
+                        }`
+                    })
+                }).then(r => r.json()).then(d => {
+                    if (d?.data?.metafieldsSet?.userErrors?.length) {
+                        console.warn('[PORTAL] Metafield write errors:', d.data.metafieldsSet.userErrors);
+                    } else {
+                        console.log('[PORTAL] ✅ Public metafield updated for Storefront API');
+                    }
+                });
+            }
+        } catch (mfErr) {
+            console.warn('[PORTAL] Metafield sync error (non-blocking):', mfErr.message);
+        }
+
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
