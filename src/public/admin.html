@@ -55,6 +55,9 @@
     }
     /* sb-hidden solo se aplica si se necesita ocultar en móvil */
     .sb.sb-hidden { display: none }
+    /* Ocultar sidebar cuando la app se ejecuta embebida dentro de Shopify Admin */
+    body.shopify-embedded .sb { display: none !important }
+    body.shopify-embedded .main { width: 100% }
 
     .sb-brand {
       padding: 22px 18px 16px;
@@ -1142,12 +1145,17 @@
     <div id="p-portal" class="panel">
       <div class="ph">
         <div>
-          <div class="pt">Portal del Suscriptor</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="cursor:pointer;font-size:16px" onclick="nav('dash')">&larr;</span>
+            <div class="pt">Portal del Suscriptor</div>
+          </div>
           <div class="ps">Configura beneficios, promos, cupones y eventos que verán tus suscriptores</div>
         </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-g" onclick="refreshPortalPreview()" title="Actualizar preview">👁 Preview</button>
-          <a class="btn btn-b" href="/portal" target="_blank" style="text-decoration:none">↗ Ver Portal</a>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="display:flex;border:1.5px solid var(--bdr);border-radius:6px;overflow:hidden">
+            <button id="portal-pub-btn" onclick="togglePortalPublish(true)" style="padding:7px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer;background:var(--grn);color:#fff">● Publicado</button>
+            <button id="portal-unpub-btn" onclick="togglePortalPublish(false)" style="padding:7px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer;background:#fff;color:#666">Despublicar</button>
+          </div>
           <button class="btn btn-r" onclick="savePortalConfig()">💾 Guardar todo</button>
         </div>
       </div>
@@ -2399,6 +2407,20 @@
       `).join('');
     }
 
+    var _portalPublished = true;
+    function togglePortalPublish(published) {
+      _portalPublished = published;
+      var pubBtn = document.getElementById('portal-pub-btn');
+      var unpubBtn = document.getElementById('portal-unpub-btn');
+      if (published) {
+        pubBtn.style.background = 'var(--grn)'; pubBtn.style.color = '#fff';
+        unpubBtn.style.background = '#fff'; unpubBtn.style.color = '#666';
+      } else {
+        pubBtn.style.background = '#fff'; pubBtn.style.color = '#666';
+        unpubBtn.style.background = 'var(--red)'; unpubBtn.style.color = '#fff';
+      }
+    }
+
     async function loadPortalConfig() {
       try {
         const d = await api('/api/portal-config').catch(() => ({}));
@@ -2489,6 +2511,63 @@
       if (s.brand_color2) { document.getElementById('brand-color2').value = s.brand_color2; document.documentElement.style.setProperty('--grn', s.brand_color2); }
       if (s.brand_logo) document.getElementById('brand-logo').value = s.brand_logo;
     }
+
+    // ── SHOPIFY APP BRIDGE — Embedded Admin Integration ──────────
+    // Detects if running inside Shopify Admin iframe (host param present)
+    // If so: hides custom sidebar, creates NavigationMenu with App Bridge
+    (function initAppBridge() {
+      var params = new URLSearchParams(window.location.search);
+      var host = params.get('host');
+      // Detect embedded: host param OR running in iframe
+      var isEmbedded = !!host || (window.top !== window.self);
+      if (!isEmbedded) return;
+      // ALWAYS hide sidebar — even if App Bridge fails
+      document.body.classList.add('shopify-embedded');
+      console.log('[APP_BRIDGE] Embedded detected — sidebar hidden');
+
+      try {
+        var AB = window['app-bridge'];
+        if (!AB) { console.warn('[APP_BRIDGE] Library not loaded'); return; }
+        // App Bridge 2.x UMD: createApp is at .default or top-level
+        var createApp = AB.default || AB.createApp || AB;
+        if (typeof createApp !== 'function') { console.warn('[APP_BRIDGE] createApp not found'); return; }
+
+        var app = createApp({
+          apiKey: 'fc20b3f68f1c8e854a3dca30788acd48',
+          host: host || '',
+          forceRedirect: true
+        });
+
+        // Register NavigationMenu — sections appear in Shopify's native sidebar
+        var NavigationMenu = (AB.actions || {}).NavigationMenu;
+        var AppLink = (AB.actions || {}).AppLink;
+        if (NavigationMenu && AppLink) {
+          var links = [
+            AppLink.create(app, { label: 'Dashboard', destination: '/?section=dash' }),
+            AppLink.create(app, { label: 'Planes de Suscripción', destination: '/?section=plans' }),
+            AppLink.create(app, { label: 'Suscripciones', destination: '/?section=subs' }),
+            AppLink.create(app, { label: 'Productos', destination: '/?section=prods' }),
+            AppLink.create(app, { label: 'Clientes', destination: '/?section=customers' }),
+            AppLink.create(app, { label: 'Remarketing', destination: '/?section=remarketing' }),
+            AppLink.create(app, { label: 'Widget de Suscripción', destination: '/?section=widget' }),
+            AppLink.create(app, { label: 'Portal del Cliente', destination: '/?section=portal' }),
+            AppLink.create(app, { label: 'Ajustes', destination: '/?section=ajustes' })
+          ];
+          NavigationMenu.create(app, { items: links });
+          console.log('[APP_BRIDGE] NavigationMenu registered with', links.length, 'items');
+        }
+
+        // Handle section routing from URL query param
+        var section = params.get('section');
+        if (section && typeof nav === 'function') {
+          setTimeout(function() { nav(section); }, 200);
+        }
+
+        console.log('[APP_BRIDGE] ✅ Embedded mode active — sidebar hidden, using Shopify navigation');
+      } catch (e) {
+        console.error('[APP_BRIDGE] Error:', e.message);
+      }
+    })();
 
     // INIT
     loadDash();
