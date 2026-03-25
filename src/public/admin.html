@@ -55,6 +55,9 @@
     }
     /* sb-hidden solo se aplica si se necesita ocultar en móvil */
     .sb.sb-hidden { display: none }
+    /* Ocultar sidebar cuando la app se ejecuta embebida dentro de Shopify Admin */
+    body.shopify-embedded .sb { display: none !important }
+    body.shopify-embedded .main { width: 100% }
 
     .sb-brand {
       padding: 22px 18px 16px;
@@ -2489,6 +2492,58 @@
       if (s.brand_color2) { document.getElementById('brand-color2').value = s.brand_color2; document.documentElement.style.setProperty('--grn', s.brand_color2); }
       if (s.brand_logo) document.getElementById('brand-logo').value = s.brand_logo;
     }
+
+    // ── SHOPIFY APP BRIDGE — Embedded Admin Integration ──────────
+    // Detects if running inside Shopify Admin iframe (host param present)
+    // If so: hides custom sidebar, creates NavigationMenu with App Bridge
+    (function initAppBridge() {
+      var params = new URLSearchParams(window.location.search);
+      var host = params.get('host');
+      if (!host) return; // Not embedded — keep custom sidebar
+
+      // Mark body as embedded to hide sidebar via CSS
+      document.body.classList.add('shopify-embedded');
+
+      try {
+        var AppBridge = window['app-bridge'];
+        if (!AppBridge) { console.warn('[APP_BRIDGE] Library not loaded'); return; }
+
+        var app = AppBridge.createApp({
+          apiKey: 'fc20b3f68f1c8e854a3dca30788acd48',
+          host: host,
+          forceRedirect: true
+        });
+
+        // Register NavigationMenu — sections appear in Shopify's native sidebar
+        var NavigationMenu = AppBridge.actions.NavigationMenu;
+        var AppLink = AppBridge.actions.AppLink;
+        if (NavigationMenu && AppLink) {
+          var links = [
+            AppLink.create(app, { label: 'Dashboard', destination: '/?section=dash' }),
+            AppLink.create(app, { label: 'Planes de Suscripción', destination: '/?section=plans' }),
+            AppLink.create(app, { label: 'Suscripciones', destination: '/?section=subs' }),
+            AppLink.create(app, { label: 'Productos', destination: '/?section=prods' }),
+            AppLink.create(app, { label: 'Clientes', destination: '/?section=customers' }),
+            AppLink.create(app, { label: 'Remarketing', destination: '/?section=remarketing' }),
+            AppLink.create(app, { label: 'Widget de Suscripción', destination: '/?section=widget' }),
+            AppLink.create(app, { label: 'Portal del Cliente', destination: '/?section=portal' }),
+            AppLink.create(app, { label: 'Ajustes', destination: '/?section=ajustes' })
+          ];
+          NavigationMenu.create(app, { items: links });
+          console.log('[APP_BRIDGE] NavigationMenu registered with', links.length, 'items');
+        }
+
+        // Handle section routing from URL query param
+        var section = params.get('section');
+        if (section && typeof nav === 'function') {
+          setTimeout(function() { nav(section); }, 200);
+        }
+
+        console.log('[APP_BRIDGE] ✅ Embedded mode active — sidebar hidden, using Shopify navigation');
+      } catch (e) {
+        console.error('[APP_BRIDGE] Error:', e.message);
+      }
+    })();
 
     // INIT
     loadDash();
