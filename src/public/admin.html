@@ -1145,12 +1145,17 @@
     <div id="p-portal" class="panel">
       <div class="ph">
         <div>
-          <div class="pt">Portal del Suscriptor</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="cursor:pointer;font-size:16px" onclick="nav('dash')">&larr;</span>
+            <div class="pt">Portal del Suscriptor</div>
+          </div>
           <div class="ps">Configura beneficios, promos, cupones y eventos que verán tus suscriptores</div>
         </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-g" onclick="refreshPortalPreview()" title="Actualizar preview">👁 Preview</button>
-          <a class="btn btn-b" href="/portal" target="_blank" style="text-decoration:none">↗ Ver Portal</a>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="display:flex;border:1.5px solid var(--bdr);border-radius:6px;overflow:hidden">
+            <button id="portal-pub-btn" onclick="togglePortalPublish(true)" style="padding:7px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer;background:var(--grn);color:#fff">● Publicado</button>
+            <button id="portal-unpub-btn" onclick="togglePortalPublish(false)" style="padding:7px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer;background:#fff;color:#666">Despublicar</button>
+          </div>
           <button class="btn btn-r" onclick="savePortalConfig()">💾 Guardar todo</button>
         </div>
       </div>
@@ -2400,6 +2405,20 @@
           <button onclick="removeEvent(${i})" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--red)">✕</button>
         </div>
       `).join('');
+    }
+
+    var _portalPublished = true;
+    function togglePortalPublish(published) {
+      _portalPublished = published;
+      var pubBtn = document.getElementById('portal-pub-btn');
+      var unpubBtn = document.getElementById('portal-unpub-btn');
+      if (published) {
+        pubBtn.style.background = 'var(--grn)'; pubBtn.style.color = '#fff';
+        unpubBtn.style.background = '#fff'; unpubBtn.style.color = '#666';
+      } else {
+        pubBtn.style.background = '#fff'; pubBtn.style.color = '#666';
+        unpubBtn.style.background = 'var(--red)'; unpubBtn.style.color = '#fff';
+      }
     }
 
     async function loadPortalConfig() {
