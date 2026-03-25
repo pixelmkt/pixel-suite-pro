@@ -33,7 +33,7 @@ const PORT = process.env.PORT || 8080;
 app.use((req, res, next) => {
     res.setHeader(
         'Content-Security-Policy',
-        "frame-ancestors https://admin.shopify.com https://nutrition-lab-cluster.myshopify.com https://*.myshopify.com;"
+        "frame-ancestors 'self' https://admin.shopify.com https://nutrition-lab-cluster.myshopify.com https://*.myshopify.com;"
     );
     // Remove any X-Frame-Options that would block the iframe
     res.removeHeader('X-Frame-Options');
