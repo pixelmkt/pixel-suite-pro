@@ -1234,6 +1234,47 @@
             <div id="events-list" style="display:flex;flex-direction:column;gap:10px"></div>
           </div>
         </div>
+        </div>
+
+        <!-- COLORES DEL PORTAL -->
+        <div class="card">
+          <div class="card-head"><span class="card-title">🎨 Colores del portal</span></div>
+          <div style="padding:20px">
+            <div class="info-box">Configura los colores que verá el cliente en su portal de suscriptor.</div>
+            <div class="frow">
+              <div class="fg">
+                <label class="fl">Color principal</label>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <input type="color" id="portal-color-primary" value="#D4502A" style="width:40px;height:34px;border:none;cursor:pointer;background:none">
+                  <input class="fi" id="portal-color-primary-hex" value="#D4502A" style="flex:1" onchange="document.getElementById('portal-color-primary').value=this.value">
+                </div>
+              </div>
+              <div class="fg">
+                <label class="fl">Color secundario</label>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <input type="color" id="portal-color-secondary" value="#2E7D49" style="width:40px;height:34px;border:none;cursor:pointer;background:none">
+                  <input class="fi" id="portal-color-secondary-hex" value="#2E7D49" style="flex:1" onchange="document.getElementById('portal-color-secondary').value=this.value">
+                </div>
+              </div>
+            </div>
+            <div class="frow">
+              <div class="fg">
+                <label class="fl">Fondo del portal</label>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <input type="color" id="portal-color-bg" value="#0f0f0f" style="width:40px;height:34px;border:none;cursor:pointer;background:none">
+                  <input class="fi" id="portal-color-bg-hex" value="#0f0f0f" style="flex:1" onchange="document.getElementById('portal-color-bg').value=this.value">
+                </div>
+              </div>
+              <div class="fg">
+                <label class="fl">Color de tarjetas</label>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <input type="color" id="portal-color-card" value="#1a1a1a" style="width:40px;height:34px;border:none;cursor:pointer;background:none">
+                  <input class="fi" id="portal-color-card-hex" value="#1a1a1a" style="flex:1" onchange="document.getElementById('portal-color-card').value=this.value">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         </div><!-- /LEFT CONFIG -->
 
