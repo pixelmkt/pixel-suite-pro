@@ -2499,24 +2499,29 @@
     (function initAppBridge() {
       var params = new URLSearchParams(window.location.search);
       var host = params.get('host');
-      if (!host) return; // Not embedded — keep custom sidebar
-
-      // Mark body as embedded to hide sidebar via CSS
+      // Detect embedded: host param OR running in iframe
+      var isEmbedded = !!host || (window.top !== window.self);
+      if (!isEmbedded) return;
+      // ALWAYS hide sidebar — even if App Bridge fails
       document.body.classList.add('shopify-embedded');
+      console.log('[APP_BRIDGE] Embedded detected — sidebar hidden');
 
       try {
-        var AppBridge = window['app-bridge'];
-        if (!AppBridge) { console.warn('[APP_BRIDGE] Library not loaded'); return; }
+        var AB = window['app-bridge'];
+        if (!AB) { console.warn('[APP_BRIDGE] Library not loaded'); return; }
+        // App Bridge 2.x UMD: createApp is at .default or top-level
+        var createApp = AB.default || AB.createApp || AB;
+        if (typeof createApp !== 'function') { console.warn('[APP_BRIDGE] createApp not found'); return; }
 
-        var app = AppBridge.createApp({
+        var app = createApp({
           apiKey: 'fc20b3f68f1c8e854a3dca30788acd48',
-          host: host,
+          host: host || '',
           forceRedirect: true
         });
 
         // Register NavigationMenu — sections appear in Shopify's native sidebar
-        var NavigationMenu = AppBridge.actions.NavigationMenu;
-        var AppLink = AppBridge.actions.AppLink;
+        var NavigationMenu = (AB.actions || {}).NavigationMenu;
+        var AppLink = (AB.actions || {}).AppLink;
         if (NavigationMenu && AppLink) {
           var links = [
             AppLink.create(app, { label: 'Dashboard', destination: '/?section=dash' }),
