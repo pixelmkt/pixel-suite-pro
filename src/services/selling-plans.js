@@ -17,7 +17,7 @@ function buildPlanInput(plan) {
 
     const sellingPlan = {
         name: label,
-        options: [{ position: 1, value: `${intervalCount === 1 ? 'Mensual' : `Cada ${intervalCount} meses`}` }],
+        options: [`${intervalCount === 1 ? 'Mensual' : `Cada ${intervalCount} meses`}`],
         position: 1,
         category: 'SUBSCRIPTION',
         billingPolicy: {
