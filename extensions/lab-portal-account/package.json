@@ -1,0 +1,8 @@
+{
+  "name": "lab-portal-account",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@shopify/ui-extensions": "2026.1.1"
+  }
+}

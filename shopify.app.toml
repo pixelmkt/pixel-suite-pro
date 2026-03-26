@@ -1,0 +1,27 @@
+client_id = "fc20b3f68f1c8e854a3dca30788acd48"
+name = "Suscriptions MP"
+application_url = "https://pixel-suite-pro-production.up.railway.app"
+embedded = true
+
+[build]
+  automatically_update_urls_on_dev = true
+  dev_store_url = "nutrition-lab-cluster.myshopify.com"
+
+[webhooks]
+  api_version = "2026-01"
+
+  [[webhooks.subscriptions]]
+    topics = ["orders/paid"]
+    uri = "/webhooks/shopify/orders-paid"
+
+[access_scopes]
+  scopes = "write_orders,read_orders,read_customers,write_customers,read_products,write_products,read_purchase_options,write_purchase_options,read_own_subscription_contracts,write_own_subscription_contracts"
+
+[auth]
+  redirect_urls = [
+    "https://pixel-suite-pro-production.up.railway.app/auth/callback",
+    "http://localhost:4000/auth/callback"
+  ]
+
+[pos]
+  embedded = false
