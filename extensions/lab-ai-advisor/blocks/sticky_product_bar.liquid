@@ -1,0 +1,433 @@
+{% comment %}
+  ============================================================
+  LAB NUTRITION — Sticky Product Bar (Barra flotante superior)
+  Aparece en la parte superior al hacer scroll en la página de producto
+  Agrega esta sección a tu tema como:
+    sections/lab-sticky-product-bar.liquid
+  ============================================================
+{% endcomment %}
+
+{%- if product -%}
+
+<div id="lab-sticky-bar" class="lab-sticky-bar" aria-hidden="true">
+  <div class="lab-sticky-bar__inner">
+
+    {%- comment %} Imagen del producto {%- endcomment %}
+    <div class="lab-sticky-bar__image">
+      {%- if product.featured_image -%}
+        <img
+          src="{{ product.featured_image | image_url: width: 80 }}"
+          alt="{{ product.featured_image.alt | escape }}"
+          width="40"
+          height="40"
+          loading="lazy"
+        >
+      {%- endif -%}
+    </div>
+
+    {%- comment %} Nombre y variante {%- endcomment %}
+    <div class="lab-sticky-bar__info">
+      <span class="lab-sticky-bar__title">{{ product.title }}</span>
+      {%- if product.variants.size > 1 -%}
+        <span class="lab-sticky-bar__variant" id="lab-sticky-variant-label">
+          {{ product.selected_or_first_available_variant.title }}
+        </span>
+      {%- endif -%}
+    </div>
+
+    {%- comment %} Precio {%- endcomment %}
+    <div class="lab-sticky-bar__price">
+      {%- assign current_variant = product.selected_or_first_available_variant -%}
+      {%- if current_variant.compare_at_price > current_variant.price -%}
+        <span class="lab-sticky-bar__price--compare">
+          {{ current_variant.compare_at_price | money }}
+        </span>
+      {%- endif -%}
+      <span class="lab-sticky-bar__price--current">
+        {{ current_variant.price | money }}
+      </span>
+    </div>
+
+    {%- comment %} Botón ATC {%- endcomment %}
+    <div class="lab-sticky-bar__cta">
+      <button
+        id="lab-sticky-atc"
+        class="lab-sticky-bar__btn"
+        data-variant-id="{{ current_variant.id }}"
+        {% unless current_variant.available %}disabled{% endunless %}
+      >
+        {%- if current_variant.available -%}
+          {{ section.settings.button_text | default: 'Agregar al carrito' }}
+        {%- else -%}
+          {{ 'products.product.sold_out' | t }}
+        {%- endif -%}
+      </button>
+    </div>
+
+  </div>
+</div>
+
+{%- endif -%}
+
+<style>
+  /* ─── Variables ─────────────────────────────────────── */
+  #lab-sticky-bar {
+    --bar-bg:         {{ section.settings.bar_bg_color | default: '#ffffff' }};
+    --bar-text:       {{ section.settings.bar_text_color | default: '#1a1a1a' }};
+    --bar-accent:     {{ section.settings.bar_accent_color | default: '#ff3c00' }};
+    --bar-btn-text:   {{ section.settings.bar_btn_text_color | default: '#ffffff' }};
+    --bar-shadow:     0 4px 24px rgba(0,0,0,0.10);
+    --bar-radius:     0px;
+    --bar-height:     68px;
+    --bar-z:          999;
+    --bar-transition: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ─── Layout base ───────────────────────────────────── */
+  .lab-sticky-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: var(--bar-z);
+    background: var(--bar-bg);
+    box-shadow: var(--bar-shadow);
+    border-bottom: 1px solid rgba(0,0,0,0.07);
+    transform: translateY(-100%);
+    opacity: 0;
+    transition: transform var(--bar-transition), opacity var(--bar-transition);
+    will-change: transform, opacity;
+    border-radius: var(--bar-radius);
+  }
+
+  /* Estado visible */
+  .lab-sticky-bar.is-visible {
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  .lab-sticky-bar__inner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+    height: var(--bar-height);
+  }
+
+  /* ─── Imagen ────────────────────────────────────────── */
+  .lab-sticky-bar__image {
+    flex-shrink: 0;
+  }
+
+  .lab-sticky-bar__image img {
+    width: 44px;
+    height: 44px;
+    object-fit: cover;
+    border-radius: 8px;
+    display: block;
+  }
+
+  /* ─── Info ──────────────────────────────────────────── */
+  .lab-sticky-bar__info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .lab-sticky-bar__title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--bar-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+
+  .lab-sticky-bar__variant {
+    font-size: 12px;
+    color: rgba(0,0,0,0.45);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ─── Precio ────────────────────────────────────────── */
+  .lab-sticky-bar__price {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+    flex-shrink: 0;
+  }
+
+  .lab-sticky-bar__price--compare {
+    font-size: 11px;
+    color: rgba(0,0,0,0.35);
+    text-decoration: line-through;
+    line-height: 1;
+  }
+
+  .lab-sticky-bar__price--current {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--bar-accent);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+
+  /* ─── Botón ─────────────────────────────────────────── */
+  .lab-sticky-bar__cta {
+    flex-shrink: 0;
+  }
+
+  .lab-sticky-bar__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 11px 22px;
+    background: var(--bar-accent);
+    color: var(--bar-btn-text);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  }
+
+  .lab-sticky-bar__btn:hover:not(:disabled) {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+  }
+
+  .lab-sticky-bar__btn:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  .lab-sticky-bar__btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  /* ─── Feedback de éxito ─────────────────────────────── */
+  .lab-sticky-bar__btn.is-success {
+    background: #22c55e;
+  }
+  .lab-sticky-bar__btn.is-loading {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  /* ─── Responsive ────────────────────────────────────── */
+  @media (max-width: 640px) {
+    .lab-sticky-bar__inner {
+      gap: 10px;
+      padding: 0 14px;
+    }
+    .lab-sticky-bar__title {
+      font-size: 13px;
+    }
+    .lab-sticky-bar__btn {
+      padding: 10px 16px;
+      font-size: 12px;
+    }
+    .lab-sticky-bar__price--current {
+      font-size: 14px;
+    }
+    .lab-sticky-bar__image img {
+      width: 38px;
+      height: 38px;
+    }
+  }
+
+  @media (max-width: 400px) {
+    .lab-sticky-bar__price--compare { display: none; }
+    .lab-sticky-bar__variant { display: none; }
+  }
+</style>
+
+<script>
+(function () {
+  'use strict';
+
+  const bar        = document.getElementById('lab-sticky-bar');
+  const atcBtn     = document.getElementById('lab-sticky-atc');
+  const TRIGGER_ID = '{{ section.settings.trigger_element_id | default: "MainContent" }}';
+  let   currentVariantId = atcBtn ? parseInt(atcBtn.dataset.variantId, 10) : null;
+
+  if (!bar) return;
+
+  /* ── 1. Mostrar / ocultar barra al scroll ─────────── */
+  let ticking = false;
+  const triggerEl = document.getElementById(TRIGGER_ID) || document.querySelector('.product__info-wrapper, .product-single__meta, form[action="/cart/add"]');
+
+  function onScroll () {
+    if (!ticking) {
+      window.requestAnimationFrame(() => {
+        if (!triggerEl) {
+          bar.classList.toggle('is-visible', window.scrollY > 300);
+        } else {
+          const rect = triggerEl.getBoundingClientRect();
+          bar.classList.toggle('is-visible', rect.bottom < 0);
+        }
+        bar.setAttribute('aria-hidden', !bar.classList.contains('is-visible'));
+        ticking = false;
+      });
+      ticking = true;
+    }
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  /* ── 2. Sincronizar variante seleccionada ─────────── */
+  document.addEventListener('variant:changed', function (e) {
+    const v = e.detail && e.detail.variant;
+    if (!v || !atcBtn) return;
+
+    currentVariantId = v.id;
+    atcBtn.dataset.variantId = v.id;
+
+    // Precio
+    const priceEl   = bar.querySelector('.lab-sticky-bar__price--current');
+    const compareEl = bar.querySelector('.lab-sticky-bar__price--compare');
+
+    if (priceEl) {
+      priceEl.textContent = formatMoney(v.price);
+    }
+    if (compareEl) {
+      if (v.compare_at_price && v.compare_at_price > v.price) {
+        compareEl.textContent = formatMoney(v.compare_at_price);
+        compareEl.style.display = '';
+      } else {
+        compareEl.style.display = 'none';
+      }
+    }
+
+    // Variante label
+    const variantLabel = document.getElementById('lab-sticky-variant-label');
+    if (variantLabel) variantLabel.textContent = v.title !== 'Default Title' ? v.title : '';
+
+    // Disponibilidad
+    atcBtn.disabled = !v.available;
+    atcBtn.textContent = v.available
+      ? {{ section.settings.button_text | default: 'Agregar al carrito' | json }}
+      : {{ 'products.product.sold_out' | t | json }};
+  });
+
+  /* ── 3. Add to cart ───────────────────────────────── */
+  if (atcBtn) {
+    atcBtn.addEventListener('click', async function () {
+      if (!currentVariantId || atcBtn.disabled) return;
+
+      const originalText = atcBtn.textContent;
+      atcBtn.classList.add('is-loading');
+      atcBtn.textContent = '...';
+
+      try {
+        const res = await fetch('/cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: currentVariantId, quantity: 1 })
+        });
+
+        if (!res.ok) throw new Error('Error al agregar');
+
+        atcBtn.classList.remove('is-loading');
+        atcBtn.classList.add('is-success');
+        atcBtn.textContent = '✓ Agregado';
+
+        // Disparar evento para que el cart drawer/mini-cart del tema actualice
+        document.dispatchEvent(new CustomEvent('cart:refresh', { bubbles: true }));
+
+        setTimeout(() => {
+          atcBtn.classList.remove('is-success');
+          atcBtn.textContent = originalText;
+        }, 2200);
+
+      } catch (err) {
+        console.error('[Lab Sticky Bar] ATC error:', err);
+        atcBtn.classList.remove('is-loading');
+        atcBtn.textContent = originalText;
+      }
+    });
+  }
+
+  /* ── Helper: formatear precio Shopify (centavos → moneda) ── */
+  function formatMoney (cents) {
+    const amount = (cents / 100).toFixed(2);
+    const symbol = window.Shopify && window.Shopify.currency
+      ? window.Shopify.currency.symbol || 'S/ '
+      : 'S/ ';
+    return symbol + amount;
+  }
+
+})();
+</script>
+
+{% schema %}
+{
+  "name": "🔝 Barra Sticky Producto",
+  "target": "section",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Colores"
+    },
+    {
+      "type": "color",
+      "id": "bar_bg_color",
+      "label": "Color de fondo",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "bar_text_color",
+      "label": "Color de texto",
+      "default": "#1a1a1a"
+    },
+    {
+      "type": "color",
+      "id": "bar_accent_color",
+      "label": "Color acento (precio y botón)",
+      "default": "#ff3c00"
+    },
+    {
+      "type": "color",
+      "id": "bar_btn_text_color",
+      "label": "Color texto del botón",
+      "default": "#ffffff"
+    },
+    {
+      "type": "header",
+      "content": "Comportamiento"
+    },
+    {
+      "type": "text",
+      "id": "trigger_element_id",
+      "label": "ID del elemento disparador",
+      "info": "La barra aparece cuando este elemento sale del viewport. Dejar vacío para usar 300px de scroll.",
+      "placeholder": "product-form"
+    },
+    {
+      "type": "header",
+      "content": "Texto"
+    },
+    {
+      "type": "text",
+      "id": "button_text",
+      "label": "Texto del botón",
+      "default": "Agregar al carrito"
+    }
+  ]
+}
+{% endschema %}

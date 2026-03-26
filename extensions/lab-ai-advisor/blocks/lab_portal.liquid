@@ -1,0 +1,365 @@
+{{ 'lab-portal.css' | asset_url | stylesheet_tag }}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+{%- liquid
+  assign backend   = block.settings.backend_url | default: 'https://pixel-suite-pro-production.up.railway.app'
+  assign b_title   = block.settings.title | default: 'Tu Membresía Premium'
+  assign b_sub     = block.settings.subtitle | default: 'Beneficios exclusivos para suscriptores'
+  assign b_badge   = block.settings.badge_text | default: 'MIEMBRO ACTIVO'
+  assign pri       = block.settings.primary_color | default: '#D4502A'
+  assign accent    = block.settings.accent_color | default: '#2E7D49'
+  assign bg        = block.settings.bg_color | default: '#0f0f0f'
+  assign card_bg   = block.settings.card_color | default: '#1a1a1a'
+  assign txt       = block.settings.text_color | default: '#f0f0f0'
+  assign layout    = block.settings.benefits_layout | default: 'grid'
+  assign cols      = block.settings.benefits_columns | default: 4
+  assign radius    = block.settings.border_radius | default: 14
+  assign show_ben  = block.settings.show_benefits
+  assign show_pw   = block.settings.show_product_week
+  assign show_ev   = block.settings.show_events
+  assign show_bdg  = block.settings.show_badge
+  assign ben_title = block.settings.benefits_title | default: 'Tus Beneficios'
+  assign pw_title  = block.settings.product_week_title | default: '⭐ Producto de la Semana'
+  assign ev_title  = block.settings.events_title | default: '📅 Próximos Eventos'
+-%}
+
+<div class="lab-portal"
+  id="lab-portal-{{ block.id }}"
+  data-backend="{{ backend }}"
+  style="
+    --lab-portal-primary: {{ pri }};
+    --lab-portal-primary-dark: {{ pri }};
+    --lab-portal-accent: {{ accent }};
+    --lab-portal-bg: {{ bg }};
+    --lab-portal-card: {{ card_bg }};
+    --lab-portal-card2: {{ card_bg }};
+    --lab-portal-text: {{ txt }};
+    --lab-portal-muted: {{ txt }};
+    --lab-portal-border: rgba(255,255,255,0.12);
+    --lab-portal-radius: {{ radius }}px;
+  "
+  {{ block.shopify_attributes }}>
+
+  <!-- HERO -->
+  <div class="lp-hero">
+    {% if block.settings.logo != blank %}
+      <img src="{{ block.settings.logo | image_url: width: 120 }}" alt="Logo" class="lp-hero-logo" loading="lazy">
+    {% endif %}
+    <div class="lp-hero-title">{{ b_title }}</div>
+    <div class="lp-hero-sub">{{ b_sub }}</div>
+    {% if show_bdg %}
+      <div class="lp-hero-badge">{{ b_badge }}</div>
+    {% endif %}
+  </div>
+
+  <!-- DYNAMIC CONTENT -->
+  <div class="lp-container">
+
+    <!-- LOADING STATE -->
+    <div class="lp-loading" id="lp-loading-{{ block.id }}">
+      <div class="lp-spinner"></div>
+      <div>Cargando contenido...</div>
+    </div>
+
+    <!-- BENEFITS -->
+    {% if show_ben %}
+    <div id="lp-benefits-{{ block.id }}" style="display:none">
+      <div class="lp-section-title">{{ ben_title }}</div>
+      <div class="lp-card">
+        <div class="lp-card-inner">
+          <div class="lp-benefits-grid cols-{{ cols }} {% if layout == 'list' %}layout-list{% endif %}"
+               id="lp-benefits-grid-{{ block.id }}">
+            <!-- JS fills this -->
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- PRODUCT OF THE WEEK -->
+    {% if show_pw %}
+    <div id="lp-potw-{{ block.id }}" style="display:none">
+      <div class="lp-section-title">{{ pw_title }}</div>
+      <div class="lp-card">
+        <div class="lp-card-inner lp-potw" id="lp-potw-inner-{{ block.id }}">
+          <!-- JS fills this -->
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- EVENTS -->
+    {% if show_ev %}
+    <div id="lp-events-{{ block.id }}" style="display:none">
+      <div class="lp-section-title">{{ ev_title }}</div>
+      <div class="lp-card">
+        <div class="lp-card-inner">
+          <div class="lp-timeline" id="lp-timeline-{{ block.id }}">
+            <!-- JS fills this -->
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- FOOTER -->
+  <div class="lp-footer">
+    {{ b_title }} · Portal del Suscriptor
+  </div>
+</div>
+
+<script>
+(function() {
+  const ROOT = document.getElementById('lab-portal-{{ block.id }}');
+  if (!ROOT) return;
+  const BACKEND = ROOT.dataset.backend;
+  const ID = '{{ block.id }}';
+
+  async function init() {
+    try {
+      const [config, settings] = await Promise.all([
+        fetch(BACKEND + '/api/portal-config').then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        fetch(BACKEND + '/api/settings').then(r => r.ok ? r.json() : {}).catch(() => ({}))
+      ]);
+
+      const loading = document.getElementById('lp-loading-' + ID);
+      if (loading) loading.style.display = 'none';
+
+      // BENEFITS
+      const benSection = document.getElementById('lp-benefits-' + ID);
+      const benGrid = document.getElementById('lp-benefits-grid-' + ID);
+      if (benSection && benGrid) {
+        const benefits = config.benefits || [
+          { icon: '🚚', title: 'Envío prioritario', description: 'Recibe tus productos antes que nadie' },
+          { icon: '💰', title: 'Descuento exclusivo', description: 'Hasta 40% de descuento permanente' },
+          { icon: '🎯', title: 'Acceso anticipado', description: 'Sé el primero en probar nuevos lanzamientos' },
+          { icon: '🎁', title: 'Regalos sorpresa', description: 'Muestras gratis en cada envío' }
+        ];
+        const isListLayout = '{{ layout }}' === 'list';
+        benGrid.innerHTML = benefits.map(b => `
+          <div class="lp-benefit">
+            <div class="lp-benefit-icon">${b.icon}</div>
+            ${isListLayout ? '<div class="lp-benefit-info">' : ''}
+            <div class="lp-benefit-title">${b.title}</div>
+            <div class="lp-benefit-desc">${b.description}</div>
+            ${isListLayout ? '</div>' : ''}
+          </div>
+        `).join('');
+        benSection.style.display = '';
+      }
+
+      // PRODUCT OF THE WEEK
+      const potwSection = document.getElementById('lp-potw-' + ID);
+      const potwInner = document.getElementById('lp-potw-inner-' + ID);
+      const pw = config.product_of_week;
+      if (potwSection && potwInner && pw && pw.name) {
+        let potwHtml = '';
+        if (pw.image) potwHtml += `<img src="${pw.image}" alt="${pw.name}" class="lp-potw-img" loading="lazy">`;
+        potwHtml += `<div class="lp-potw-info">
+          <div class="lp-potw-badge">Exclusivo suscriptores</div>
+          <div class="lp-potw-name">${pw.name}</div>
+          ${pw.description ? `<div class="lp-potw-desc">${pw.description}</div>` : ''}
+          <div class="lp-potw-prices">
+            <span class="lp-potw-price-new">S/ ${pw.sub_price || pw.price}</span>
+            ${pw.price && pw.sub_price ? `<span class="lp-potw-price-old">S/ ${pw.price}</span>` : ''}
+          </div>
+          ${pw.coupon ? `<div class="lp-potw-coupon"><div><div class="lp-potw-coupon-code">${pw.coupon}</div><div class="lp-potw-coupon-label">Código exclusivo</div></div></div>` : ''}
+          ${pw.url ? `<a href="${pw.url}" class="lp-potw-btn" target="_blank">Comprar ahora →</a>` : ''}
+        </div>`;
+        potwInner.innerHTML = potwHtml;
+        potwSection.style.display = '';
+      }
+
+      // EVENTS
+      const evSection = document.getElementById('lp-events-' + ID);
+      const timeline = document.getElementById('lp-timeline-' + ID);
+      const events = config.events || [];
+      if (evSection && timeline && events.length) {
+        timeline.innerHTML = events.map(ev => `
+          <div class="lp-event">
+            <div class="lp-event-badge">${ev.badge || '🔥'}</div>
+            <div class="lp-event-title">${ev.title}</div>
+            ${ev.date ? `<div class="lp-event-date">${new Date(ev.date).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' })}</div>` : ''}
+            ${ev.description ? `<div class="lp-event-desc">${ev.description}</div>` : ''}
+          </div>
+        `).join('');
+        evSection.style.display = '';
+      }
+
+    } catch (e) {
+      console.error('[LAB Portal] Error:', e);
+      const loading = document.getElementById('lp-loading-' + ID);
+      if (loading) loading.innerHTML = '<div style="color:#ff6b6b">Error al cargar el portal</div>';
+    }
+  }
+
+  // Load when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Portal del Suscriptor",
+  "target": "section",
+  "settings": [
+    {
+      "type": "header",
+      "content": "🎨 Hero y Conexión"
+    },
+    {
+      "type": "text",
+      "id": "backend_url",
+      "label": "URL del backend",
+      "default": "https://pixel-suite-pro-production.up.railway.app",
+      "info": "URL de tu servidor de suscripciones"
+    },
+    {
+      "type": "text",
+      "id": "title",
+      "label": "Título principal",
+      "default": "Tu Membresía Premium"
+    },
+    {
+      "type": "text",
+      "id": "subtitle",
+      "label": "Subtítulo",
+      "default": "Beneficios exclusivos para suscriptores"
+    },
+    {
+      "type": "text",
+      "id": "badge_text",
+      "label": "Texto del badge",
+      "default": "MIEMBRO ACTIVO"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_badge",
+      "label": "Mostrar badge de miembro",
+      "default": true
+    },
+    {
+      "type": "image_picker",
+      "id": "logo",
+      "label": "Logo del portal"
+    },
+    {
+      "type": "header",
+      "content": "🎨 Colores"
+    },
+    {
+      "type": "color",
+      "id": "primary_color",
+      "label": "Color primario",
+      "default": "#D4502A"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Color de acento",
+      "default": "#2E7D49"
+    },
+    {
+      "type": "color",
+      "id": "bg_color",
+      "label": "Color de fondo",
+      "default": "#0f0f0f"
+    },
+    {
+      "type": "color",
+      "id": "card_color",
+      "label": "Color de tarjetas",
+      "default": "#1a1a1a"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Color del texto",
+      "default": "#f0f0f0"
+    },
+    {
+      "type": "header",
+      "content": "🎁 Beneficios"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_benefits",
+      "label": "Mostrar sección de beneficios",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "benefits_title",
+      "label": "Título de la sección",
+      "default": "Tus Beneficios"
+    },
+    {
+      "type": "select",
+      "id": "benefits_layout",
+      "label": "Estilo de beneficios",
+      "default": "grid",
+      "options": [
+        { "value": "grid", "label": "Cuadrícula" },
+        { "value": "list", "label": "Lista" }
+      ]
+    },
+    {
+      "type": "range",
+      "id": "benefits_columns",
+      "label": "Columnas (cuadrícula)",
+      "min": 2,
+      "max": 4,
+      "step": 1,
+      "default": 4
+    },
+    {
+      "type": "header",
+      "content": "⭐ Producto de la Semana"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_product_week",
+      "label": "Mostrar producto de la semana",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "product_week_title",
+      "label": "Título de la sección",
+      "default": "⭐ Producto de la Semana"
+    },
+    {
+      "type": "header",
+      "content": "📅 Eventos"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_events",
+      "label": "Mostrar timeline de eventos",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "events_title",
+      "label": "Título de la sección",
+      "default": "📅 Próximos Eventos"
+    },
+    {
+      "type": "range",
+      "id": "border_radius",
+      "label": "Redondez de tarjetas",
+      "min": 0,
+      "max": 24,
+      "step": 2,
+      "default": 14,
+      "unit": "px"
+    }
+  ]
+}
+{% endschema %}

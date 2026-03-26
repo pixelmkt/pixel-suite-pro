@@ -1,0 +1,305 @@
+/* ═══════════════════════════════════════════════════
+   LAB Portal del Suscriptor — Embebido en Shopify
+   Dark-mode premium, variables from Liquid schema
+   ═══════════════════════════════════════════════════ */
+
+.lab-portal {
+  --lp-pri: var(--lab-portal-primary, #D4502A);
+  --lp-pri2: var(--lab-portal-primary-dark, #B3401F);
+  --lp-accent: var(--lab-portal-accent, #2E7D49);
+  --lp-bg: var(--lab-portal-bg, #0f0f0f);
+  --lp-card: var(--lab-portal-card, #1a1a1a);
+  --lp-card2: var(--lab-portal-card2, #232323);
+  --lp-txt: var(--lab-portal-text, #f0f0f0);
+  --lp-mut: var(--lab-portal-muted, #888);
+  --lp-bdr: var(--lab-portal-border, #333);
+  --lp-r: var(--lab-portal-radius, 14px);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--lp-txt);
+  background: var(--lp-bg);
+  min-height: 200px;
+}
+
+/* ── HERO ── */
+.lp-hero {
+  padding: clamp(40px, 8vw, 72px) 24px clamp(28px, 5vw, 48px);
+  text-align: center;
+  background: linear-gradient(135deg, rgba(212,80,42,.12) 0%, rgba(46,125,73,.08) 100%);
+  border-bottom: 1px solid var(--lp-bdr);
+  position: relative;
+  overflow: hidden;
+}
+.lp-hero::before {
+  content: '';
+  position: absolute;
+  top: -50%; left: -50%;
+  width: 200%; height: 200%;
+  background: radial-gradient(ellipse at 30% 40%, rgba(212,80,42,.06) 0%, transparent 55%);
+  animation: lpHeroGlow 10s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes lpHeroGlow { to { transform: translate(8%, 4%) scale(1.08); } }
+
+.lp-hero-logo {
+  width: 60px; height: 60px;
+  border-radius: 14px;
+  object-fit: contain;
+  margin: 0 auto 14px;
+  display: block;
+  position: relative;
+}
+.lp-hero-title {
+  font-size: clamp(28px, 5vw, 44px);
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  line-height: 1.15;
+  position: relative;
+}
+.lp-hero-sub {
+  font-size: clamp(14px, 2vw, 16px);
+  color: var(--lp-mut);
+  margin-top: 6px;
+  position: relative;
+}
+.lp-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, var(--lp-pri), var(--lp-pri2));
+  color: #fff;
+  padding: 8px 20px;
+  border-radius: 24px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-top: 18px;
+  position: relative;
+}
+.lp-hero-badge::before {
+  content: '';
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+  animation: lpPulse 2s infinite;
+}
+@keyframes lpPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* ── CONTAINER ── */
+.lp-container {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: clamp(24px, 4vw, 40px) clamp(16px, 3vw, 24px);
+}
+
+/* ── SECTION TITLES ── */
+.lp-section-title {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 2.5px;
+  color: var(--lp-mut);
+  margin: 0 0 14px 2px;
+}
+
+/* ── CARDS ── */
+.lp-card {
+  background: var(--lp-card);
+  border: 1px solid var(--lp-bdr);
+  border-radius: var(--lp-r);
+  overflow: hidden;
+  margin-bottom: clamp(20px, 3vw, 28px);
+  transition: border-color .25s;
+}
+.lp-card:hover { border-color: #444; }
+.lp-card-inner { padding: clamp(18px, 3vw, 28px); }
+
+/* ── BENEFITS — GRID ── */
+.lp-benefits-grid {
+  display: grid;
+  gap: 14px;
+}
+.lp-benefits-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.lp-benefits-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.lp-benefits-grid.cols-4 { grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); }
+
+.lp-benefit {
+  background: var(--lp-card2);
+  border-radius: 12px;
+  padding: 22px 16px;
+  text-align: center;
+  border: 1px solid var(--lp-bdr);
+  transition: border-color .2s, transform .2s;
+}
+.lp-benefit:hover {
+  border-color: var(--lp-pri);
+  transform: translateY(-3px);
+}
+.lp-benefit-icon { font-size: 32px; margin-bottom: 10px; }
+.lp-benefit-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+.lp-benefit-desc { font-size: 11px; color: var(--lp-mut); line-height: 1.5; }
+
+/* ── BENEFITS — LIST ── */
+.lp-benefits-grid.layout-list {
+  grid-template-columns: 1fr !important;
+}
+.layout-list .lp-benefit {
+  display: flex;
+  text-align: left;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 22px;
+}
+.layout-list .lp-benefit-icon {
+  font-size: 28px;
+  margin-bottom: 0;
+  flex-shrink: 0;
+  width: 48px; height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(212,80,42,.08);
+  border-radius: 12px;
+}
+.layout-list .lp-benefit-info { flex: 1; }
+.layout-list .lp-benefit-title { font-size: 14px; margin-bottom: 2px; }
+.layout-list .lp-benefit-desc { font-size: 12px; }
+
+/* ── PRODUCT OF THE WEEK ── */
+.lp-potw {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.lp-potw-img {
+  width: 180px; height: 180px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 2px solid var(--lp-bdr);
+  flex-shrink: 0;
+}
+.lp-potw-info { flex: 1; min-width: 200px; }
+.lp-potw-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #000;
+  font-size: 10px; font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  padding: 4px 14px;
+  border-radius: 20px;
+  margin-bottom: 12px;
+}
+.lp-potw-name { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+.lp-potw-desc { font-size: 13px; color: var(--lp-mut); margin-bottom: 14px; line-height: 1.5; }
+.lp-potw-prices { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+.lp-potw-price-new { font-size: 28px; font-weight: 900; color: var(--lp-accent); }
+.lp-potw-price-old { font-size: 16px; color: var(--lp-mut); text-decoration: line-through; }
+.lp-potw-coupon {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--lp-card2);
+  border: 2px dashed var(--lp-pri);
+  border-radius: 10px;
+  padding: 10px 20px;
+  margin-bottom: 14px;
+}
+.lp-potw-coupon-code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px; font-weight: 900;
+  color: var(--lp-pri);
+  letter-spacing: 2px;
+}
+.lp-potw-coupon-label { font-size: 11px; color: var(--lp-mut); }
+.lp-potw-btn {
+  display: inline-block;
+  background: var(--lp-pri);
+  color: #fff;
+  padding: 12px 28px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  transition: background .15s, transform .15s;
+}
+.lp-potw-btn:hover { background: var(--lp-pri2); transform: translateY(-1px); }
+
+/* ── EVENTS TIMELINE ── */
+.lp-timeline { position: relative; padding-left: 30px; }
+.lp-timeline::before {
+  content: '';
+  position: absolute;
+  left: 8px; top: 8px; bottom: 8px;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--lp-pri), var(--lp-accent));
+  border-radius: 2px;
+}
+.lp-event {
+  position: relative;
+  margin-bottom: 18px;
+  padding: 16px 20px;
+  background: var(--lp-card2);
+  border-radius: 12px;
+  border: 1px solid var(--lp-bdr);
+  transition: border-color .2s;
+}
+.lp-event:hover { border-color: var(--lp-pri); }
+.lp-event::before {
+  content: '';
+  position: absolute;
+  left: -26px; top: 20px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--lp-pri);
+  border: 2px solid var(--lp-bg);
+}
+.lp-event-badge { font-size: 20px; margin-bottom: 6px; }
+.lp-event-title { font-size: 14px; font-weight: 700; }
+.lp-event-date { font-size: 11px; color: var(--lp-pri); font-weight: 600; margin-top: 3px; }
+.lp-event-desc { font-size: 12px; color: var(--lp-mut); margin-top: 6px; line-height: 1.5; }
+
+/* ── FOOTER ── */
+.lp-footer {
+  text-align: center;
+  padding: 32px 20px;
+  border-top: 1px solid var(--lp-bdr);
+  font-size: 11px;
+  color: #555;
+}
+
+/* ── LOADING ── */
+.lp-loading {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--lp-mut);
+}
+.lp-spinner {
+  width: 28px; height: 28px;
+  border: 3px solid var(--lp-bdr);
+  border-top-color: var(--lp-pri);
+  border-radius: 50%;
+  animation: lpSpin .7s linear infinite;
+  margin: 0 auto 12px;
+}
+@keyframes lpSpin { to { transform: rotate(360deg); } }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 640px) {
+  .lp-hero { padding: 36px 16px 24px; }
+  .lp-container { padding: 18px 12px 32px; }
+  .lp-potw { flex-direction: column; }
+  .lp-potw-img { width: 100%; height: auto; aspect-ratio: 1; }
+  .lp-benefits-grid.cols-3,
+  .lp-benefits-grid.cols-4 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 400px) {
+  .lp-benefits-grid.cols-2,
+  .lp-benefits-grid.cols-3,
+  .lp-benefits-grid.cols-4 {
+    grid-template-columns: 1fr;
+  }
+}

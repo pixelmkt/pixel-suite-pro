@@ -116,6 +116,38 @@
     letter-spacing: 0.5px;
 }
 
+/* Precio tachado (compare_at_price) en compra única */
+.lab-sub__price-compare {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--lab-gray-muted);
+    text-decoration: line-through;
+}
+
+/* Badge de porcentaje OFF en compra única */
+.lab-sub__price-pct {
+    background: var(--lab-red);
+    color: var(--lab-white);
+    font-size: 10px;
+    font-weight: 900;
+    padding: 3px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+}
+
+/* Envío gratis */
+.lab-sub__free-ship {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--lab-green-save);
+    background: #e6f4ea;
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    margin-top: 6px;
+}
+
+
 /* ── SELECTORS ── */
 .lab-sub__group {
     margin-bottom: 14px;
@@ -484,3 +516,65 @@
         font-size: 22px;
     }
 }
+
+/* ── PLAN CARDS (Selling Plans nativos) ── */
+.lab-sub__plan-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.lab-sub__plan-card {
+    position: relative;
+    border: 1.5px solid var(--lab-gray-border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--lab-white);
+    overflow: hidden;
+}
+
+.lab-sub__plan-card:hover {
+    border-color: var(--lab-primary, var(--lab-red));
+    background: rgba(157, 42, 35, 0.03);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.lab-sub__plan-card--selected {
+    border-color: var(--lab-primary, var(--lab-red)) !important;
+    background: rgba(157, 42, 35, 0.05) !important;
+    box-shadow: 0 2px 8px rgba(157, 42, 35, 0.15);
+}
+
+.lab-sub__plan-card-check {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--lab-gray-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 900;
+    color: transparent;
+    transition: all 0.2s;
+}
+
+.lab-sub__plan-card--selected .lab-sub__plan-card-check {
+    background: var(--lab-primary, var(--lab-red));
+    color: #fff;
+}
+
+.lab-sub__plan-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--lab-black);
+    line-height: 1.3;
+    padding-right: 28px;
+}

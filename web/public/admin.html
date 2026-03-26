@@ -1,25 +1,28 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>LAB NUTRITION — Backoffice Suscripciones</title>
+  <title>Suscriptions MP — Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
   <style>
     :root {
-      --red: #9d2a23;
-      --red2: #7e201a;
-      --rl: rgba(157, 42, 35, .1);
-      --blk: #000;
+      --red: #c0392b;
+      --red2: #96281b;
+      --rl: rgba(192, 57, 43, .10);
+      --blk: #111;
       --wht: #fff;
-      --bg: #f4f5f7;
+      --bg: #f7f8fa;
       --card: #fff;
-      --bdr: #e2e4e8;
-      --mut: #8a8f98;
-      --grn: #1a7a3a;
-      --gld: #c8892a;
+      --bdr: #eaecf0;
+      --mut: #9ca3af;
+      --grn: #16a34a;
+      --gld: #d97706;
       --r: 10px;
-      --rs: 6px
+      --rs: 7px;
+      --sh: 0 1px 4px rgba(0, 0, 0, .07), 0 1px 2px rgba(0, 0, 0, .04)
     }
 
     * {
@@ -29,25 +32,28 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: var(--bg);
       color: var(--blk);
       display: flex;
-      min-height: 100vh
+      min-height: 100vh;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased
     }
 
     /* ─ SIDEBAR ─ */
     .sb {
-      width: 230px;
+      width: 220px;
       min-height: 100vh;
-      background: var(--blk);
+      background: #0e0e0e;
       color: var(--wht);
       display: flex;
       flex-direction: column;
       position: fixed;
       top: 0;
       left: 0;
-      z-index: 100
+      z-index: 100;
+      border-right: 1px solid rgba(255, 255, 255, .04)
     }
 
     .sb-logo {
@@ -86,14 +92,24 @@
       padding: 14px 18px 6px
     }
 
+    .ic svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round
+    }
+
     .ni {
       display: flex;
       align-items: center;
       gap: 9px;
       padding: 9px 18px;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
-      color: rgba(255, 255, 255, .55);
+      color: rgba(255, 255, 255, .5);
       cursor: pointer;
       transition: .15s;
       border-left: 3px solid transparent;
@@ -126,11 +142,11 @@
       color: rgba(255, 255, 255, .3)
     }
 
-    /* ─ MAIN ─ */
     .main {
-      margin-left: 230px;
+      margin-left: 220px;
       flex: 1;
-      padding: 24px
+      padding: 28px 28px 28px 28px;
+      min-height: 100vh
     }
 
     .ph {
@@ -163,13 +179,13 @@
       display: block
     }
 
-    /* ─ CARDS & GRID ─ */
     .card {
       background: var(--card);
       border: 1px solid var(--bdr);
       border-radius: var(--r);
       overflow: hidden;
-      margin-bottom: 18px
+      margin-bottom: 16px;
+      box-shadow: var(--sh)
     }
 
     .ch {
@@ -178,15 +194,15 @@
       justify-content: space-between;
       padding: 14px 18px;
       border-bottom: 1px solid var(--bdr);
-      gap: 12px;
-      flex-wrap: wrap
+      gap: 12px
     }
 
     .ct {
-      font-size: 12px;
-      font-weight: 800;
+      font-size: 11px;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: .6px
+      letter-spacing: .8px;
+      color: #444
     }
 
     .cp {
@@ -196,69 +212,69 @@
     .grid2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 14px
+      gap: 16px
     }
 
     .grid3 {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 12px
+      gap: 14px
     }
 
     .grid5 {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 12px;
-      margin-bottom: 20px
+      gap: 14px;
+      margin-bottom: 24px
     }
 
-    /* ─ METRIC CARDS ─ */
     .mc {
       background: var(--card);
       border: 1px solid var(--bdr);
       border-radius: var(--r);
-      padding: 14px 16px
+      padding: 20px 22px;
+      box-shadow: var(--sh)
     }
 
     .mc.hi {
-      background: var(--red);
-      border-color: var(--red)
+      background: #111;
+      border-color: #111
     }
 
     .ml {
       font-size: 10px;
-      font-weight: 800;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: .8px;
+      letter-spacing: .9px;
       color: var(--mut);
-      margin-bottom: 6px
+      margin-bottom: 8px
     }
 
     .mc.hi .ml {
-      color: rgba(255, 255, 255, .7)
+      color: rgba(255, 255, 255, .5)
     }
 
     .mv {
-      font-size: 26px;
-      font-weight: 900;
-      line-height: 1.1
+      font-size: 30px;
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      line-height: 1
     }
 
     .mc.hi .mv {
-      color: var(--wht)
+      color: #fff
     }
 
     .md {
       font-size: 11px;
       color: var(--mut);
-      margin-top: 3px
+      margin-top: 6px
     }
 
     .mc.hi .md {
-      color: rgba(255, 255, 255, .6)
+      color: rgba(255, 255, 255, .4)
     }
 
-    /* ─ TABLE ─ */
     table {
       width: 100%;
       border-collapse: collapse
@@ -266,19 +282,19 @@
 
     th {
       font-size: 10px;
-      font-weight: 800;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: .7px;
+      letter-spacing: .8px;
       color: var(--mut);
-      padding: 10px 14px;
+      padding: 11px 16px;
       text-align: left;
       background: #fafafa;
       border-bottom: 1px solid var(--bdr)
     }
 
     td {
-      padding: 11px 14px;
-      font-size: 12px;
+      padding: 12px 16px;
+      font-size: 12.5px;
       border-bottom: 1px solid var(--bdr);
       vertical-align: middle
     }
@@ -291,58 +307,56 @@
       background: #fafbfc
     }
 
-    /* ─ BADGES ─ */
     .badge {
-      display: inline-block;
-      padding: 2px 8px;
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 9px;
       border-radius: 20px;
-      font-size: 9px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: .5px
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .2px
     }
 
     .b-active {
-      background: #e6f4ec;
-      color: var(--grn)
+      background: #dcfce7;
+      color: #15803d
     }
 
     .b-paused {
-      background: #fff8e1;
-      color: var(--gld)
+      background: #fef3c7;
+      color: #92400e
     }
 
     .b-cancel {
-      background: #fce8e8;
-      color: var(--red)
+      background: #fee2e2;
+      color: #b91c1c
     }
 
     .b-failed {
-      background: #fce8e8;
-      color: #c00
+      background: #fee2e2;
+      color: #b91c1c
     }
 
-    /* ─ BUTTONS ─ */
     .btn {
-      padding: 8px 14px;
+      padding: 8px 16px;
       border: none;
       border-radius: var(--rs);
-      font-size: 11px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: .5px;
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: .2px;
       cursor: pointer;
       transition: .15s;
-      white-space: nowrap
+      white-space: nowrap;
+      font-family: inherit
     }
 
     .btn-r {
-      background: var(--red);
+      background: var(--blk);
       color: var(--wht)
     }
 
     .btn-r:hover {
-      background: var(--red2)
+      background: #333
     }
 
     .btn-b {
@@ -356,7 +370,7 @@
 
     .btn-g {
       background: transparent;
-      color: var(--mut);
+      color: #555;
       border: 1px solid var(--bdr)
     }
 
@@ -371,8 +385,8 @@
     }
 
     .btn-sm {
-      padding: 5px 10px;
-      font-size: 10px
+      padding: 5px 11px;
+      font-size: 10.5px
     }
 
     /* ─ FORM ─ */
@@ -721,6 +735,8 @@
       }
     }
   </style>
+  <!-- Shopify App Bridge — makes app embed inside Shopify Admin correctly -->
+  <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
 </head>
 
 <body>
@@ -728,22 +744,58 @@
   <!-- ═══ SIDEBAR ═══ -->
   <div class="sb">
     <div class="sb-logo">
-      <div class="sb-brand">🧬 LAB NUTRITION</div>
-      <div class="sb-sub">Backoffice · Suscripciones</div>
+      <div class="sb-brand">Suscriptions MP</div>
+      <div class="sb-sub">Admin</div>
     </div>
     <nav class="sb-nav">
       <div class="sb-sep">Principal</div>
-      <div class="ni active" onclick="show('dashboard')"><span class="ic">📊</span>Dashboard</div>
-      <div class="ni" onclick="show('subscribers')"><span class="ic">👥</span>Suscriptores</div>
-      <div class="ni" onclick="show('marketing')"><span class="ic">📣</span>Marketing</div>
+      <div class="ni active" onclick="show('dashboard')"><span class="ic"><svg viewBox="0 0 24 24">
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" />
+          </svg></span>Dashboard</div>
+      <div class="ni" onclick="show('subscribers')"><span class="ic"><svg viewBox="0 0 24 24">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg></span>Suscriptores</div>
+      <div class="ni" onclick="show('marketing')"><span class="ic"><svg viewBox="0 0 24 24">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+            <polyline points="22,6 12,13 2,6" />
+          </svg></span>Marketing</div>
       <div class="sb-sep">Configuración</div>
-      <div class="ni" onclick="show('products')"><span class="ic">📦</span>Productos</div>
-      <div class="ni" onclick="show('plans')"><span class="ic">🏷️</span>Planes & Descuentos</div>
-      <div class="ni" onclick="show('stacks')"><span class="ic">🧬</span>Stacks</div>
-      <div class="ni" onclick="show('widget')"><span class="ic">🎨</span>Widget</div>
-      <div class="ni" onclick="show('settings')"><span class="ic">⚙️</span>Configuración</div>
+      <div class="ni" onclick="show('products')"><span class="ic"><svg viewBox="0 0 24 24">
+            <path
+              d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+            <line x1="12" y1="22.08" x2="12" y2="12" />
+          </svg></span>Productos</div>
+      <div class="ni" onclick="show('plans')"><span class="ic"><svg viewBox="0 0 24 24">
+            <line x1="8" y1="6" x2="21" y2="6" />
+            <line x1="8" y1="12" x2="21" y2="12" />
+            <line x1="8" y1="18" x2="21" y2="18" />
+            <line x1="3" y1="6" x2="3.01" y2="6" />
+            <line x1="3" y1="12" x2="3.01" y2="12" />
+            <line x1="3" y1="18" x2="3.01" y2="18" />
+          </svg></span>Planes</div>
+      <div class="ni" onclick="show('stacks')"><span class="ic"><svg viewBox="0 0 24 24">
+            <polyline points="12 2 2 7 12 12 22 7 12 2" />
+            <polyline points="2 17 12 22 22 17" />
+            <polyline points="2 12 12 17 22 12" />
+          </svg></span>Stacks</div>
+      <div class="ni" onclick="show('widget')"><span class="ic"><svg viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg></span>Widget</div>
+      <div class="ni" onclick="show('settings')"><span class="ic"><svg viewBox="0 0 24 24">
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" y1="19" x2="20" y2="19" />
+          </svg></span>Ajustes</div>
     </nav>
-    <div class="sb-footer">LAB NUTRITION v2.1 · Marzo 2026</div>
+    <div class="sb-footer">v2.1</div>
   </div>
 
   <!-- ═══ MAIN CONTENT ═══ -->
@@ -754,11 +806,11 @@
       <div class="ph">
         <div>
           <div class="pt">Dashboard</div>
-          <div class="ps">Resumen en tiempo real del programa de suscripciones</div>
+          <div class="ps">Resumen en tiempo real</div>
         </div>
-        <div style="display:flex;gap:8px"><button class="btn btn-g btn-sm" onclick="location.reload()">↺
-            Actualizar</button><a class="btn btn-r btn-sm" href="/api/subscribers/export" target="_blank">⬇ Exportar
-            CSV</a></div>
+        <div style="display:flex;gap:8px"><button class="btn btn-g btn-sm"
+            onclick="location.reload()">Actualizar</button><a class="btn btn-r btn-sm" href="/api/subscribers/export"
+            target="_blank">Exportar CSV</a></div>
       </div>
       <div class="grid5" id="metrics-grid">
         <div class="mc hi">
@@ -864,7 +916,7 @@
       <div class="grid2">
         <div>
           <div class="card">
-            <div class="ch"><span class="ct">📧 Nueva Campaña</span></div>
+            <div class="ch"><span class="ct">Nueva Campaña</span></div>
             <div class="cp">
               <div class="fg"><label class="fl">Segmento destinatario</label>
                 <select class="fsl" id="mk-seg">
@@ -889,7 +941,7 @@ Equipo LAB"></textarea>
                 <div class="fin">Variables disponibles: usa texto libre — los emails van personalizados por destinatario
                 </div>
               </div>
-              <button class="btn btn-r" style="width:100%" onclick="sendCampaign()">📤 Enviar campaña</button>
+              <button class="btn btn-r" style="width:100%" onclick="sendCampaign()">Enviar campaña</button>
             </div>
           </div>
         </div>
@@ -897,22 +949,59 @@ Equipo LAB"></textarea>
           <div class="card">
             <div class="ch"><span class="ct">Flows automáticos</span></div>
             <div style="padding:4px 0">
-              ${[
-              ['✅','Alta suscripción','Bienvenida + plan + política','Inmediato al alta'],
-              ['⚠️','Ventana (-7 días)','Últimos días para cancelar envío','Cron 9AM Lima'],
-              ['📦','Cobro (-3 días)','Confirmación cargo prox.','Cron 9AM Lima'],
-              ['💳','Cobro exitoso','Recibo + beneficio + regalo','Webhook MP'],
-              ['❌','Cobro fallido','Actualizar tarjeta urgente','Webhook MP'],
-              ['🎉','Fin permanencia','Renueva y mantén descuento','Al completar ciclos'],
-              ].map(([ic,tt,ds,tr])=>`<div
-                style="display:flex;gap:10px;align-items:flex-start;padding:11px 18px;border-bottom:1px solid var(--bdr)">
-                <span style="font-size:18px;flex-shrink:0">${ic}</span>
+              <div
+                style="display:flex;gap:10px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--bdr)">
+                <span style="width:6px;height:6px;border-radius:50%;background:var(--grn);flex-shrink:0"></span>
                 <div style="flex:1">
-                  <div style="font-weight:700;font-size:12px">${tt}</div>
-                  <div style="font-size:11px;color:var(--mut)">${ds}</div>
+                  <div style="font-weight:600;font-size:12px">Alta suscripción</div>
+                  <div style="font-size:11px;color:var(--mut)">Bienvenida + plan + política</div>
                 </div>
-                <div><span class="badge b-active">${tr}</span></div>
-              </div>`).join('')}
+                <span class="badge b-active">Inmediato</span>
+              </div>
+              <div
+                style="display:flex;gap:10px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--bdr)">
+                <span style="width:6px;height:6px;border-radius:50%;background:var(--gld);flex-shrink:0"></span>
+                <div style="flex:1">
+                  <div style="font-weight:600;font-size:12px">Ventana (-7 días)</div>
+                  <div style="font-size:11px;color:var(--mut)">Últimos días para cancelar</div>
+                </div>
+                <span class="badge b-paused">Cron 9AM</span>
+              </div>
+              <div
+                style="display:flex;gap:10px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--bdr)">
+                <span style="width:6px;height:6px;border-radius:50%;background:var(--gld);flex-shrink:0"></span>
+                <div style="flex:1">
+                  <div style="font-weight:600;font-size:12px">Cobro (-3 días)</div>
+                  <div style="font-size:11px;color:var(--mut)">Confirmación cargo próximo</div>
+                </div>
+                <span class="badge b-paused">Cron 9AM</span>
+              </div>
+              <div
+                style="display:flex;gap:10px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--bdr)">
+                <span style="width:6px;height:6px;border-radius:50%;background:var(--grn);flex-shrink:0"></span>
+                <div style="flex:1">
+                  <div style="font-weight:600;font-size:12px">Cobro exitoso</div>
+                  <div style="font-size:11px;color:var(--mut)">Recibo + beneficio + regalo</div>
+                </div>
+                <span class="badge b-active">Webhook</span>
+              </div>
+              <div
+                style="display:flex;gap:10px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--bdr)">
+                <span style="width:6px;height:6px;border-radius:50%;background:var(--red);flex-shrink:0"></span>
+                <div style="flex:1">
+                  <div style="font-weight:600;font-size:12px">Cobro fallido</div>
+                  <div style="font-size:11px;color:var(--mut)">Actualizar tarjeta</div>
+                </div>
+                <span class="badge b-failed">Webhook</span>
+              </div>
+              <div style="display:flex;gap:10px;align-items:center;padding:11px 18px">
+                <span style="width:6px;height:6px;border-radius:50%;background:var(--grn);flex-shrink:0"></span>
+                <div style="flex:1">
+                  <div style="font-weight:600;font-size:12px">Fin permanencia</div>
+                  <div style="font-size:11px;color:var(--mut)">Renueva y mantén descuento</div>
+                </div>
+                <span class="badge b-active">Auto</span>
+              </div>
             </div>
           </div>
           <div class="card" style="margin-top:14px">
@@ -930,7 +1019,7 @@ Equipo LAB"></textarea>
                     <option value="renewal">Renovación</option>
                   </select></div>
               </div>
-              <button class="btn btn-b" style="width:100%" onclick="sendTest()">📧 Enviar test</button>
+              <button class="btn btn-b" style="width:100%" onclick="sendTest()">Enviar test</button>
             </div>
           </div>
         </div>
@@ -944,7 +1033,7 @@ Equipo LAB"></textarea>
           <div class="pt">Productos con suscripción</div>
           <div class="ps">Activa el widget en los productos que elijas</div>
         </div>
-        <button class="btn btn-r" onclick="addProduct()">+ Agregar producto</button>
+        <button class="btn btn-r" onclick="showProductPicker()">+ Seleccionar productos</button>
       </div>
       <div class="info-box">ℹ️ El widget de suscripción aparece automáticamente en los productos que actives aquí.
         Desactivarlo no afecta suscripciones en curso.</div>
@@ -953,6 +1042,20 @@ Equipo LAB"></textarea>
             style="font-size:12px;color:var(--mut)"></span></div>
         <div id="prod-list" style="padding:18px">
           <div style="text-align:center;padding:32px;color:var(--mut)">Cargando...</div>
+        </div>
+      </div>
+      <!-- PRODUCT PICKER MODAL -->
+      <div id="product-picker"
+        style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;align-items:center;justify-content:center">
+        <div
+          style="background:var(--wht);border-radius:var(--r);padding:24px;width:680px;max-height:85vh;overflow-y:auto;position:relative">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div style="font-size:16px;font-weight:900;text-transform:uppercase">Seleccionar productos</div>
+            <button class="btn btn-g btn-sm" onclick="closeProductPicker()">✕ Cerrar</button>
+          </div>
+          <input class="fi" id="picker-search" placeholder="Buscar producto..." oninput="filterPicker(this.value)"
+            style="margin-bottom:14px">
+          <div id="picker-grid" class="prod-grid">Cargando productos de Shopify...</div>
         </div>
       </div>
     </div>
@@ -1344,37 +1447,75 @@ Equipo LAB"></textarea>
     }
 
     /* ── ④ PRODUCTS ── */
-    async function loadProds() {
-      const data = await api('/api/products');
-      const el = document.getElementById('prod-list');
-      document.getElementById('prod-count').textContent = `${data.filter(p => p.is_active).length} activos / ${data.length} total`;
-      if (!data.length) { el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">Sin productos. Agrega uno con el botón "+"</div>'; return }
-      el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
-    ${data.map(p => `<div style="border:2px solid ${p.is_active ? 'var(--red)' : 'var(--bdr)'};border-radius:var(--r);padding:12px;display:flex;align-items:center;gap:10px">
-      <div style="flex:1"><div style="font-weight:700;font-size:13px">${p.product_title || 'Sin nombre'}</div>
-      <div style="font-size:10px;color:var(--mut);font-family:monospace;margin:3px 0">${p.shopify_product_id}</div>
-      <span class="badge ${p.is_active ? 'b-active' : 'b-cancel'}">${p.is_active ? 'Activo' : 'Inactivo'}</span></div>
-      <div style="display:flex;flex-direction:column;gap:4px">
-        <button class="btn btn-sm ${p.is_active ? 'btn-g' : 'btn-r'}" onclick="toggleProd('${p.shopify_product_id}',${!p.is_active},'${p.product_title || ''}')">${p.is_active ? 'OFF' : 'ON'}</button>
-        <button class="btn btn-g btn-sm" style="color:var(--red)" onclick="delProd('${p.shopify_product_id}')">🗑</button>
-      </div>
-    </div>`).join('')}
-  </div>`;
+    let shopifyProducts = [];
+async function loadProds() {
+    const el = document.getElementById('prod-list');
+    el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">Cargando productos...</div>';
+    try {
+        const [shopR, savedR] = await Promise.all([api('/api/shopify/products'), api('/api/products').catch(() => [])]);
+        shopifyProducts = shopR.products || [];
+        const saved = Array.isArray(savedR) ? savedR : [];
+        const activeMap = {};
+        saved.forEach(p => { activeMap[p.shopify_product_id] = p.is_active; });
+        document.getElementById('prod-count').textContent = saved.filter(p => p.is_active).length + ' activos de ' + shopifyProducts.length + ' en catalogo';
+        if (!shopifyProducts.length) {
+            el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">No se encontraron productos.</div>';
+            return;
+        }
+        const noImg = '<svg style="opacity:.2;display:block;margin:auto" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>';
+        let html = '<div class="prod-grid">';
+        for (const p of shopifyProducts) {
+            const on = activeMap[p.id] === true;
+            const img = p.image ? '<img src="' + p.image + '" style="width:100%;height:100%;object-fit:cover" loading="lazy">' : noImg;
+            const btnClass = on ? 'btn-b' : 'btn-g';
+            const btnText = on ? 'Activo' : 'Inactivo';
+            const safeTitle = (p.title || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const safeImg = (p.image || '').replace(/'/g, "\\'");
+            html += '<div class="prod-card' + (on ? ' on' : '') + '">';
+            html += '<div style="width:100%;aspect-ratio:1;background:#f4f5f7;display:flex;align-items:center;justify-content:center;overflow:hidden">' + img + '</div>';
+            html += '<div class="prod-name">' + p.title + '</div>';
+            html += '<div style="padding:4px 10px 8px;text-align:center">';
+            html += '<button class="btn btn-sm ' + btnClass + '" onclick="toggleProd(\'' + p.id + '\',' + !on + ',\'' + safeTitle + '\',\'' + safeImg + '\')">' + btnText + '</button>';
+            html += '</div><div class="prod-badge">ACTIVO</div></div>';
+        }
+        html += '</div>';
+        el.innerHTML = html;
+    } catch (e) {
+        el.innerHTML = '<div style="text-align:center;padding:32px;color:#c00">Error: ' + e.message + '</div>';
     }
-    async function addProduct() {
-      const pid = prompt('ID del producto Shopify (numérico):'); if (!pid) return;
-      const title = prompt('Nombre del producto:');
-      await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_product_id: pid.trim(), product_title: title || 'Sin nombre', is_active: true }) });
-      toast('📦 Producto agregado'); loadProds();
+}
+    async function showProductPicker() {
+      document.getElementById('product-picker').style.display = 'flex';
+      const grid = document.getElementById('picker-grid');
+      grid.innerHTML = '<div style="text-align:center;padding:24px;color:var(--mut)">Cargando productos de Shopify...</div>';
+      try {
+        const r = await api('/api/shopify/products');
+        shopifyProducts = r.products || [];
+        if (!shopifyProducts.length) { grid.innerHTML = '<div style="text-align:center;padding:24px;color:var(--mut)">No se pudieron cargar productos. Verifica las credenciales de Shopify en Configuración.</div>'; return }
+        renderPicker(shopifyProducts);
+      } catch (e) { grid.innerHTML = `<div style="text-align:center;padding:24px;color:#c00">Error: ${e.message}</div>` }
+    }
+    function renderPicker(prods) {
+      document.getElementById('picker-grid').innerHTML = prods.map(p => `<div class="prod-card" onclick="pickProduct('${p.id}','${(p.title || '').replace(/'/g, "\\'")}',' ${p.image || ''}')" style="cursor:pointer">
+        <div style="width:100%;aspect-ratio:1;background:#f4f5f7;display:flex;align-items:center;justify-content:center;overflow:hidden">
+          ${p.image ? `<img src="${p.image}" style="width:100%;height:100%;object-fit:cover">` : '<span style="font-size:40px">📦</span>'}
+        </div>
+        <div class="prod-name">${p.title}</div>
+        <div style="font-size:11px;text-align:center;padding:2px 10px 8px;color:var(--mut)">S/ ${p.price}</div>
+      </div>`).join('');
+    }
+    function filterPicker(q) {
+      const filtered = shopifyProducts.filter(p => p.title.toLowerCase().includes(q.toLowerCase()));
+      renderPicker(filtered);
+    }
+    function closeProductPicker() { document.getElementById('product-picker').style.display = 'none' }
+    async function pickProduct(pid, title, image) {
+      await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_product_id: pid, product_title: title.trim(), product_image: image.trim(), is_active: true }) });
+      toast('📦 ' + title + ' agregado'); closeProductPicker(); loadProds();
     }
     async function toggleProd(pid, active, title) {
       await api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shopify_product_id: pid, product_title: title, is_active: active }) });
       toast(active ? '✅ Widget activado' : '⭕ Widget desactivado'); loadProds();
-    }
-    async function delProd(pid) {
-      if (!confirm('¿Eliminar este producto de la lista?')) return;
-      // Toggle off is good enough for now
-      toast('Producto desactivado'); loadProds();
     }
 
     /* ── ⑤ PLANS ── */

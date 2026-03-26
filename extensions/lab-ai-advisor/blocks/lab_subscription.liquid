@@ -31,9 +31,7 @@
   assign free_ship    = block.settings.free_shipping | default: false
   assign legal_txt    = block.settings.text_legal    | default: 'Cancelación disponible entre los días 30 y 15 antes de cada envío, una vez completada la permanencia.'
   assign has_plans    = false
-  if product.selling_plan_groups.size > 0
-    assign has_plans = true
-  endif
+  # NOTE: has_plans is intentionally FALSE — MP does not support Shopify native selling plans (deferred_payment_authorization). Always use MP PreApproval flow.
 -%}
 
 <div class="lab-sub"
@@ -290,7 +288,21 @@
       body: JSON.stringify({ id: variantId, quantity: 1 })
     })
     .then(function(r) { return r.json(); })
-    .then(function() { window.location.href = '/checkout'; })
+    .then(function(data) {
+      if (data.id) {
+        if (btn) { btn.querySelector('.lab-sub__cta-text').textContent = '✓ Añadido al carrito'; btn.style.background = '#2E7D49'; }
+        // Update cart count in theme header if available
+        fetch('/cart.js').then(function(r){return r.json()}).then(function(c){
+          document.querySelectorAll('.cart-count-bubble span, [data-cart-count], .cart-count').forEach(function(el){el.textContent=c.item_count});
+        }).catch(function(){});
+        // Try to open theme's native cart drawer
+        if (document.querySelector('cart-notification')) { document.querySelector('cart-notification').renderContents(data); }
+        else if (document.querySelector('cart-drawer')) { document.querySelector('cart-drawer').renderContents(data); }
+        setTimeout(function() {
+          if (btn) { btn.disabled = false; btn.querySelector('.lab-sub__cta-text').textContent = 'Agregar al carrito'; btn.style.background = ''; }
+        }, 2500);
+      } else { throw new Error(data.description || 'Error'); }
+    })
     .catch(function() {
       if (btn) { btn.disabled = false; btn.querySelector('.lab-sub__cta-text').textContent = 'Agregar al carrito'; }
     });
@@ -361,7 +373,19 @@
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.id) {
-        window.location.href = '/checkout';
+        if (txt) txt.textContent = '✓ Añadido al carrito';
+        if (btn) btn.style.background = '#2E7D49';
+        // Update cart count
+        fetch('/cart.js').then(function(r){return r.json()}).then(function(c){
+          document.querySelectorAll('.cart-count-bubble span, [data-cart-count], .cart-count').forEach(function(el){el.textContent=c.item_count});
+        }).catch(function(){});
+        // Try native cart drawer
+        if (document.querySelector('cart-notification')) { document.querySelector('cart-notification').renderContents(data); }
+        else if (document.querySelector('cart-drawer')) { document.querySelector('cart-drawer').renderContents(data); }
+        setTimeout(function() {
+          if (btn) { btn.disabled = false; btn.style.background = ''; }
+          if (txt) txt.textContent = 'Suscribirme →';
+        }, 2500);
       } else {
         throw new Error(data.description || data.message || 'Error al añadir');
       }
@@ -606,6 +630,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            // snake_case (v6.2.3+ backend)
             customer_name: name,
             customer_email: email,
             phone: (document.getElementById('m-phone-' + blkId) || {}).value || '',
@@ -617,7 +642,20 @@
             discount_pct: disc,
             frequency_months: currentFreq,
             permanence_months: currentPerm,
-            free_shipping: wrap.dataset.freeShip === 'true'
+            free_shipping: wrap.dataset.freeShip === 'true',
+            // camelCase (v6.2.0 backend — backwards compat)
+            customerName: name,
+            customerEmail: email,
+            customerPhone: (document.getElementById('m-phone-' + blkId) || {}).value || '',
+            productId: wrap.dataset.product,
+            variantId: wrap.dataset.variant,
+            productTitle: wrap.dataset.title,
+            basePrice: base,
+            finalPrice: finalPrice,
+            discountPct: disc,
+            frequencyMonths: currentFreq,
+            permanenceMonths: currentPerm,
+            freeShipping: wrap.dataset.freeShip === 'true'
           })
         })
         .then(function(r) { return r.json(); })

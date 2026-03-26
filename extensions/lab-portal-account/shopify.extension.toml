@@ -1,0 +1,14 @@
+api_version = "2026-01"
+
+[[extensions]]
+name = "Mi Suscripción"
+handle = "lab-subscription-portal"
+uid = "e1f725b0-78ca-ee61-9006-df2c72a02e1e2241978f"
+type = "ui_extension"
+
+  [[extensions.targeting]]
+  module = "./src/FullPageExtension.jsx"
+  target = "customer-account.page.render"
+
+[extensions.capabilities]
+api_access = true
