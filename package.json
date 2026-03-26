@@ -8,7 +8,8 @@
     "dev": "shopify app dev",
     "info": "shopify app info",
     "generate": "shopify app generate",
-    "deploy": "shopify app deploy"
+    "deploy": "shopify app deploy",
+    "start": "npm run start --prefix web"
   },
   "dependencies": {
     "@shopify/cli": "3.91.1"
