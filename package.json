@@ -1,26 +1,24 @@
 {
-  "name": "antigravity-dev",
+  "name": "pixel-suite-pro-backend",
   "version": "1.0.0",
-  "license": "UNLICENSED",
+  "description": "Backend Railway API",
+  "main": "src/server.js",
   "scripts": {
-    "shopify": "shopify",
-    "build": "shopify app build",
-    "dev": "shopify app dev",
-    "info": "shopify app info",
-    "generate": "shopify app generate",
-    "deploy": "shopify app deploy",
-    "start": "npm run start --prefix web"
+    "start": "node src/server.js"
   },
   "dependencies": {
-    "@shopify/cli": "3.91.1"
+    "@supabase/supabase-js": "^2.49.1",
+    "axios": "^1.8.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "mercadopago": "^2.4.1",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.10.0"
   },
-  "trustedDependencies": [
-    "@shopify/plugin-cloudflare"
-  ],
-  "author": "usuario",
-  "private": true,
   "workspaces": [
-    "extensions/*",
-    "web"
+    "extensions/*"
   ]
 }
