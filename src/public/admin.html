@@ -1223,6 +1223,38 @@
           </div>
         </div>
 
+        <!-- TÍTULOS Y TEXTOS -->
+        <div class="card">
+          <div class="card-head"><span class="card-title">📝 Títulos de la página</span></div>
+          <div style="padding:20px">
+            <div class="info-box">Personaliza los títulos que aparecen en la página del suscriptor.</div>
+            <div class="frow">
+              <div class="fg"><label class="fl">Título principal</label><input class="fi" id="pc-page-title" placeholder="Mi Suscripción"></div>
+              <div class="fg"><label class="fl">Subtítulo</label><input class="fi" id="pc-page-subtitle" placeholder="Beneficios exclusivos para miembros"></div>
+            </div>
+            <div class="frow">
+              <div class="fg"><label class="fl">Título sección beneficios</label><input class="fi" id="pc-benefits-title" placeholder="Tus Beneficios"></div>
+              <div class="fg"><label class="fl">Título sección eventos</label><input class="fi" id="pc-events-title" placeholder="Próximos Eventos"></div>
+            </div>
+            <div class="frow">
+              <div class="fg"><label class="fl">Título sección producto</label><input class="fi" id="pc-product-title" placeholder="Oferta Exclusiva"></div>
+              <div class="fg"><label class="fl">Texto botón producto</label><input class="fi" id="pc-product-btn" placeholder="Ver producto"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BOTONES CTA -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">🔗 Botones de acción</span>
+            <button class="btn btn-g btn-sm" onclick="addCTA()">+ Agregar</button>
+          </div>
+          <div style="padding:20px">
+            <div class="info-box">Agrega botones con links al final de la página del suscriptor.</div>
+            <div id="cta-list" style="display:flex;flex-direction:column;gap:10px"></div>
+          </div>
+        </div>
+
         <!-- EVENTOS Y PROMOS -->
         <div class="card">
           <div class="card-head">
@@ -2403,13 +2435,37 @@
     }
 
     // ──── PORTAL CONFIG: Beneficios, Producto semana, Eventos ────
-    let _portalBenefits = [], _portalEvents = [];
+    let _portalBenefits = [], _portalEvents = [], _portalCTAs = [];
 
     function addBenefit() {
       _portalBenefits.push({ icon: '🎁', title: '', description: '' });
       renderBenefits();
     }
     function removeBenefit(i) { _portalBenefits.splice(i, 1); renderBenefits(); }
+
+    function addCTA() {
+      _portalCTAs.push({ text: '', url: '', style: 'primary' });
+      renderCTAs();
+    }
+    function removeCTA(i) { _portalCTAs.splice(i, 1); renderCTAs(); }
+
+    function renderCTAs() {
+      const el = document.getElementById('cta-list');
+      if (!el) return;
+      el.innerHTML = _portalCTAs.map((c, i) => `
+        <div style="display:flex;gap:8px;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+          <div style="flex:1;display:grid;grid-template-columns:1fr 1fr auto;gap:6px">
+            <input value="${c.text||''}" placeholder="Texto del botón" onchange="_portalCTAs[${i}].text=this.value" style="border:1.5px solid var(--bdr);border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit">
+            <input value="${c.url||''}" placeholder="https://..." onchange="_portalCTAs[${i}].url=this.value" style="border:1.5px solid var(--bdr);border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit">
+            <select onchange="_portalCTAs[${i}].style=this.value" style="border:1.5px solid var(--bdr);border-radius:6px;padding:6px;font-size:12px">
+              <option value="primary" ${c.style!=='secondary'?'selected':''}>Principal</option>
+              <option value="secondary" ${c.style==='secondary'?'selected':''}>Secundario</option>
+            </select>
+          </div>
+          <button onclick="removeCTA(${i})" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--red)">✕</button>
+        </div>
+      `).join('');
+    }
 
     function renderBenefits() {
       const el = document.getElementById('benefits-list');
@@ -2475,9 +2531,18 @@
           { icon: '🎁', title: 'Regalos sorpresa', description: 'Muestras gratis en cada envío' }
         ];
         _portalEvents = d.events || [];
+        _portalCTAs = d.cta_buttons || [];
         if (d.benefits_layout) document.getElementById('benefits-layout').value = d.benefits_layout;
+        // Títulos
+        if (d.page_title) document.getElementById('pc-page-title').value = d.page_title;
+        if (d.page_subtitle) document.getElementById('pc-page-subtitle').value = d.page_subtitle;
+        if (d.benefits_title) document.getElementById('pc-benefits-title').value = d.benefits_title;
+        if (d.events_title) document.getElementById('pc-events-title').value = d.events_title;
+        if (d.product_section_title) document.getElementById('pc-product-title').value = d.product_section_title;
+        if (d.product_button_text) document.getElementById('pc-product-btn').value = d.product_button_text;
         renderBenefits();
         renderEvents();
+        renderCTAs();
         if (d.product_of_week) {
           const pw = d.product_of_week;
           document.getElementById('pw-name').value = pw.name || '';
@@ -2500,6 +2565,13 @@
           benefits_layout: document.getElementById('benefits-layout').value,
           benefits: _portalBenefits,
           events: _portalEvents,
+          cta_buttons: _portalCTAs,
+          page_title: document.getElementById('pc-page-title').value,
+          page_subtitle: document.getElementById('pc-page-subtitle').value,
+          benefits_title: document.getElementById('pc-benefits-title').value,
+          events_title: document.getElementById('pc-events-title').value,
+          product_section_title: document.getElementById('pc-product-title').value,
+          product_button_text: document.getElementById('pc-product-btn').value,
           product_of_week: {
             name: document.getElementById('pw-name').value,
             image: document.getElementById('pw-image').value,
@@ -2515,7 +2587,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        toast('✅ Configuración del portal guardada');
+        toast('✅ Portal guardado — los cambios aparecen al recargar la página del suscriptor');
       } catch (e) { toast('Error: ' + e.message, 'err'); }
     }
 
