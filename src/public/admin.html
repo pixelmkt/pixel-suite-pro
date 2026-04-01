@@ -1149,14 +1149,10 @@
             <span style="cursor:pointer;font-size:16px" onclick="nav('dash')">&larr;</span>
             <div class="pt">Portal del Suscriptor</div>
           </div>
-          <div class="ps">Configura beneficios, promos, cupones y eventos que verán tus suscriptores</div>
+          <div class="ps">Configura lo que verán tus suscriptores en "Mi Suscripción" de su cuenta</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-          <div style="display:flex;border:1.5px solid var(--bdr);border-radius:6px;overflow:hidden">
-            <button id="portal-pub-btn" onclick="togglePortalPublish(true)" style="padding:7px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer;background:var(--grn);color:#fff">● Publicado</button>
-            <button id="portal-unpub-btn" onclick="togglePortalPublish(false)" style="padding:7px 14px;font-size:12px;font-weight:700;border:none;cursor:pointer;background:#fff;color:#666">Despublicar</button>
-          </div>
-          <button class="btn btn-r" onclick="savePortalConfig()">💾 Guardar todo</button>
+          <button class="btn btn-r" onclick="savePortalConfig()">Guardar todo</button>
         </div>
       </div>
       <div class="content" style="display:flex;gap:20px;flex-wrap:wrap">
@@ -1165,7 +1161,7 @@
 
         <!-- PERMISOS -->
         <div class="card">
-          <div class="card-head"><span class="card-title">⚙️ Permisos del portal</span></div>
+          <div class="card-head"><span class="card-title">Permisos del portal</span></div>
           <div style="padding:20px">
             <div style="display:flex;flex-direction:column;gap:14px">
               <label style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
@@ -1187,7 +1183,7 @@
         <!-- BENEFICIOS DEL SUSCRIPTOR -->
         <div class="card">
           <div class="card-head">
-            <span class="card-title">🎁 Beneficios del suscriptor</span>
+            <span class="card-title">Beneficios del suscriptor</span>
             <div style="display:flex;gap:6px;align-items:center">
               <select id="benefits-layout" onchange="refreshPortalPreview()" style="border:1.5px solid var(--bdr);border-radius:6px;padding:5px 10px;font-size:12px;font-family:inherit;background:#fff">
                 <option value="grid">Cuadrícula</option>
@@ -1204,7 +1200,7 @@
 
         <!-- PRODUCTO DE LA SEMANA + CUPÓN -->
         <div class="card">
-          <div class="card-head"><span class="card-title">⭐ Producto de la semana + Cupón</span></div>
+          <div class="card-head"><span class="card-title">Producto de la semana + Cupón</span></div>
           <div style="padding:20px">
             <div class="info-box">Destaca un producto con descuento exclusivo para suscriptores. Se muestra en el portal.</div>
             <div class="frow">
@@ -1225,7 +1221,7 @@
 
         <!-- TÍTULOS Y TEXTOS -->
         <div class="card">
-          <div class="card-head"><span class="card-title">📝 Títulos de la página</span></div>
+          <div class="card-head"><span class="card-title">Títulos de la página</span></div>
           <div style="padding:20px">
             <div class="info-box">Personaliza los títulos que aparecen en la página del suscriptor.</div>
             <div class="frow">
@@ -1246,7 +1242,7 @@
         <!-- BOTONES CTA -->
         <div class="card">
           <div class="card-head">
-            <span class="card-title">🔗 Botones de acción</span>
+            <span class="card-title">Botones de acción</span>
             <button class="btn btn-g btn-sm" onclick="addCTA()">+ Agregar</button>
           </div>
           <div style="padding:20px">
@@ -1258,7 +1254,7 @@
         <!-- EVENTOS Y PROMOS -->
         <div class="card">
           <div class="card-head">
-            <span class="card-title">📅 Eventos y promociones</span>
+            <span class="card-title">Eventos y promociones</span>
             <button class="btn btn-g btn-sm" onclick="addEvent()">+ Agregar</button>
           </div>
           <div style="padding:20px">
@@ -1266,65 +1262,6 @@
             <div id="events-list" style="display:flex;flex-direction:column;gap:10px"></div>
           </div>
         </div>
-        </div>
-
-        <!-- COLORES DEL PORTAL -->
-        <div class="card">
-          <div class="card-head"><span class="card-title">🎨 Colores del portal</span></div>
-          <div style="padding:20px">
-            <div class="info-box">Configura los colores que verá el cliente en su portal de suscriptor.</div>
-            <div class="frow">
-              <div class="fg">
-                <label class="fl">Color principal</label>
-                <div style="display:flex;gap:8px;align-items:center">
-                  <input type="color" id="portal-color-primary" value="#D4502A" style="width:40px;height:34px;border:none;cursor:pointer;background:none">
-                  <input class="fi" id="portal-color-primary-hex" value="#D4502A" style="flex:1" onchange="document.getElementById('portal-color-primary').value=this.value">
-                </div>
-              </div>
-              <div class="fg">
-                <label class="fl">Color secundario</label>
-                <div style="display:flex;gap:8px;align-items:center">
-                  <input type="color" id="portal-color-secondary" value="#2E7D49" style="width:40px;height:34px;border:none;cursor:pointer;background:none">
-                  <input class="fi" id="portal-color-secondary-hex" value="#2E7D49" style="flex:1" onchange="document.getElementById('portal-color-secondary').value=this.value">
-                </div>
-              </div>
-            </div>
-            <div class="frow">
-              <div class="fg">
-                <label class="fl">Fondo del portal</label>
-                <div style="display:flex;gap:8px;align-items:center">
-                  <input type="color" id="portal-color-bg" value="#0f0f0f" style="width:40px;height:34px;border:none;cursor:pointer;background:none">
-                  <input class="fi" id="portal-color-bg-hex" value="#0f0f0f" style="flex:1" onchange="document.getElementById('portal-color-bg').value=this.value">
-                </div>
-              </div>
-              <div class="fg">
-                <label class="fl">Color de tarjetas</label>
-                <div style="display:flex;gap:8px;align-items:center">
-                  <input type="color" id="portal-color-card" value="#1a1a1a" style="width:40px;height:34px;border:none;cursor:pointer;background:none">
-                  <input class="fi" id="portal-color-card-hex" value="#1a1a1a" style="flex:1" onchange="document.getElementById('portal-color-card').value=this.value">
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        </div><!-- /LEFT CONFIG -->
-
-        <!-- RIGHT: LIVE PREVIEW -->
-        <div style="flex:1;min-width:320px;max-width:480px;position:sticky;top:0;align-self:flex-start">
-          <div class="card" style="overflow:hidden">
-            <div class="card-head" style="background:#1a1a1a">
-              <span class="card-title" style="color:#fff;font-size:11px;letter-spacing:1px">📱 VISTA PREVIA DEL PORTAL</span>
-              <div style="display:flex;gap:4px">
-                <div style="width:8px;height:8px;border-radius:50%;background:#ff5f57"></div>
-                <div style="width:8px;height:8px;border-radius:50%;background:#ffbd2e"></div>
-                <div style="width:8px;height:8px;border-radius:50%;background:#28c940"></div>
-              </div>
-            </div>
-            <div style="background:#0f0f0f;padding:0">
-              <iframe id="portal-preview" src="/portal" style="width:100%;height:600px;border:none;transform-origin:top left" title="Vista previa del portal"></iframe>
-            </div>
-          </div>
         </div>
 
       </div>
