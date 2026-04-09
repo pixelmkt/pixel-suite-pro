@@ -977,10 +977,23 @@ async function autoImportMpSubs(existing = []) {
     const existingIds = new Set(allLocal.map(s => s.mp_preapproval_id).filter(Boolean));
 
     const imported = [];
-    for (const pre of preapprovals) {
-        if (existingIds.has(pre.id)) continue;
+    for (const preListItem of preapprovals) {
+        if (existingIds.has(preListItem.id)) continue;
+
+        // El endpoint /preapproval/search devuelve objeto reducido sin payer_email.
+        // Fetch individual para obtener datos completos.
+        let pre = preListItem;
+        if (!pre.payer_email) {
+            try {
+                const fr = await fetch(`https://api.mercadopago.com/preapproval/${pre.id}`, {
+                    headers: { Authorization: `Bearer ${mpToken}` }
+                });
+                if (fr.ok) pre = { ...pre, ...(await fr.json()) };
+            } catch { /* ignore */ }
+        }
+
         const email = pre.payer_email;
-        if (!email) continue;
+        if (!email) { console.warn('[AUTO-IMPORT] skipped pre without email:', pre.id); continue; }
 
         // Si existe una sub pending_payment del mismo email + plan_id → UPDATE (no crear duplicado)
         const orphan = allLocal.find(s =>
@@ -1118,7 +1131,18 @@ app.get('/api/subscribers/real-count', async (req, res) => {
                 const data = await r.json();
                 const results = data?.results || [];
                 report.mp_authorized = results.length;
-                report.sources.mp_preapprovals = results.map(p => ({
+                // Enriquecer con fetch individual para obtener payer_email
+                const enriched = await Promise.all(results.map(async p => {
+                    if (p.payer_email) return p;
+                    try {
+                        const fr = await fetch(`https://api.mercadopago.com/preapproval/${p.id}`, {
+                            headers: { Authorization: `Bearer ${mpToken}` }
+                        });
+                        if (fr.ok) return { ...p, ...(await fr.json()) };
+                    } catch {}
+                    return p;
+                }));
+                report.sources.mp_preapprovals = enriched.map(p => ({
                     id: p.id,
                     email: p.payer_email,
                     reason: p.reason,
