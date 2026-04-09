@@ -980,19 +980,24 @@ async function autoImportMpSubs(existing = []) {
     for (const preListItem of preapprovals) {
         if (existingIds.has(preListItem.id)) continue;
 
-        // El endpoint /preapproval/search devuelve objeto reducido sin payer_email.
-        // Fetch individual para obtener datos completos.
+        // /preapproval/search devuelve objeto reducido. Fetch individual.
         let pre = preListItem;
-        if (!pre.payer_email) {
-            try {
-                const fr = await fetch(`https://api.mercadopago.com/preapproval/${pre.id}`, {
-                    headers: { Authorization: `Bearer ${mpToken}` }
-                });
-                if (fr.ok) pre = { ...pre, ...(await fr.json()) };
-            } catch { /* ignore */ }
-        }
+        try {
+            const fr = await fetch(`https://api.mercadopago.com/preapproval/${pre.id}`, {
+                headers: { Authorization: `Bearer ${mpToken}` }
+            });
+            if (fr.ok) pre = { ...pre, ...(await fr.json()) };
+        } catch { /* ignore */ }
 
-        const email = pre.payer_email;
+        // MP no devuelve payer_email (privacy). Extraerlo del back_url (?email=X)
+        // que nuestro propio checkout guardó al crear la suscripción.
+        let email = pre.payer_email || '';
+        if (!email && pre.back_url) {
+            try {
+                const u = new URL(pre.back_url);
+                email = u.searchParams.get('email') || '';
+            } catch { /* bad url, ignore */ }
+        }
         if (!email) { console.warn('[AUTO-IMPORT] skipped pre without email:', pre.id); continue; }
 
         // Si existe una sub pending_payment del mismo email + plan_id → UPDATE (no crear duplicado)
@@ -1142,14 +1147,20 @@ app.get('/api/subscribers/real-count', async (req, res) => {
                     } catch {}
                     return p;
                 }));
-                report.sources.mp_preapprovals = enriched.map(p => ({
-                    id: p.id,
-                    email: p.payer_email,
-                    reason: p.reason,
-                    status: p.status,
-                    amount: p.auto_recurring?.transaction_amount,
-                    next_payment: p.next_payment_date
-                }));
+                report.sources.mp_preapprovals = enriched.map(p => {
+                    let email = p.payer_email || '';
+                    if (!email && p.back_url) {
+                        try { email = new URL(p.back_url).searchParams.get('email') || ''; } catch {}
+                    }
+                    return {
+                        id: p.id,
+                        email,
+                        reason: p.reason,
+                        status: p.status,
+                        amount: p.auto_recurring?.transaction_amount,
+                        next_payment: p.next_payment_date
+                    };
+                });
             } else {
                 report.errors.push('mp: ' + r.status + ' ' + (await r.text()).slice(0, 120));
             }
