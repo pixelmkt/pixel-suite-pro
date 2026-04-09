@@ -2017,10 +2017,12 @@
     // ──── DASHBOARD ────
     async function loadDash() {
       try {
-        const [metrics, recent, realCount] = await Promise.all([
+        // FIX 2026-04-09: fetch /api/subscriptions PRIMERO (dispara auto-import MP→metaobjects),
+        // luego metrics y real-count para que reflejen los recién importados.
+        const recent = await api('/api/subscriptions?limit=10').catch(() => []);
+        const [metrics, realCount] = await Promise.all([
           api('/api/metrics').catch(() => ({})),
-          api('/api/subscriptions?limit=10').catch(() => []),
-          api('/api/subscribers/real-count').catch(() => null)  // FIX 2026-04-09: cantidad REAL (MP + Shopify + metaobjects)
+          api('/api/subscribers/real-count').catch(() => null)  // cantidad REAL (MP + Shopify + metaobjects)
         ]);
         document.getElementById('st-mrr').textContent = 'S/ ' + parseFloat(metrics.mrr || 0).toFixed(2);
         // Si real-count está disponible, usar unión única por email como fuente de verdad
