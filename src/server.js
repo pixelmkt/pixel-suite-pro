@@ -1169,6 +1169,23 @@ app.get('/api/subscribers/real-count', async (req, res) => {
     res.json(report);
 });
 
+// DEBUG: dump full MP preapproval to inspect field structure
+app.get('/api/debug/mp-preapproval/:id', async (req, res) => {
+    try {
+        let mpToken = process.env.MP_ACCESS_TOKEN;
+        if (!mpToken) {
+            const dyn = await readFromShopify().catch(() => ({}));
+            if (dyn?.mp_access_token) { mpToken = dyn.mp_access_token; process.env.MP_ACCESS_TOKEN = mpToken; }
+        }
+        if (!mpToken) return res.status(500).json({ error: 'MP_ACCESS_TOKEN not set' });
+        const r = await fetch(`https://api.mercadopago.com/preapproval/${req.params.id}`, {
+            headers: { Authorization: `Bearer ${mpToken}` }
+        });
+        const body = await r.text();
+        res.status(r.status).type('application/json').send(body);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ══════════════════════════════════════════════════
    🔁 RECOVER MISSED ORDERS — reprocessa pagos de MP que no generaron orden Shopify
    GET /api/subscriptions/recover/:email → preview (dry-run)
