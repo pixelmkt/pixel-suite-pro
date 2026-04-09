@@ -118,6 +118,11 @@ async function getSubscriptions(filters = {}) {
     if (filters.customer_email) subs = subs.filter(s =>
         s.customer_email?.toLowerCase() === filters.customer_email.toLowerCase()
     );
+    // FIX 2026-04-09: previously ignored → webhook MP matcheaba sub incorrecta
+    if (filters.mp_preapproval_id) subs = subs.filter(s => s.mp_preapproval_id === filters.mp_preapproval_id);
+    if (filters.mp_plan_id) subs = subs.filter(s => s.mp_plan_id === filters.mp_plan_id);
+    if (filters.shopify_contract_id) subs = subs.filter(s => s.shopify_contract_id === filters.shopify_contract_id);
+    if (filters.shopify_order_id) subs = subs.filter(s => s.shopify_order_id === filters.shopify_order_id);
     if (filters.next_charge_before) {
         const limit = new Date(filters.next_charge_before);
         subs = subs.filter(s => s.next_charge_at && new Date(s.next_charge_at) <= limit);
