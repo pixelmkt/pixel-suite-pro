@@ -952,7 +952,17 @@ async function autoImportMpSubs(existing = []) {
     if (now - _lastAutoImportAt < 30000) return [];
     _lastAutoImportAt = now;
 
-    const mpToken = process.env.MP_ACCESS_TOKEN;
+    // Cargar settings dinámicos desde Shopify si MP_ACCESS_TOKEN no está en env
+    let mpToken = process.env.MP_ACCESS_TOKEN;
+    if (!mpToken) {
+        try {
+            const dyn = await readFromShopify().catch(() => ({}));
+            if (dyn?.mp_access_token) {
+                process.env.MP_ACCESS_TOKEN = dyn.mp_access_token;
+                mpToken = dyn.mp_access_token;
+            }
+        } catch {}
+    }
     if (!mpToken || !db?.createSubscription) return [];
 
     const r = await fetch('https://api.mercadopago.com/preapproval/search?status=authorized&limit=100', {
@@ -1090,7 +1100,16 @@ app.get('/api/subscribers/real-count', async (req, res) => {
 
     // 3) Mercado Pago — buscar PreApprovals autorizadas
     try {
-        const mpToken = process.env.MP_ACCESS_TOKEN;
+        let mpToken = process.env.MP_ACCESS_TOKEN;
+        if (!mpToken) {
+            try {
+                const dyn = await readFromShopify().catch(() => ({}));
+                if (dyn?.mp_access_token) {
+                    process.env.MP_ACCESS_TOKEN = dyn.mp_access_token;
+                    mpToken = dyn.mp_access_token;
+                }
+            } catch {}
+        }
         if (mpToken) {
             const r = await fetch(`https://api.mercadopago.com/preapproval/search?status=authorized&limit=100`, {
                 headers: { Authorization: `Bearer ${mpToken}` }
