@@ -925,10 +925,107 @@ app.get('/api/subscriptions', async (req, res) => {
         const filters = status ? { status } : {};
         let data = await db.getSubscriptions(filters).catch(() => []);
         if (!Array.isArray(data)) data = [];
+
+        // FIX 2026-04-09: Auto-import desde MP para dashboard.
+        // Suscripciones que pagaron por MP pero nunca entraron a metaobjects
+        // (porque el webhook fallaba antes del fix) se importan automáticamente aquí.
+        if (!status || status === 'active') {
+            try {
+                const imported = await autoImportMpSubs(data);
+                if (imported.length) {
+                    console.log(`[AUTO-IMPORT] ${imported.length} subs desde MP → metaobjects`);
+                    data = [...data, ...imported];
+                }
+            } catch (e) { console.warn('[AUTO-IMPORT] skipped:', e.message); }
+        }
+
         if (limit) data = data.slice(0, parseInt(limit));
         res.json(data);
     } catch (e) { res.json([]); }
 });
+
+/* ── Helper: importa MP preapprovals que no estén en metaobjects ── */
+let _lastAutoImportAt = 0;
+async function autoImportMpSubs(existing = []) {
+    // Throttle: max 1 ejecución cada 30 segundos
+    const now = Date.now();
+    if (now - _lastAutoImportAt < 30000) return [];
+    _lastAutoImportAt = now;
+
+    const mpToken = process.env.MP_ACCESS_TOKEN;
+    if (!mpToken || !db?.createSubscription) return [];
+
+    const r = await fetch('https://api.mercadopago.com/preapproval/search?status=authorized&limit=100', {
+        headers: { Authorization: `Bearer ${mpToken}` }
+    });
+    if (!r.ok) return [];
+    const mpData = await r.json();
+    const preapprovals = mpData?.results || [];
+    if (!preapprovals.length) return [];
+
+    const existingIds = new Set(existing.map(s => s.mp_preapproval_id).filter(Boolean));
+    const allLocal = await db.getSubscriptions().catch(() => []);
+    allLocal.forEach(s => { if (s.mp_preapproval_id) existingIds.add(s.mp_preapproval_id); });
+
+    const imported = [];
+    for (const pre of preapprovals) {
+        if (existingIds.has(pre.id)) continue;
+        const email = pre.payer_email;
+        if (!email) continue;
+        // Buscar variant_id posible: match por título de producto (reason) en Shopify
+        let variantId = null, productId = null, productImage = null;
+        try {
+            const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+            const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+            if (token && pre.reason) {
+                // Extraer solo el título principal: "LAB NUTRITION — Creatina sin sabor (Mensual × 12 meses)" → "Creatina sin sabor"
+                const titleGuess = (pre.reason.match(/—\s*(.+?)\s*\(/) || [])[1] || pre.reason;
+                const sr = await fetch(`https://${shop}/admin/api/2026-01/products.json?title=${encodeURIComponent(titleGuess)}&limit=5`, {
+                    headers: { 'X-Shopify-Access-Token': token }
+                });
+                if (sr.ok) {
+                    const sd = await sr.json();
+                    const match = (sd.products || []).find(p => (p.title || '').toLowerCase().includes(titleGuess.toLowerCase().split(' ')[0])) || (sd.products || [])[0];
+                    if (match) {
+                        productId = String(match.id);
+                        variantId = String((match.variants || [])[0]?.id || '');
+                        productImage = (match.images || [])[0]?.src || null;
+                    }
+                }
+            }
+        } catch {}
+
+        const newSub = {
+            mp_preapproval_id: pre.id,
+            mp_plan_id: pre.preapproval_plan_id || '',
+            customer_email: email,
+            customer_name: pre.payer_first_name || email.split('@')[0],
+            product_title: (pre.reason || '').replace(/^LAB NUTRITION —\s*/, '').replace(/\s*\(.+\)\s*$/, '') || 'Suscripción MP',
+            product_id: productId || '',
+            variant_id: variantId || '',
+            product_image: productImage || '',
+            final_price: pre.auto_recurring?.transaction_amount || 0,
+            base_price: pre.auto_recurring?.transaction_amount || 0,
+            discount_pct: 0,
+            frequency_months: pre.auto_recurring?.frequency || 1,
+            permanence_months: pre.auto_recurring?.repetitions || 12,
+            cycles_required: pre.auto_recurring?.repetitions || 12,
+            cycles_completed: 0,
+            status: 'active',
+            next_charge_at: pre.next_payment_date || null,
+            activated_at: pre.date_created || new Date().toISOString(),
+            imported_from_mp: true,
+            free_shipping: false
+        };
+        try {
+            const created = await db.createSubscription(newSub);
+            if (created) imported.push(created);
+        } catch (e) {
+            console.warn(`[AUTO-IMPORT] Failed for ${email}:`, e.message);
+        }
+    }
+    return imported;
+}
 
 
 /* ── METRICS — from Shopify Metaobjects ── */
