@@ -48,8 +48,18 @@ app.use(helmet({
     crossOriginResourcePolicy: false
 }));
 app.use(cors({ origin: '*' })); // Allow all origins for embedded app
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+// FIX 2026-04-09: Shopify webhooks necesitan el body RAW (Buffer) para HMAC verify.
+// Si aplicamos express.json() global primero, consume el stream y req.body.toString() devuelve "[object Object]".
+// Solución: saltar el json parser para rutas /webhooks/shopify/* — esas rutas usan express.raw() inline.
+app.use((req, res, next) => {
+    if (req.path.startsWith('/webhooks/shopify/')) return next();
+    return express.json({ limit: '2mb' })(req, res, next);
+});
+app.use((req, res, next) => {
+    if (req.path.startsWith('/webhooks/shopify/')) return next();
+    return express.urlencoded({ extended: true })(req, res, next);
+});
 // Static assets (CSS, JS, etc) but NOT index fallback
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
@@ -929,6 +939,171 @@ app.get('/api/metrics', async (req, res) => {
     } catch (e) { res.json({ active: 0, paused: 0, cancelled: 0, mrr: '0.00', next7d: 0, error: e.message }); }
 });
 
+/* ══════════════════════════════════════════════════
+   📊 REAL SUBSCRIBERS COUNT — cruza 3 fuentes de verdad
+   1) Metaobjects locales (status=active)
+   2) Shopify SubscriptionContracts nativos (status=ACTIVE)
+   3) Mercado Pago PreApprovals (status=authorized)
+══════════════════════════════════════════════════ */
+app.get('/api/subscribers/real-count', async (req, res) => {
+    const report = { metaobjects_active: 0, shopify_contracts_active: 0, mp_authorized: 0, union_by_email: 0, sources: {}, errors: [] };
+
+    // 1) Metaobjects locales
+    try {
+        const subs = await db.getSubscriptions({ status: 'active' }).catch(() => []);
+        report.metaobjects_active = subs.length;
+        report.sources.metaobjects = subs.map(s => ({ email: s.customer_email, product: s.product_title, mp_preapproval_id: s.mp_preapproval_id, next_charge: s.next_charge_at }));
+    } catch (e) { report.errors.push('metaobjects: ' + e.message); }
+
+    // 2) Shopify native subscription contracts
+    try {
+        const { gql } = require('./services/shopify-storage');
+        const q = `query { subscriptionContracts(first: 100, query: "status:ACTIVE") { nodes { id status customer { email firstName lastName } lines(first:1){nodes{title currentPrice{amount currencyCode}}} nextBillingDate } } }`;
+        const data = await gql(q);
+        const contracts = data?.subscriptionContracts?.nodes || [];
+        report.shopify_contracts_active = contracts.length;
+        report.sources.shopify_contracts = contracts.map(c => ({
+            contract_id: c.id,
+            email: c.customer?.email,
+            name: `${c.customer?.firstName || ''} ${c.customer?.lastName || ''}`.trim(),
+            product: c.lines?.nodes?.[0]?.title,
+            price: c.lines?.nodes?.[0]?.currentPrice?.amount,
+            next_billing: c.nextBillingDate
+        }));
+    } catch (e) { report.errors.push('shopify_contracts: ' + e.message); }
+
+    // 3) Mercado Pago — buscar PreApprovals autorizadas
+    try {
+        const mpToken = process.env.MP_ACCESS_TOKEN;
+        if (mpToken) {
+            const r = await fetch(`https://api.mercadopago.com/preapproval/search?status=authorized&limit=100`, {
+                headers: { Authorization: `Bearer ${mpToken}` }
+            });
+            if (r.ok) {
+                const data = await r.json();
+                const results = data?.results || [];
+                report.mp_authorized = results.length;
+                report.sources.mp_preapprovals = results.map(p => ({
+                    id: p.id,
+                    email: p.payer_email,
+                    reason: p.reason,
+                    status: p.status,
+                    amount: p.auto_recurring?.transaction_amount,
+                    next_payment: p.next_payment_date
+                }));
+            } else {
+                report.errors.push('mp: ' + r.status + ' ' + (await r.text()).slice(0, 120));
+            }
+        } else {
+            report.errors.push('mp: MP_ACCESS_TOKEN not set');
+        }
+    } catch (e) { report.errors.push('mp: ' + e.message); }
+
+    // Unión por email (cantidad real única)
+    const emails = new Set();
+    (report.sources.metaobjects || []).forEach(s => s.email && emails.add(s.email.toLowerCase()));
+    (report.sources.shopify_contracts || []).forEach(s => s.email && emails.add(s.email.toLowerCase()));
+    (report.sources.mp_preapprovals || []).forEach(s => s.email && emails.add(s.email.toLowerCase()));
+    report.union_by_email = emails.size;
+    report.unique_emails = Array.from(emails);
+
+    res.json(report);
+});
+
+/* ══════════════════════════════════════════════════
+   🔁 RECOVER MISSED ORDERS — reprocessa pagos de MP que no generaron orden Shopify
+   GET /api/subscriptions/recover/:email → preview (dry-run)
+   POST /api/subscriptions/recover/:email → ejecuta creación de órdenes
+══════════════════════════════════════════════════ */
+async function recoverOrdersForEmail(email, { dryRun = false } = {}) {
+    const out = { email, payments: [], orders_created: [], errors: [] };
+    const mpToken = process.env.MP_ACCESS_TOKEN;
+    if (!mpToken) { out.errors.push('MP_ACCESS_TOKEN not set'); return out; }
+
+    // 1) Buscar PreApprovals del email
+    let preapprovals = [];
+    try {
+        const r = await fetch(`https://api.mercadopago.com/preapproval/search?payer_email=${encodeURIComponent(email)}&limit=20`, {
+            headers: { Authorization: `Bearer ${mpToken}` }
+        });
+        if (r.ok) { const d = await r.json(); preapprovals = d.results || []; }
+    } catch (e) { out.errors.push('preapproval search: ' + e.message); }
+
+    if (!preapprovals.length) { out.errors.push('No preapprovals found for email'); return out; }
+    out.preapprovals = preapprovals.map(p => ({ id: p.id, status: p.status, plan: p.reason, amount: p.auto_recurring?.transaction_amount }));
+
+    // 2) Para cada preapproval, buscar payments aprobados
+    for (const pre of preapprovals) {
+        try {
+            const pr = await fetch(`https://api.mercadopago.com/v1/payments/search?preapproval_id=${pre.id}&status=approved&limit=50`, {
+                headers: { Authorization: `Bearer ${mpToken}` }
+            });
+            if (!pr.ok) { out.errors.push(`payments search ${pre.id}: ${pr.status}`); continue; }
+            const pd = await pr.json();
+            const payments = pd.results || [];
+
+            // 3) Buscar la sub local asociada a este preapproval o email
+            const allSubs = await db.getSubscriptions().catch(() => []);
+            let sub = allSubs.find(s => s.mp_preapproval_id === pre.id);
+            if (!sub) sub = allSubs.find(s => (s.customer_email || '').toLowerCase() === email.toLowerCase());
+
+            for (const pay of payments) {
+                const payInfo = { id: pay.id, amount: pay.transaction_amount, date: pay.date_approved, description: pay.description };
+                out.payments.push(payInfo);
+
+                // 4) Verificar si ya existe una orden en Shopify con referencia a este payment
+                const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+                const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+                if (!token) { out.errors.push('no shopify token'); continue; }
+
+                // Buscar órdenes existentes por tag + nota que contenga MP payment id
+                const searchUrl = `https://${shop}/admin/api/2026-01/orders.json?email=${encodeURIComponent(email)}&status=any&limit=50&fields=id,name,note,tags,created_at`;
+                const sr = await fetch(searchUrl, { headers: { 'X-Shopify-Access-Token': token } });
+                const sd = sr.ok ? await sr.json() : { orders: [] };
+                const exists = (sd.orders || []).some(o => (o.note || '').includes(String(pay.id)));
+                payInfo.shopify_order_exists = exists;
+
+                if (exists) continue; // ya existe, no duplicar
+
+                if (dryRun) { payInfo.would_create = true; continue; }
+
+                // 5) Crear orden Shopify
+                if (!sub || !sub.variant_id) {
+                    payInfo.error = 'No sub with variant_id found — cannot create line_item';
+                    out.errors.push(`payment ${pay.id}: no variant_id`);
+                    continue;
+                }
+                try {
+                    const order = await createShopifyOrderFromSub(sub, pay.id);
+                    payInfo.shopify_order = order?.name;
+                    out.orders_created.push({ order: order?.name, payment_id: pay.id, amount: pay.transaction_amount });
+                } catch (e) {
+                    payInfo.error = e.message;
+                    out.errors.push(`create order payment ${pay.id}: ${e.message}`);
+                }
+            }
+        } catch (e) { out.errors.push('loop preapproval ' + pre.id + ': ' + e.message); }
+    }
+    return out;
+}
+
+app.get('/api/subscriptions/recover/:email', async (req, res) => {
+    try {
+        const email = decodeURIComponent(req.params.email);
+        const result = await recoverOrdersForEmail(email, { dryRun: true });
+        res.json(result);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/subscriptions/recover/:email', async (req, res) => {
+    try {
+        const email = decodeURIComponent(req.params.email);
+        const result = await recoverOrdersForEmail(email, { dryRun: false });
+        res.json(result);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
 /* ── ALL SUBSCRIPTIONS (admin) — from Shopify Metaobjects ── */
 app.get('/api/admin/subscriptions', async (req, res) => {
     try {
@@ -1213,15 +1388,81 @@ app.post('/webhooks/mercadopago', async (req, res) => {
             let paymentData = null;
             try { paymentData = await mp.getPayment(resourceId); } catch (e) {
                 console.warn('[MP WEBHOOK] Could not get payment:', e.message);
+                return;
             }
-            if (!paymentData || paymentData.status !== 'approved') return;
+            if (!paymentData) { console.warn('[MP WEBHOOK] payment null for', resourceId); return; }
+            console.log(`[MP WEBHOOK] payment ${resourceId} status=${paymentData.status} amount=${paymentData.transaction_amount} email=${paymentData.payer?.email}`);
+            if (paymentData.status !== 'approved') return;
 
-            const preapprovalId = paymentData.metadata?.preapproval_id || paymentData.external_reference;
-            if (!preapprovalId) return;
+            // FIX 2026-04-09: MP coloca preapproval_id como campo directo del payment,
+            // NO en metadata ni external_reference. Priorizar el campo directo.
+            const preapprovalId = paymentData.preapproval_id
+                || paymentData.metadata?.preapproval_id
+                || paymentData.external_reference
+                || null;
+            const payerEmail = paymentData.payer?.email || null;
+            console.log(`[MP WEBHOOK] lookup → preapprovalId:${preapprovalId} email:${payerEmail}`);
 
+            // Buscar sub con estrategia multi-fallback para no perder nunca un pago
+            let sub = null;
             const allSubs = await db.getSubscriptions().catch(() => []);
-            const sub = allSubs.find(s => s.mp_preapproval_id === preapprovalId && s.status === 'active');
-            if (!sub) return;
+
+            // 1) Match exacto por preapproval_id
+            if (preapprovalId) {
+                sub = allSubs.find(s => s.mp_preapproval_id === preapprovalId);
+            }
+            // 2) Fallback por email del payer (si preapproval_id no coincide o falta)
+            if (!sub && payerEmail) {
+                const byEmail = allSubs
+                    .filter(s => (s.customer_email || '').toLowerCase() === payerEmail.toLowerCase())
+                    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+                // Preferir active/pending sobre cancelled
+                sub = byEmail.find(s => s.status === 'active' || s.status === 'pending_payment' || s.status === 'pending') || byEmail[0] || null;
+                if (sub) console.log(`[MP WEBHOOK] Matched sub by email fallback: ${sub.id}`);
+            }
+            // 3) Si existe preapprovalId pero ninguna sub local → consultar MP para obtener plan/email y loguear
+            if (!sub && preapprovalId) {
+                try {
+                    const preInfo = await mp.getSubscription(preapprovalId).catch(() => null);
+                    if (preInfo?.payer_email) {
+                        const byMpEmail = allSubs.filter(s => (s.customer_email || '').toLowerCase() === preInfo.payer_email.toLowerCase());
+                        sub = byMpEmail.find(s => s.status === 'active') || byMpEmail[0] || null;
+                        if (sub) console.log(`[MP WEBHOOK] Matched sub via MP-API email: ${sub.id}`);
+                    }
+                } catch {}
+            }
+
+            if (!sub) {
+                console.warn(`[MP WEBHOOK] ⚠️  NO SE ENCONTRÓ suscripción local para payment ${resourceId} (preapproval ${preapprovalId}, email ${payerEmail}). Intentando crear orden Shopify igual con datos del payment...`);
+                // ÚLTIMO RECURSO: crear orden Shopify solo con datos del payment (email + amount)
+                try {
+                    const orphanSub = {
+                        id: `orphan_${resourceId}`,
+                        customer_email: payerEmail,
+                        customer_name: paymentData.payer?.first_name || payerEmail,
+                        variant_id: null, // sin variant no se puede crear line_item
+                        final_price: paymentData.transaction_amount,
+                        frequency_months: 1,
+                        permanence_months: 12,
+                        cycles_completed: 0,
+                        cycles_required: 12,
+                        discount_pct: 0,
+                        product_title: paymentData.description || 'Suscripción LAB',
+                        shipping_address: null,
+                        free_shipping: false
+                    };
+                    await createShopifyOrderFromSub(orphanSub, resourceId).catch(e => {
+                        console.error('[MP WEBHOOK] Orphan order failed (need variant_id):', e.message);
+                    });
+                } catch {}
+                return;
+            }
+
+            // Si no estaba linkeado antes, linkeamos ahora para futuros cobros
+            if (preapprovalId && !sub.mp_preapproval_id) {
+                await db.updateSubscription(sub.id, { mp_preapproval_id: preapprovalId }).catch(() => {});
+                sub.mp_preapproval_id = preapprovalId;
+            }
 
             const cyclesCompleted = (parseInt(sub.cycles_completed) || 0) + 1;
             const nextCharge = new Date();
@@ -1230,25 +1471,28 @@ app.post('/webhooks/mercadopago', async (req, res) => {
 
             await db.updateSubscription(sub.id, {
                 cycles_completed: cyclesCompleted,
+                last_charge_at: new Date().toISOString(),
                 next_charge_at: nextCharge.toISOString(),
                 status: isComplete ? 'completed' : 'active'
-            }).catch(() => {});
+            }).catch(e => console.warn('[MP WEBHOOK] updateSub:', e.message));
 
+            // Crear orden Shopify SIEMPRE (esta es la clave del fix)
             const order = await createShopifyOrderFromSub(sub, resourceId).catch(e => {
-                console.error('[MP WEBHOOK] Shopify order error:', e.message); return null;
+                console.error('[MP WEBHOOK] ❌ Shopify order error:', e.message); return null;
             });
 
             await db.createEvent({ subscription_id: sub.id, event_type: 'charge_success',
                 metadata: JSON.stringify({ mp_payment_id: resourceId, cycle: cyclesCompleted,
-                    shopify_order_id: order?.id, amount: paymentData.transaction_amount }) }).catch(() => {});
+                    shopify_order_id: order?.id, shopify_order_name: order?.name,
+                    amount: paymentData.transaction_amount }) }).catch(() => {});
 
             if (notifications.sendChargeSuccess) notifications.sendChargeSuccess(sub, order?.order_number).catch(() => {});
             if (isComplete && notifications.sendRenewalInvite) notifications.sendRenewalInvite(sub).catch(() => {});
 
-            console.log(`[MP WEBHOOK] ✅ Cobro procesado: ${sub.customer_email} | ciclo ${cyclesCompleted}/${sub.cycles_required}`);
+            console.log(`[MP WEBHOOK] ✅ Cobro procesado: ${sub.customer_email} | ciclo ${cyclesCompleted}/${sub.cycles_required} | order ${order?.name || 'FAIL'}`);
         }
     } catch (e) {
-        console.error('[MP WEBHOOK] Error:', e.message);
+        console.error('[MP WEBHOOK] Error:', e.message, e.stack);
     }
 });
 
@@ -1948,27 +2192,50 @@ app.post('/webhooks/mp', express.json(), async (req, res) => {
                 return;
             }
 
-            const preapprovalId = payment.preapproval_id || payment.metadata?.preapproval_id;
+            // FIX 2026-04-09: priorizar campo directo preapproval_id del payment
+            const preapprovalId = payment.preapproval_id
+                || payment.metadata?.preapproval_id
+                || payment.external_reference
+                || null;
             const payerEmail = payment.payer?.email;
             const transAmount = payment.transaction_amount;
 
             console.log(`[MP WEBHOOK] ✅ Payment approved — preapproval:${preapprovalId} amount:${transAmount} email:${payerEmail}`);
 
-            // Find subscription record by MP preapproval_id
+            // Find subscription with multi-fallback strategy
             let sub = null;
-            if (db?.getSubscriptions) {
-                const subs = await db.getSubscriptions({ mp_preapproval_id: preapprovalId }).catch(() => []);
-                sub = subs?.[0] || null;
+            const allSubs = db?.getSubscriptions ? await db.getSubscriptions().catch(() => []) : [];
+
+            // 1) Match por preapproval_id
+            if (preapprovalId) sub = allSubs.find(s => s.mp_preapproval_id === preapprovalId) || null;
+
+            // 2) Fallback por email del payer
+            if (!sub && payerEmail) {
+                const byEmail = allSubs
+                    .filter(s => (s.customer_email || '').toLowerCase() === payerEmail.toLowerCase())
+                    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+                sub = byEmail.find(s => s.status === 'active' || s.status === 'pending_payment' || s.status === 'pending') || byEmail[0] || null;
+                if (sub) console.log(`[MP WEBHOOK] Matched by email fallback: ${sub.id}`);
             }
+
+            // 3) Fallback: pending_subscriptions en settings metafield
             if (!sub) {
-                // Fallback: check settings metafield
                 const settings = await readFromShopify().catch(() => ({}));
-                sub = (settings.pending_subscriptions || []).find(s => s.mp_preapproval_id === preapprovalId);
+                sub = (settings.pending_subscriptions || []).find(s =>
+                    s.mp_preapproval_id === preapprovalId ||
+                    (s.customer_email || '').toLowerCase() === (payerEmail || '').toLowerCase()
+                );
             }
 
             if (!sub) {
-                console.warn('[MP WEBHOOK] No subscription found for preapproval:', preapprovalId);
+                console.warn(`[MP WEBHOOK] ⚠️  No subscription found for preapproval:${preapprovalId} email:${payerEmail}`);
                 return;
+            }
+
+            // Link preapproval_id si no estaba linkeado
+            if (preapprovalId && !sub.mp_preapproval_id && db?.updateSubscription && sub.id) {
+                await db.updateSubscription(sub.id, { mp_preapproval_id: preapprovalId }).catch(() => {});
+                sub.mp_preapproval_id = preapprovalId;
             }
 
             // Create Shopify order for this payment
@@ -2025,11 +2292,24 @@ app.post('/webhooks/mp', express.json(), async (req, res) => {
             const payerEmail = preapproval.payer_email;
             console.log(`[MP WEBHOOK] PreApproval ${resourceId} → status:${status} email:${payerEmail}`);
 
-            // Find local subscription record
+            // Find local subscription record (filter now supported in shopify-storage.js)
             let sub = null;
             if (db?.getSubscriptions) {
-                const subs = await db.getSubscriptions({ mp_preapproval_id: resourceId }).catch(() => []);
-                sub = subs?.[0] || null;
+                const allSubs = await db.getSubscriptions().catch(() => []);
+                sub = allSubs.find(s => s.mp_preapproval_id === resourceId) || null;
+                // Fallback por plan_id + email (preapproval recién creada, sub aún pending)
+                if (!sub && preapproval.preapproval_plan_id) {
+                    const candidates = allSubs.filter(s =>
+                        s.mp_plan_id === preapproval.preapproval_plan_id &&
+                        (payerEmail ? (s.customer_email || '').toLowerCase() === payerEmail.toLowerCase() : true)
+                    );
+                    sub = candidates.find(s => s.status === 'pending_payment' || s.status === 'pending') || candidates[0] || null;
+                    if (sub) {
+                        // Link the preapproval_id now
+                        await db.updateSubscription(sub.id, { mp_preapproval_id: resourceId }).catch(() => {});
+                        sub.mp_preapproval_id = resourceId;
+                    }
+                }
             }
 
             if (sub && db?.updateSubscription) {

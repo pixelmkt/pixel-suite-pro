@@ -55,9 +55,10 @@
     }
     /* sb-hidden solo se aplica si se necesita ocultar en móvil */
     .sb.sb-hidden { display: none }
-    /* Ocultar sidebar cuando la app se ejecuta embebida dentro de Shopify Admin */
-    body.shopify-embedded .sb { display: none !important }
-    body.shopify-embedded .main { width: 100% }
+    /* FIX 2026-04-09: el menú lateral SIEMPRE visible en el módulo izquierdo,
+       incluso cuando la app corre embebida dentro de Shopify Admin */
+    body.shopify-embedded .sb { display: flex }
+    body.shopify-embedded .main { flex: 1 }
 
     .sb-brand {
       padding: 22px 18px 16px;
@@ -1985,12 +1986,21 @@
     // ──── DASHBOARD ────
     async function loadDash() {
       try {
-        const [metrics, recent] = await Promise.all([
+        const [metrics, recent, realCount] = await Promise.all([
           api('/api/metrics').catch(() => ({})),
-          api('/api/subscriptions?limit=10').catch(() => [])
+          api('/api/subscriptions?limit=10').catch(() => []),
+          api('/api/subscribers/real-count').catch(() => null)  // FIX 2026-04-09: cantidad REAL (MP + Shopify + metaobjects)
         ]);
         document.getElementById('st-mrr').textContent = 'S/ ' + parseFloat(metrics.mrr || 0).toFixed(2);
-        document.getElementById('st-active').textContent = parseInt(metrics.active) || 0;
+        // Si real-count está disponible, usar unión única por email como fuente de verdad
+        const activeReal = realCount && typeof realCount.union_by_email === 'number'
+          ? realCount.union_by_email
+          : (parseInt(metrics.active) || 0);
+        const activeEl = document.getElementById('st-active');
+        activeEl.textContent = activeReal;
+        if (realCount) {
+          activeEl.title = `Metaobjects: ${realCount.metaobjects_active} · Shopify contracts: ${realCount.shopify_contracts_active} · MP authorized: ${realCount.mp_authorized} · Unión única: ${realCount.union_by_email}`;
+        }
         document.getElementById('st-paused').textContent = parseInt(metrics.paused) || 0;
         document.getElementById('st-cancelled').textContent = parseInt(metrics.cancelled) || 0;
         document.getElementById('st-next7').textContent = parseInt(metrics.next7d) || 0;
