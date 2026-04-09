@@ -963,15 +963,34 @@ async function autoImportMpSubs(existing = []) {
     const preapprovals = mpData?.results || [];
     if (!preapprovals.length) return [];
 
-    const existingIds = new Set(existing.map(s => s.mp_preapproval_id).filter(Boolean));
     const allLocal = await db.getSubscriptions().catch(() => []);
-    allLocal.forEach(s => { if (s.mp_preapproval_id) existingIds.add(s.mp_preapproval_id); });
+    const existingIds = new Set(allLocal.map(s => s.mp_preapproval_id).filter(Boolean));
 
     const imported = [];
     for (const pre of preapprovals) {
         if (existingIds.has(pre.id)) continue;
         const email = pre.payer_email;
         if (!email) continue;
+
+        // Si existe una sub pending_payment del mismo email + plan_id → UPDATE (no crear duplicado)
+        const orphan = allLocal.find(s =>
+            (s.customer_email || '').toLowerCase() === email.toLowerCase() &&
+            (s.mp_plan_id === pre.preapproval_plan_id || !s.mp_preapproval_id) &&
+            (s.status === 'pending_payment' || s.status === 'pending')
+        );
+        if (orphan) {
+            try {
+                const updated = await db.updateSubscription(orphan.id, {
+                    mp_preapproval_id: pre.id,
+                    status: 'active',
+                    next_charge_at: pre.next_payment_date || null,
+                    activated_at: pre.date_created || new Date().toISOString()
+                });
+                if (updated) imported.push(updated);
+                console.log(`[AUTO-IMPORT] Linked orphan pending → active: ${email}`);
+                continue;
+            } catch (e) { console.warn('[AUTO-IMPORT] link orphan failed:', e.message); }
+        }
         // Buscar variant_id posible: match por título de producto (reason) en Shopify
         let variantId = null, productId = null, productImage = null;
         try {
