@@ -368,8 +368,8 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
         const tipDoc       = b.tipo_documento   || '01';
         const dni          = b.dni              || '';
 
-        if (!email || !freq || !perm || !finalPrice) {
-            return res.status(400).json({ error: 'Faltan datos: email, frecuencia, permanencia y precio son obligatorios.' });
+        if (!email || !freq || !perm || !finalPrice || !dni) {
+            return res.status(400).json({ error: 'Faltan datos: email, frecuencia, permanencia, precio y DNI son obligatorios.' });
         }
 
         // Refresh MP token from Shopify settings at runtime
