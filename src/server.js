@@ -377,10 +377,13 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
         const backUrl = `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/subscriptions/success?email=${encodeURIComponent(email)}&product=${encodeURIComponent(title)}`;
 
         // Create MP PreApprovalPlan + PreApproval → returns real init_point
+        // Amount includes product price + shipping (S/10.00)
+        const shippingCost = 10.00;
+        const totalAmount = parseFloat((finalPrice + shippingCost).toFixed(2));
         const checkout = await mp.createCheckout({
             frequency: freq,
             permanence: perm,
-            amount: parseFloat(finalPrice.toFixed(2)),
+            amount: totalAmount,
             productTitle: title,
             customerEmail: email,
             backUrl
@@ -406,6 +409,8 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
             discount_pct: discPct,
             base_price: basePrice,
             final_price: parseFloat(finalPrice.toFixed(2)),
+            shipping_cost: shippingCost,
+            mp_total_amount: totalAmount,
             mp_plan_id: checkout.plan_id || '',
             mp_preapproval_id: checkout.subscription_id || '',
             status: 'pending_payment',
