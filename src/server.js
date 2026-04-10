@@ -797,6 +797,10 @@ app.post('/webhooks/shopify/orders-paid', express.raw({ type: 'application/json'
         const customerId = customer && customer.id ? `gid://shopify/Customer/${customer.id}` : null;
         const customerEmail = customer && customer.email ? customer.email : null;
 
+        // Read plan config to get real permanence (NOT hardcoded 12)
+        const _settingsForPlans = await readFromShopify().catch(() => ({}));
+        const _plansConfig = Array.isArray(_settingsForPlans.plans_config) ? _settingsForPlans.plans_config : [];
+
         for (const line of subLines) {
             const alloc = line.selling_plan_allocation;
             const sellingPlanId = alloc && alloc.selling_plan && alloc.selling_plan.id
@@ -834,6 +838,11 @@ app.post('/webhooks/shopify/orders-paid', express.raw({ type: 'application/json'
                 ? (alloc.selling_plan.price_adjustments[0] && alloc.selling_plan.price_adjustments[0].value ? alloc.selling_plan.price_adjustments[0].value : 0)
                 : 0;
 
+            // Look up real permanence from plan config for this frequency
+            const _matchedPlan = _plansConfig.find(p => (p.frequency || p.frequency_months) == frequency && p.active !== false);
+            const _planPermanence = _matchedPlan ? (_matchedPlan.permanence || _matchedPlan.permanence_months || frequency) : frequency;
+            console.log(`[ORDER_PAID] frequency=${frequency}, matched plan permanence=${_planPermanence}`);
+
             // 3. Create MP PreApproval subscription for recurring billing
             let mpPlanId = null;
             if (mp.createPlan) {
@@ -846,7 +855,7 @@ app.post('/webhooks/shopify/orders-paid', express.raw({ type: 'application/json'
                     const productTitle = line.title || 'Producto LAB';
                     const mpPlan = await mp.createPlan({
                         frequency,
-                        permanence: frequency * 12, // max 12 cycles by default
+                        permanence: _planPermanence,
                         amount: linePrice,
                         productTitle
                     });
@@ -874,8 +883,8 @@ app.post('/webhooks/shopify/orders-paid', express.raw({ type: 'application/json'
                         final_price: linePrice,
                         discount_pct: discountPct,
                         frequency_months: frequency,
-                        permanence_months: frequency * 12,
-                        cycles_required: 12,
+                        permanence_months: _planPermanence,
+                        cycles_required: Math.ceil(_planPermanence / frequency),
                         cycles_completed: 1, // First cycle = the order just paid
                         mp_plan_id: mpPlanId,
                         shipping_address: shippingAddr,
@@ -1061,8 +1070,8 @@ async function autoImportMpSubs(existing = []) {
             base_price: pre.auto_recurring?.transaction_amount || 0,
             discount_pct: 0,
             frequency_months: pre.auto_recurring?.frequency || 1,
-            permanence_months: pre.auto_recurring?.repetitions || 12,
-            cycles_required: pre.auto_recurring?.repetitions || 12,
+            permanence_months: (pre.auto_recurring?.repetitions || 1) * (pre.auto_recurring?.frequency || 1),
+            cycles_required: pre.auto_recurring?.repetitions || 1,
             cycles_completed: 0,
             status: 'active',
             next_charge_at: pre.next_payment_date || null,
@@ -1634,9 +1643,9 @@ app.post('/webhooks/mercadopago', async (req, res) => {
                         variant_id: null, // sin variant no se puede crear line_item
                         final_price: paymentData.transaction_amount,
                         frequency_months: 1,
-                        permanence_months: 12,
+                        permanence_months: 3,
                         cycles_completed: 0,
-                        cycles_required: 12,
+                        cycles_required: 3,
                         discount_pct: 0,
                         product_title: paymentData.description || 'Suscripción LAB',
                         shipping_address: null,
@@ -2288,79 +2297,8 @@ async function createShopifyOrderFromSubscription({ customerEmail, customerName,
     return (await r.json()).order;
 }
 
-/* POST /api/subscriptions/checkout
-   Called by the widget modal when customer clicks "Suscribirme".
-   Creates a MP PreApprovalPlan + PreApproval → returns init_point. */
-app.post('/api/subscriptions/checkout', async (req, res) => {
-    try {
-        const {
-            customer_name, customer_email, phone,
-            product_id, variant_id, product_title,
-            base_price, final_price, discount_pct,
-            frequency_months, permanence_months
-        } = req.body;
-
-        if (!customer_email || !product_id || !final_price) {
-            return res.status(400).json({ error: 'Faltan datos: email, product_id y final_price son obligatorios.' });
-        }
-
-        // Refresh MP token from settings at runtime
-        const dynSettings = await readFromShopify().catch(() => ({}));
-        if (dynSettings?.mp_access_token) process.env.MP_ACCESS_TOKEN = dynSettings.mp_access_token;
-
-        const backUrl = `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/subscriptions/success?email=${encodeURIComponent(customer_email)}&product=${encodeURIComponent(product_title || '')}`;
-
-        // Create MP PreApproval checkout
-        const checkout = await mp.createCheckout({
-            frequency: parseInt(frequency_months) || 1,
-            permanence: parseInt(permanence_months) || 3,
-            amount: parseFloat(final_price),
-            productTitle: product_title || 'Producto LAB',
-            customerEmail: customer_email,
-            backUrl
-        });
-
-        // Save pending subscription record in Shopify Metaobjects
-        const subRecord = {
-            customer_name: customer_name || '',
-            customer_email,
-            phone: phone || '',
-            product_id: String(product_id),
-            variant_id: String(variant_id || ''),
-            product_title: product_title || '',
-            base_price: parseFloat(base_price) || parseFloat(final_price),
-            final_price: parseFloat(final_price),
-            discount_pct: parseInt(discount_pct) || 0,
-            frequency_months: parseInt(frequency_months) || 1,
-            permanence_months: parseInt(permanence_months) || 3,
-            status: 'pending',
-            mp_preapproval_id: checkout.subscription_id || '',
-            mp_plan_id: checkout.plan_id || '',
-            created_at: new Date().toISOString(),
-            next_charge_at: new Date().toISOString()
-        };
-
-        if (db?.createSubscription) {
-            await db.createSubscription(subRecord).catch(e => console.warn('[CHECKOUT] createSubscription error:', e.message));
-        } else {
-            // Fallback: store in settings metafield
-            const settings = await readFromShopify().catch(() => ({}));
-            if (!settings.pending_subscriptions) settings.pending_subscriptions = [];
-            settings.pending_subscriptions.push(subRecord);
-            await saveToShopify(settings).catch(() => {});
-        }
-
-        console.log(`[CHECKOUT] ✅ MP checkout created for ${customer_email} — plan:${checkout.plan_id} sub:${checkout.subscription_id}`);
-        res.json({
-            init_point: checkout.init_point,
-            subscription_id: checkout.subscription_id,
-            plan_id: checkout.plan_id
-        });
-    } catch (e) {
-        console.error('[CHECKOUT] Error:', e.message);
-        res.status(500).json({ error: e.message || 'Error al crear el checkout de MP' });
-    }
-});
+/* NOTE: /api/subscriptions/checkout is already defined above (line ~349).
+   Duplicate route removed — Express only matches the first handler. */
 
 /* GET /subscriptions/success — Confirmation page after MP PreApproval */
 app.get('/subscriptions/success', (req, res) => {
