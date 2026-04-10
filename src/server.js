@@ -1901,9 +1901,7 @@ cron.schedule('0 14 * * *', async () => {  // 14:00 UTC = 09:00 PET
 /* ═══════════════════════════════════════════════
    📊 ADMIN DASHBOARD (served as HTML)
 ═══════════════════════════════════════════════ */
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
+/* NOTE: GET / is already defined at line ~68 — Express only matches the first handler */
 
 app.get('/portal/:customerId', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'portal.html'));
@@ -2359,33 +2357,8 @@ async function createShopifyOrderFromSubscription({ customerEmail, customerName,
 /* NOTE: /api/subscriptions/checkout is already defined above (line ~349).
    Duplicate route removed — Express only matches the first handler. */
 
-/* GET /subscriptions/success — Confirmation page after MP PreApproval */
-app.get('/subscriptions/success', (req, res) => {
-    const email = req.query.email || '';
-    const product = req.query.product || 'tu producto LAB';
-    res.send(`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Suscripción Activada — LAB NUTRITION</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Montserrat,sans-serif;background:#f5f5f5;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-.card{background:#fff;border-radius:16px;padding:40px 36px;max-width:480px;width:100%;box-shadow:0 4px 32px rgba(0,0,0,.1);text-align:center}
-.icon{width:64px;height:64px;background:#d1fae5;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:28px}
-h1{font-size:22px;font-weight:900;color:#1a1a1a;margin-bottom:10px}
-p{color:#555;font-size:14px;line-height:1.6;margin-bottom:8px}
-.brand{color:#9d2a23;font-weight:800}
-.btn{display:inline-block;margin-top:24px;background:#9d2a23;color:#fff;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;letter-spacing:.5px}
-</style></head><body>
-<div class="card">
-  <div class="icon">✅</div>
-  <h1>¡Suscripción activada!</h1>
-  <p>Tu suscripción de <strong class="brand">${product}</strong> ha sido procesada correctamente.</p>
-  <p>Mercado Pago gestionará los cobros automáticos según tu plan. Recibirás una confirmación en <strong>${email}</strong>.</p>
-  <p style="margin-top:12px;font-size:12px;color:#999">Cada mes se generará un pedido automáticamente y recibirás tu producto sin hacer nada.</p>
-  <a href="https://labnutrition.com" class="btn">Volver a la tienda →</a>
-</div>
-</body></html>`);
-});
+/* NOTE: GET /subscriptions/success is already defined above (line ~439).
+   Duplicate route removed — Express only matches the first handler. */
 
 /* ──────────────────────────────────────────────────────────────────────────
    📡 MP WEBHOOKS — Maneja todos los eventos de Mercado Pago
@@ -2730,6 +2703,101 @@ async function runDailyBillingCron() {
     }
 }
 
+/**
+ * MP PAYMENT POLLING CRON — Detect MP recurring charges and create Shopify orders.
+ * Runs every 4 hours. Checks each active MP subscription for new payments
+ * that haven't been converted to Shopify orders yet.
+ * This is necessary because MP preapprovals created via init_point
+ * don't support notification_url updates.
+ */
+async function runMpPaymentPolling() {
+    console.log('[MP POLLING] Starting payment check...');
+    let ordersCreated = 0;
+
+    try {
+        let mpToken = process.env.MP_ACCESS_TOKEN;
+        if (!mpToken) {
+            const dyn = await readFromShopify().catch(() => ({}));
+            if (dyn?.mp_access_token) { process.env.MP_ACCESS_TOKEN = dyn.mp_access_token; mpToken = dyn.mp_access_token; }
+        }
+        if (!mpToken) { console.warn('[MP POLLING] No MP token'); return; }
+
+        const mpHeaders = { Authorization: `Bearer ${mpToken}` };
+        const allSubs = db?.getSubscriptions ? await db.getSubscriptions({ status: 'active' }).catch(() => []) : [];
+        const mpSubs = allSubs.filter(s => s.mp_preapproval_id);
+
+        if (!mpSubs.length) { console.log('[MP POLLING] No active MP subscriptions'); return; }
+
+        for (const sub of mpSubs) {
+            try {
+                // Get current preapproval data from MP
+                const preRes = await fetch(`https://api.mercadopago.com/preapproval/${sub.mp_preapproval_id}`, { headers: mpHeaders });
+                if (!preRes.ok) continue;
+                const preData = await preRes.json();
+
+                const mpCharged = preData.summarized?.charged_quantity || 0;
+                const localCycles = parseInt(sub.cycles_completed) || 0;
+
+                // If MP has charged more times than we've recorded, there are new payments
+                if (mpCharged > localCycles) {
+                    const newCharges = mpCharged - localCycles;
+                    console.log(`[MP POLLING] ${sub.customer_email}: MP charged ${mpCharged}, local=${localCycles} → ${newCharges} new charge(s)`);
+
+                    // Search for the latest payment(s) for this preapproval
+                    const payRes = await fetch(`https://api.mercadopago.com/v1/payments/search?preapproval_id=${sub.mp_preapproval_id}&sort=date_created&criteria=desc&limit=${newCharges}`, { headers: mpHeaders });
+                    const payData = payRes.ok ? await payRes.json() : { results: [] };
+                    const approvedPayments = (payData.results || []).filter(p => p.status === 'approved');
+
+                    for (const payment of approvedPayments) {
+                        // Check if we already created an order for this payment
+                        const events = db?.getEvents ? await db.getEvents(sub.id, 100).catch(() => []) : [];
+                        const alreadyProcessed = events.some(e => e.metadata?.includes?.(String(payment.id)));
+                        if (alreadyProcessed) continue;
+
+                        // Create Shopify order
+                        try {
+                            const order = await createShopifyOrderFromSub(sub, String(payment.id));
+                            if (order) {
+                                ordersCreated++;
+                                console.log(`[MP POLLING] ✅ Shopify order ${order.name} for ${sub.customer_email} (MP payment ${payment.id})`);
+
+                                // Log event to avoid duplicate processing
+                                if (db?.createEvent) {
+                                    await db.createEvent({
+                                        subscription_id: sub.id,
+                                        event_type: 'charge_success',
+                                        metadata: JSON.stringify({ mp_payment_id: payment.id, order_name: order.name, amount: payment.transaction_amount })
+                                    }).catch(() => {});
+                                }
+                            }
+                        } catch (orderErr) {
+                            console.error(`[MP POLLING] Order creation failed for ${sub.customer_email}:`, orderErr.message);
+                        }
+                    }
+
+                    // Update cycles count
+                    const nextCharge = new Date();
+                    nextCharge.setMonth(nextCharge.getMonth() + (parseInt(sub.frequency_months) || 1));
+                    await db.updateSubscription(sub.id, {
+                        cycles_completed: mpCharged,
+                        last_charge_at: new Date().toISOString(),
+                        next_charge_at: preData.next_payment_date || nextCharge.toISOString()
+                    }).catch(e => console.warn('[MP POLLING] update error:', e.message));
+                }
+
+                // Rate limit: 500ms between MP API calls
+                await new Promise(r => setTimeout(r, 500));
+            } catch (subErr) {
+                console.warn(`[MP POLLING] Error checking ${sub.customer_email}:`, subErr.message);
+            }
+        }
+
+        console.log(`[MP POLLING] Done — ${ordersCreated} orders created`);
+    } catch (e) {
+        console.error('[MP POLLING] Fatal:', e.message);
+    }
+}
+
 /** REMINDER CRON: runs daily at 9am Lima — sends 7-day advance reminders */
 async function runReminderCron() {
     console.log('[REMINDER CRON] Checking 7-day upcoming billing');
@@ -2835,17 +2903,23 @@ app.post('/webhooks/shopify/subscription_contracts_cancel',
         } catch (e) {}
     });
 
-/** Manual trigger for testing */
+/** Manual trigger for billing cron */
 app.post('/api/billing/run-now', async (req, res) => {
     res.json({ started: true, message: 'Billing cron triggered manually' });
     runDailyBillingCron().catch(console.error);
+});
+
+/** Manual trigger for MP payment polling */
+app.post('/api/mp-polling/run-now', async (req, res) => {
+    res.json({ started: true, message: 'MP payment polling triggered manually' });
+    runMpPaymentPolling().catch(console.error);
 });
 
 /* Portal endpoints moved to early registration above checkout */
 
 /* ── START SERVER ── */
 const server = app.listen(PORT, '0.0.0.0', async () => {
-    console.log(`\nLAB NUTRITION Backend v6.1.0 running on 0.0.0.0:${PORT}`);
+    console.log(`\nLAB NUTRITION Backend v6.3.0 running on 0.0.0.0:${PORT}`);
     console.log(`Admin: / | Store: ${process.env.SHOPIFY_SHOP}\n`);
     if (db?.initializeTypes) {
         try { await db.initializeTypes(); } catch (e) { console.warn('[DB] Init:', e.message); }
@@ -2854,6 +2928,17 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
     if (process.env.NODE_ENV !== 'test') {
         scheduleDailyCron(2, 0, runDailyBillingCron);  // 2am Lima
         scheduleDailyCron(9, 0, runReminderCron);       // 9am Lima
+
+        // MP Payment Polling — every 4 hours to catch recurring charges
+        // and create Shopify orders (for preapprovals without notification_url)
+        setInterval(runMpPaymentPolling, 4 * 60 * 60 * 1000);
+        console.log('[CRON] "runMpPaymentPolling" scheduled: every 4 hours');
+
+        // Run immediately on startup to catch any missed charges (including retroactive first payments)
+        setTimeout(() => {
+            console.log('[STARTUP] Running initial MP payment polling to catch missed charges...');
+            runMpPaymentPolling().catch(e => console.error('[STARTUP] MP polling error:', e.message));
+        }, 15000); // Wait 15s for DB + tokens to be ready
     }
     // Register Shopify webhooks for subscription events
     const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
