@@ -1195,6 +1195,28 @@ async function autoImportMpSubs(existing = []) {
 
 
 /* ── METRICS — from Shopify Metaobjects ── */
+/* ─── EMAIL TEMPLATE PREVIEW — Club Black Diamond ─── */
+app.get('/api/emails/preview', (req, res) => {
+    const templates = ['welcome', 'charge_reminder', 'cancel_lock_warning', 'charge_success', 'charge_failed', 'renewal_invite', 'cancellation'];
+    res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Email Templates</title>
+    <style>body{font-family:sans-serif;background:#f0f0f0;padding:40px}h1{text-align:center}
+    .grid{display:flex;flex-wrap:wrap;gap:20px;justify-content:center}
+    a{display:block;background:#1a1a1a;color:#fff;padding:16px 32px;border-radius:8px;text-decoration:none;font-weight:bold;text-align:center}
+    a:hover{background:#9d2a23}</style></head><body>
+    <h1>◆ Club Black Diamond — Email Templates ◆</h1>
+    <div class="grid">${templates.map(t => `<a href="/api/emails/preview/${t}" target="_blank">${t.replace(/_/g,' ').toUpperCase()}</a>`).join('')}</div>
+    </body></html>`);
+});
+
+app.get('/api/emails/preview/:template', (req, res) => {
+    if (!notifications?.getPreviewHTML) return res.status(500).send('Notifications module not loaded');
+    try {
+        const html = notifications.getPreviewHTML(req.params.template);
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+    } catch (e) { res.status(400).send(`Template error: ${e.message}`); }
+});
+
 app.get('/api/metrics', async (req, res) => {
     try {
         const metrics = await db.getMetrics();
