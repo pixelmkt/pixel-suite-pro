@@ -364,6 +364,7 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
         const freq         = parseInt(b.frequency_months  || b.frequencyMonths  || 1);
         const perm         = parseInt(b.permanence_months || b.permanenceMonths || 3);
         const freeShip     = b.free_shipping    || b.freeShipping   || false;
+        const shipAddr     = b.shipping_address || null;
 
         if (!email || !freq || !perm || !finalPrice) {
             return res.status(400).json({ error: 'Faltan datos: email, frecuencia, permanencia y precio son obligatorios.' });
@@ -411,6 +412,7 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
             cycles_required: Math.ceil(perm / freq),
             cycles_completed: 0,
             free_shipping: freeShip,
+            shipping_address: shipAddr,
             next_charge_at: null,
             created_at: new Date().toISOString()
         };
