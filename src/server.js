@@ -1273,19 +1273,21 @@ async function recoverOrdersForEmail(email, { dryRun = false } = {}) {
     // 2) Para cada preapproval, buscar payments aprobados
     for (const pre of preapprovals) {
         try {
-            const pr = await fetch(`https://api.mercadopago.com/v1/payments/search?preapproval_id=${pre.id}&status=approved&limit=50`, {
+            // Use authorized_payments endpoint (v1/payments/search does NOT work for preapproval subs)
+            const pr = await fetch(`https://api.mercadopago.com/authorized_payments/search?preapproval_id=${pre.id}`, {
                 headers: { Authorization: `Bearer ${mpToken}` }
             });
             if (!pr.ok) { out.errors.push(`payments search ${pre.id}: ${pr.status}`); continue; }
             const pd = await pr.json();
-            const payments = pd.results || [];
+            const payments = (pd.results || []).filter(p => p.payment?.status === 'approved');
 
             // 3) Buscar la sub local asociada a este preapproval o email
             const allSubs = await db.getSubscriptions().catch(() => []);
             let sub = allSubs.find(s => s.mp_preapproval_id === pre.id);
             if (!sub) sub = allSubs.find(s => (s.customer_email || '').toLowerCase() === email.toLowerCase());
 
-            for (const pay of payments) {
+            for (const authPay of payments) {
+                const pay = { id: authPay.payment?.id || authPay.id, transaction_amount: authPay.transaction_amount, date_approved: authPay.date_created, description: authPay.reason };
                 const payInfo = { id: pay.id, amount: pay.transaction_amount, date: pay.date_approved, description: pay.description };
                 out.payments.push(payInfo);
 
@@ -2743,30 +2745,36 @@ async function runMpPaymentPolling() {
                     const newCharges = mpCharged - localCycles;
                     console.log(`[MP POLLING] ${sub.customer_email}: MP charged ${mpCharged}, local=${localCycles} → ${newCharges} new charge(s)`);
 
-                    // Search for the latest payment(s) for this preapproval
-                    const payRes = await fetch(`https://api.mercadopago.com/v1/payments/search?preapproval_id=${sub.mp_preapproval_id}&sort=date_created&criteria=desc&limit=${newCharges}`, { headers: mpHeaders });
+                    // Search for authorized payments via MP's authorized_payments endpoint
+                    // NOTE: /v1/payments/search?preapproval_id= does NOT work for recurring subs
+                    const payRes = await fetch(`https://api.mercadopago.com/authorized_payments/search?preapproval_id=${sub.mp_preapproval_id}`, { headers: mpHeaders });
                     const payData = payRes.ok ? await payRes.json() : { results: [] };
-                    const approvedPayments = (payData.results || []).filter(p => p.status === 'approved');
+                    // Each result has: { id, payment: { id, status }, transaction_amount, date_created }
+                    const approvedPayments = (payData.results || [])
+                        .filter(p => p.payment?.status === 'approved')
+                        .sort((a, b) => new Date(b.date_created) - new Date(a.date_created))
+                        .slice(0, newCharges);
 
-                    for (const payment of approvedPayments) {
+                    for (const authPay of approvedPayments) {
+                        const paymentId = String(authPay.payment?.id || authPay.id);
                         // Check if we already created an order for this payment
                         const events = db?.getEvents ? await db.getEvents(sub.id, 100).catch(() => []) : [];
-                        const alreadyProcessed = events.some(e => e.metadata?.includes?.(String(payment.id)));
+                        const alreadyProcessed = events.some(e => e.metadata?.includes?.(paymentId));
                         if (alreadyProcessed) continue;
 
                         // Create Shopify order
                         try {
-                            const order = await createShopifyOrderFromSub(sub, String(payment.id));
+                            const order = await createShopifyOrderFromSub(sub, paymentId);
                             if (order) {
                                 ordersCreated++;
-                                console.log(`[MP POLLING] ✅ Shopify order ${order.name} for ${sub.customer_email} (MP payment ${payment.id})`);
+                                console.log(`[MP POLLING] ✅ Shopify order ${order.name} for ${sub.customer_email} (MP payment ${paymentId})`);
 
                                 // Log event to avoid duplicate processing
                                 if (db?.createEvent) {
                                     await db.createEvent({
                                         subscription_id: sub.id,
                                         event_type: 'charge_success',
-                                        metadata: JSON.stringify({ mp_payment_id: payment.id, order_name: order.name, amount: payment.transaction_amount })
+                                        metadata: JSON.stringify({ mp_payment_id: paymentId, order_name: order.name, amount: authPay.transaction_amount })
                                     }).catch(() => {});
                                 }
                             }
