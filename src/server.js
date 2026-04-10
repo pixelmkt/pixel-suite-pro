@@ -550,6 +550,7 @@ app.post('/api/subscriptions/:id/cancel', async (req, res) => {
         await db.updateSubscription(sub.id, { status: 'cancelled', cancelled_at: now.toISOString() });
         await db.createEvent({ subscription_id: sub.id, event_type: 'cancelled' });
         if (sub.customer_id) shopify.tagCustomerAsSubscriber(sub.customer_id, false).catch(console.error);
+        if (notifications?.sendCancellationConfirmation) notifications.sendCancellationConfirmation(sub).catch(e => console.warn('[CANCEL] Email error:', e.message));
         res.json({ success: true, message: 'Suscripción cancelada correctamente.' });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1886,13 +1887,22 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         ? ('Ciclo ' + sub.cycles_completed + '/' + (sub.cycles_required || '?'))
         : 'Ciclo 1';
 
-    // Line item at original price + discount applied (like normal checkout orders)
+    // Line item at the actual price the subscriber pays (final_price after discount)
     const basePrice = parseFloat(sub.base_price || 0);
     const finalPrice = parseFloat(sub.final_price || sub.base_price || 0);
-    const discountAmount = basePrice > finalPrice ? parseFloat((basePrice - finalPrice).toFixed(2)) : 0;
     const lineItem = variantId
-        ? { variant_id: parseInt(variantId), quantity: 1, price: String(basePrice.toFixed(2)) }
-        : { title: sub.product_title || 'Suscripción LAB NUTRITION', quantity: 1, price: String(basePrice.toFixed(2)), requires_shipping: true };
+        ? { variant_id: parseInt(variantId), quantity: 1, price: String(finalPrice.toFixed(2)) }
+        : { title: sub.product_title || 'Suscripción LAB NUTRITION', quantity: 1, price: String(finalPrice.toFixed(2)), requires_shipping: true };
+
+    // Ensure shipping address has province_code and zip for Shopify PE validation
+    if (shippingAddr) {
+        if (!shippingAddr.province_code && shippingAddr.province) {
+            // Map common Peru provinces to Shopify province codes
+            const PE_PROVINCES = { 'lima': 'LIM', 'arequipa': 'ARE', 'cusco': 'CUS', 'la libertad': 'LAL', 'piura': 'PIU', 'lambayeque': 'LAM', 'junin': 'JUN', 'cajamarca': 'CAJ', 'ancash': 'ANC', 'ica': 'ICA', 'callao': 'CAL', 'tacna': 'TAC', 'loreto': 'LOR', 'san martin': 'SAM', 'ucayali': 'UCA', 'huanuco': 'HUA', 'puno': 'PUN', 'amazonas': 'AMA', 'ayacucho': 'AYA', 'apurimac': 'APU', 'huancavelica': 'HUV', 'madre de dios': 'MDD', 'moquegua': 'MOQ', 'pasco': 'PAS', 'tumbes': 'TUM' };
+            shippingAddr.province_code = PE_PROVINCES[(shippingAddr.province || '').toLowerCase()] || 'LIM';
+        }
+        if (!shippingAddr.zip) shippingAddr.zip = '15000'; // Lima default
+    }
 
     if (!variantId) console.warn(`[ORDER] ⚠️ Creating order WITHOUT variant_id for ${sub.customer_email} — using custom line item "${lineItem.title}"`);
 
@@ -1922,11 +1932,7 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             send_receipt: true,
             send_fulfillment_receipt: true,
             line_items: [lineItem],
-            discount_codes: discountAmount > 0 ? [{
-                code: `SUB-${Math.round(sub.discount_pct || 0)}OFF`,
-                amount: String(discountAmount.toFixed(2)),
-                type: 'fixed_amount'
-            }] : [],
+            discount_codes: [],
             shipping_lines: [{ title: 'Envío suscripción', price: '10.00', code: 'sub_ship' }],
             note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
             tags: 'suscripcion',
@@ -2872,6 +2878,11 @@ async function runMpPaymentPolling() {
                                         event_type: 'charge_success',
                                         metadata: JSON.stringify({ mp_payment_id: paymentId, order_name: order.name, amount: authPay.transaction_amount })
                                     }).catch(() => {});
+                                }
+
+                                // Send charge success email
+                                if (notifications?.sendChargeSuccess) {
+                                    notifications.sendChargeSuccess(sub, order.name).catch(e => console.warn('[MP POLLING] Email error:', e.message));
                                 }
                             }
                         } catch (orderErr) {
