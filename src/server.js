@@ -1887,6 +1887,7 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
     // Build note_attributes so Navasoft picks up the order
     const addr = shippingAddr || {};
     const noteAttrs = [
+        { name: 'ClusterCart-optimized', value: 'true' },
         { name: 'tipo_documento', value: sub.tipo_documento || '01' },
         { name: 'dni', value: sub.dni || '' },
         { name: 'ClusterCart-tipo_documento', value: sub.tipo_documento || '01' },
@@ -1897,13 +1898,15 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         { name: 'payment_type', value: 'credit_card' },
         { name: 'payment_method', value: 'mercadopago_suscripcion' },
         { name: 'payment_transaction_amount', value: String((finalPrice + 10).toFixed(2)) },
-        { name: 'additional_info_shipping_full_address', value: addr.address1 || '' }
+        { name: 'additional_info_shipping_full_address', value: addr.address1 || '' },
+        { name: 'additional_info_billing_full_address', value: addr.address1 || '' }
     ].filter(a => a.value);
 
     const orderBody = {
         order: {
             email: sub.customer_email,
             financial_status: 'paid',
+            taxes_included: true,
             send_receipt: true,
             send_fulfillment_receipt: true,
             line_items: [lineItem],
@@ -1917,7 +1920,7 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             tags: 'suscripcion',
             note_attributes: noteAttrs,
             shipping_address: shippingAddr || undefined,
-            billing_address: shippingAddr || undefined
+            billing_address: shippingAddr ? { ...shippingAddr, company: sub.dni || '' } : undefined
         }
     };
 
