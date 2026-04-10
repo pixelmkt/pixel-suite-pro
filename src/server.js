@@ -1871,9 +1871,11 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         : 'Ciclo 1';
 
     // Construir line_items: con variant_id si existe, o custom line item con título si no
+    // Price = total amount charged by MP (product + shipping combined)
+    const mpAmount = sub.mp_total_amount || sub.final_price || sub.base_price || 0;
     const lineItem = variantId
-        ? { variant_id: parseInt(variantId), quantity: 1, price: String(parseFloat(sub.final_price || sub.base_price).toFixed(2)) }
-        : { title: sub.product_title || 'Suscripción LAB NUTRITION', quantity: 1, price: String(parseFloat(sub.final_price || sub.base_price || 0).toFixed(2)), requires_shipping: true };
+        ? { variant_id: parseInt(variantId), quantity: 1, price: String(parseFloat(mpAmount).toFixed(2)) }
+        : { title: sub.product_title || 'Suscripción LAB NUTRITION', quantity: 1, price: String(parseFloat(mpAmount).toFixed(2)), requires_shipping: true };
 
     if (!variantId) console.warn(`[ORDER] ⚠️ Creating order WITHOUT variant_id for ${sub.customer_email} — using custom line item "${lineItem.title}"`);
 
@@ -1885,9 +1887,8 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             send_fulfillment_receipt: true,
             line_items: [lineItem],
             note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
-            tags: 'suscripcion,lab-nutrition,recurrente',
-            shipping_address: shippingAddr || undefined,
-            shipping_lines: [{ title: 'Envío suscripción', price: '10.00', code: 'sub_ship', source: 'lab_sub' }]
+            tags: 'suscripcion',
+            shipping_address: shippingAddr || undefined
         }
     };
 
