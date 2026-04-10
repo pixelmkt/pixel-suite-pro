@@ -345,6 +345,11 @@ function getPreviewHTML(templateName) {
     return templates;
 }
 
+async function sendTestEmail(toEmail, templateName) {
+    const html = typeof getPreviewHTML === 'function' ? getPreviewHTML(templateName || 'welcome') : getPreviewHTML;
+    return sendEmail(toEmail, '✅ TEST — Club Black Diamond — LAB NUTRITION', typeof html === 'string' ? html : 'Template not found');
+}
+
 module.exports = {
     sendWelcome,
     sendChargeReminder,
@@ -353,5 +358,6 @@ module.exports = {
     sendChargeFailed,
     sendRenewalInvite,
     sendCancellationConfirmation,
-    getPreviewHTML
+    getPreviewHTML,
+    sendTestEmail
 };

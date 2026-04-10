@@ -1217,6 +1217,16 @@ app.get('/api/emails/preview/:template', (req, res) => {
     } catch (e) { res.status(400).send(`Template error: ${e.message}`); }
 });
 
+app.post('/api/emails/test', async (req, res) => {
+    if (!notifications?.sendTestEmail) return res.status(500).json({ error: 'Notifications module not loaded' });
+    try {
+        const { to, template } = req.body || {};
+        const email = to || 'marketing@labnutrition.com';
+        await notifications.sendTestEmail(email, template || 'welcome');
+        res.json({ success: true, sent_to: email, template: template || 'welcome' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/metrics', async (req, res) => {
     try {
         const metrics = await db.getMetrics();
