@@ -997,6 +997,18 @@ app.get('/api/contracts/:email', async (req, res) => {
 
 
 
+/* ── CREATE ORDER manually for a subscription (admin) ── */
+app.post('/api/subscriptions/:id/create-order', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Subscription not found' });
+        const mpPaymentId = req.body.mp_payment_id || 'manual_' + Date.now();
+        const order = await createShopifyOrderFromSub(sub, mpPaymentId);
+        if (!order) return res.status(500).json({ error: 'Failed to create order' });
+        res.json({ success: true, order_number: order.order_number, order_name: order.name, order_id: order.id });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ── SUBSCRIPTIONS LIST alias for admin panel ── */
 app.get('/api/subscriptions', async (req, res) => {
     try {
