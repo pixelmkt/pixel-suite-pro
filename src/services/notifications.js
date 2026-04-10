@@ -7,7 +7,7 @@ const transporter = nodemailer.createTransport({
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
 });
 
-const FROM = process.env.EMAIL_FROM || '"LAB NUTRITION" <noreply@labnutrition.com>';
+const FROM = `"${process.env.EMAIL_FROM || 'LAB NUTRITION'}" <${process.env.SMTP_USER || 'marketing@labnutrition.com'}>`;
 
 /* ─── BASE TEMPLATE — Club Black Diamond Premium Design ─── */
 function baseHTML(content, { headerIcon = '', headerTitle = '' } = {}) {
