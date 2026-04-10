@@ -250,16 +250,34 @@
             <input id="m-email-{{ block.id }}" type="email" placeholder="tu@email.com" style="width:100%;border:1.5px solid #e5e7eb;border-radius:6px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box"
               value="{{ customer.email | default: '' }}">
           </div>
-          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;margin-top:4px">
-            <div style="font-size:12px;color:#166534;text-align:center">📦 La dirección de envío se ingresa en el checkout de Shopify</div>
+          <div>
+            <label style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#888;display:block;margin-bottom:5px">Teléfono</label>
+            <input id="m-phone-{{ block.id }}" type="tel" placeholder="+51 999 999 999" style="width:100%;border:1.5px solid #e5e7eb;border-radius:6px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box">
+          </div>
+          <div style="border-top:1px solid #f0f0f0;padding-top:12px;margin-top:4px">
+            <div style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#9d2a23;margin-bottom:10px">📦 Dirección de envío</div>
+          </div>
+          <div>
+            <label style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#888;display:block;margin-bottom:5px">Dirección</label>
+            <input id="m-addr-{{ block.id }}" type="text" placeholder="Av. ejemplo 123, Dpto 4B" style="width:100%;border:1.5px solid #e5e7eb;border-radius:6px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#888;display:block;margin-bottom:5px">Distrito</label>
+              <input id="m-city-{{ block.id }}" type="text" placeholder="Miraflores" style="width:100%;border:1.5px solid #e5e7eb;border-radius:6px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#888;display:block;margin-bottom:5px">Provincia / Departamento</label>
+              <input id="m-province-{{ block.id }}" type="text" placeholder="Lima" value="Lima" style="width:100%;border:1.5px solid #e5e7eb;border-radius:6px;padding:10px 12px;font-size:14px;outline:none;box-sizing:border-box">
+            </div>
           </div>
         </div>
         <div id="m-msg-{{ block.id }}" style="display:none;padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:12px"></div>
         <button id="m-btn-{{ block.id }}" style="width:100%;background:#9d2a23;color:#fff;border:none;border-radius:8px;padding:15px;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:.3px">
-          Agregar suscripción al carrito →
+          Continuar al pago →
         </button>
         <div style="text-align:center;font-size:11px;color:#999;margin-top:10px">
-          Pagarás en el checkout de Shopify con Mercado Pago. Los cobros recurrentes se activan por email.
+          Serás redirigido a Mercado Pago para autorizar tu suscripción. El descuento aplica por permanencia.
         </div>
       </div>
     </div>
@@ -712,15 +730,19 @@
       }
     };
 
-    // Modal submit → Add to cart WITH subscription properties → go to Shopify checkout
+    // Modal submit → Save address + Create MP checkout → Redirect to MP
     var mBtn = document.getElementById('m-btn-' + blkId);
     if (mBtn) {
       mBtn.addEventListener('click', function() {
         var name = (document.getElementById('m-name-' + blkId) || {}).value;
         var email = (document.getElementById('m-email-' + blkId) || {}).value;
-        if (!name || !email || !email.includes('@')) {
+        var phone = (document.getElementById('m-phone-' + blkId) || {}).value || '';
+        var addr1 = (document.getElementById('m-addr-' + blkId) || {}).value;
+        var city = (document.getElementById('m-city-' + blkId) || {}).value;
+        var province = (document.getElementById('m-province-' + blkId) || {}).value || 'Lima';
+        if (!name || !email || !email.includes('@') || !addr1 || !city) {
           var msgEl = document.getElementById('m-msg-' + blkId);
-          if (msgEl) { msgEl.style.display = 'block'; msgEl.style.background = '#fee2e2'; msgEl.style.color = '#991b1b'; msgEl.textContent = 'Completa tu nombre y email.'; }
+          if (msgEl) { msgEl.style.display = 'block'; msgEl.style.background = '#fee2e2'; msgEl.style.color = '#991b1b'; msgEl.textContent = 'Completa nombre, email, dirección y distrito.'; }
           return;
         }
         var plan = selectedPlanKey && activePlans.find(function(p) { return p.key === selectedPlanKey; });
@@ -738,47 +760,50 @@
         }
         var finalPriceNum = parseFloat(finalPrice.toFixed(2));
         var discNum = parseFloat(rawDisc.toFixed(2));
-        var variantId = parseInt(wrap.dataset.variant);
-        var planLabel = plan ? plan.label : ('Mensual · ' + currentPerm + ' meses');
-        mBtn.disabled = true; mBtn.textContent = 'Agregando al carrito...';
+        var backendUrl = wrap.dataset.backend || 'https://pixel-suite-pro-production.up.railway.app';
+        mBtn.disabled = true; mBtn.textContent = 'Procesando...';
 
-        // Add to cart with subscription properties (detected by orders/paid webhook)
-        fetch('/cart/add.js', {
+        // Build shipping address
+        var nameParts = name.trim().split(' ');
+        var shippingAddress = {
+          first_name: nameParts[0] || name,
+          last_name: nameParts.slice(1).join(' ') || '',
+          address1: addr1,
+          city: city,
+          province: province,
+          country: 'PE',
+          country_code: 'PE',
+          phone: phone
+        };
+
+        // Create MP checkout via backend (saves subscription + returns MP init_point)
+        fetch(backendUrl + '/api/subscriptions/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            id: variantId,
-            quantity: 1,
-            properties: {
-              '_subscription': 'true',
-              '_frequency': String(currentFreq),
-              '_permanence': String(currentPerm),
-              '_discount_pct': String(discNum),
-              '_final_price': String(finalPriceNum),
-              '_base_price': String(base),
-              '_plan_label': planLabel,
-              '_customer_name': name,
-              '_customer_email': email,
-              'Suscripción': planLabel + ' | ' + Math.round(discNum) + '% OFF',
-              'Precio suscriptor': 'S/ ' + finalPriceNum.toFixed(2) + '/mes'
-            }
+            customer_name: name,
+            customer_email: email,
+            customer_phone: phone,
+            product_id: wrap.dataset.product,
+            variant_id: wrap.dataset.variant,
+            product_title: wrap.dataset.title,
+            base_price: base,
+            final_price: finalPriceNum,
+            discount_pct: discNum,
+            frequency_months: currentFreq,
+            permanence_months: currentPerm,
+            free_shipping: false,
+            shipping_address: shippingAddress
           })
         })
         .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (data.id) {
-            labCartUpdate();
-            var msgEl = document.getElementById('m-msg-' + blkId);
-            if (msgEl) { msgEl.style.display = 'block'; msgEl.style.background = '#dcfce7'; msgEl.style.color = '#166534'; msgEl.textContent = '✓ Suscripción agregada al carrito'; }
-            mBtn.textContent = '✓ Ir al checkout →';
+        .then(function(d) {
+          if (d.init_point || d.url) {
+            mBtn.textContent = '✓ Redirigiendo a Mercado Pago...';
             mBtn.style.background = '#2E7D49';
-            // Close modal and redirect to checkout after brief delay
-            setTimeout(function() {
-              document.getElementById('lab-modal-' + blkId).style.display = 'none';
-              window.location.href = '/checkout';
-            }, 1500);
+            setTimeout(function() { window.location.href = d.init_point || d.url; }, 500);
           } else {
-            throw new Error(data.description || 'Error al agregar');
+            throw new Error(d.error || 'No se pudo crear el checkout');
           }
         })
         .catch(function(err) {
