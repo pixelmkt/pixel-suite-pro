@@ -365,6 +365,8 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
         const perm         = parseInt(b.permanence_months || b.permanenceMonths || 3);
         const freeShip     = b.free_shipping    || b.freeShipping   || false;
         const shipAddr     = b.shipping_address || null;
+        const tipDoc       = b.tipo_documento   || '01';
+        const dni          = b.dni              || '';
 
         if (!email || !freq || !perm || !finalPrice) {
             return res.status(400).json({ error: 'Faltan datos: email, frecuencia, permanencia y precio son obligatorios.' });
@@ -418,6 +420,8 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
             cycles_completed: 0,
             free_shipping: freeShip,
             shipping_address: shipAddr,
+            tipo_documento: tipDoc,
+            dni: dni,
             next_charge_at: null,
             created_at: new Date().toISOString()
         };
@@ -1879,6 +1883,22 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
 
     if (!variantId) console.warn(`[ORDER] ⚠️ Creating order WITHOUT variant_id for ${sub.customer_email} — using custom line item "${lineItem.title}"`);
 
+    // Build note_attributes so Navasoft picks up the order
+    const addr = shippingAddr || {};
+    const noteAttrs = [
+        { name: 'tipo_documento', value: sub.tipo_documento || '01' },
+        { name: 'dni', value: sub.dni || '' },
+        { name: 'ClusterCart-tipo_documento', value: sub.tipo_documento || '01' },
+        { name: 'ClusterCart-dni', value: sub.dni || '' },
+        { name: 'location_departamento', value: addr.province || 'Lima' },
+        { name: 'location_provincia', value: addr.province || 'Lima' },
+        { name: 'location_distrito', value: addr.city || '' },
+        { name: 'payment_type', value: 'credit_card' },
+        { name: 'payment_method', value: 'mercadopago_suscripcion' },
+        { name: 'payment_transaction_amount', value: String(parseFloat(mpAmount).toFixed(2)) },
+        { name: 'additional_info_shipping_full_address', value: addr.address1 || '' }
+    ].filter(a => a.value);
+
     const orderBody = {
         order: {
             email: sub.customer_email,
@@ -1888,7 +1908,9 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             line_items: [lineItem],
             note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
             tags: 'suscripcion',
-            shipping_address: shippingAddr || undefined
+            note_attributes: noteAttrs,
+            shipping_address: shippingAddr || undefined,
+            billing_address: shippingAddr || undefined
         }
     };
 
