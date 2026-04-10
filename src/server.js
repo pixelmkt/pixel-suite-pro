@@ -995,7 +995,6 @@ async function autoImportMpSubs(existing = []) {
     if (!r.ok) { console.warn('[AUTO-IMPORT] MP search failed:', r.status); return []; }
     const mpData = await r.json();
     const preapprovals = mpData?.results || [];
-    if (!preapprovals.length) return [];
 
     const allLocal = await db.getSubscriptions().catch(() => []);
     const existingIds = new Set(allLocal.map(s => s.mp_preapproval_id).filter(Boolean));
@@ -1008,18 +1007,19 @@ async function autoImportMpSubs(existing = []) {
                 // Look up MP preapproval for actual repetitions
                 const mpPre = preapprovals.find(p => p.id === loc.mp_preapproval_id);
                 const reps = mpPre?.auto_recurring?.repetitions;
-                const correctedPermanence = reps ? reps * freq : freq;
-                const correctedCycles = reps || 1;
-                if (correctedPermanence !== 12 || correctedCycles !== 12) {
-                    await db.updateSubscription(loc.id, {
-                        permanence_months: correctedPermanence,
-                        cycles_required: correctedCycles
-                    });
-                    console.log(`[AUTO-IMPORT] Fixed permanence for ${loc.customer_email}: 12 → ${correctedPermanence} months, cycles: ${correctedCycles}`);
-                }
+                // If MP has repetitions, use them; otherwise default to plan-based permanence
+                const correctedPermanence = reps ? reps * freq : freq * 3; // 3 months default for monthly
+                const correctedCycles = reps || 3;
+                await db.updateSubscription(loc.id, {
+                    permanence_months: correctedPermanence,
+                    cycles_required: correctedCycles
+                });
+                console.log(`[AUTO-IMPORT] Fixed permanence for ${loc.customer_email}: 12 → ${correctedPermanence} months, cycles: ${correctedCycles}`);
             } catch (e) { console.warn('[AUTO-IMPORT] Fix permanence error:', e.message); }
         }
     }
+
+    if (!preapprovals.length) return [];
 
     const imported = [];
     for (const pre of preapprovals) {
