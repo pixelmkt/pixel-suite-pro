@@ -1,5 +1,14 @@
 {{ 'lab-sub.css' | asset_url | stylesheet_tag }}
 <style>
+  #lab-sub-{{ block.id }} {
+    --lab-bg: {{ block.settings.color_bg | default: '#ffffff' }};
+    --lab-benefit-bg: {{ block.settings.color_benefit | default: 'rgba(157, 42, 35, 0.05)' }};
+    --lab-tab-bg: {{ block.settings.color_tab_bg | default: '#f9fafb' }};
+    --lab-tab-act: {{ block.settings.color_tab_act | default: '#ffffff' }};
+    --lab-tab-text: {{ block.settings.color_tab_text | default: '#6b7280' }};
+    --lab-tab-act-text: {{ block.settings.color_tab_act_text | default: '#9d2a23' }};
+    --lab-tab-size: {{ block.settings.font_size_tabs | default: 13 }}px;
+  }
   /* Ocultar selector nativo de selling plans del tema — usamos nuestro widget */
   .product-form__input--selling-plan,
   .shopify-payment-terms,
@@ -41,6 +50,11 @@
   data-price="{{ sale_float }}"
   data-compare="{{ compare_float }}"
   data-currency="{{ currency }}"
+  data-cur-symbol="{{ block.settings.currency_sym | escape }}"
+  data-p1="{{ block.settings.plan_1_price | escape }}"
+  data-p2="{{ block.settings.plan_2_price | escape }}"
+  data-p3="{{ block.settings.plan_3_price | escape }}"
+  data-p4="{{ block.settings.plan_4_price | escape }}"
   data-title="{{ product.title | escape }}"
   data-handle="{{ product.handle }}"
   data-backend="{{ backend_url }}"
@@ -63,14 +77,17 @@
     {% if free_ship %}
     <div class="lab-sub__free-ship">🚚 Envío gratis incluido</div>
     {% endif %}
-    <button class="lab-sub__cta" id="once-cta-{{ block.id }}" onclick="labSubAddOnce('{{ block.id }}')">
-      <span class="lab-sub__cta-text">Agregar al carrito</span>
-      <span class="lab-sub__cta-arrow">→</span>
-    </button>
   </div>
 
   <!-- SUBSCRIPTION PANEL -->
   <div class="lab-sub__panel" data-panel="sub">
+
+    <!-- Variant restriction notice — only shows when non-eligible variant is selected -->
+    <div class="lab-sub__variant-notice" id="variant-notice-{{ block.id }}" style="display:none;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:10px;padding:14px 16px;margin-bottom:16px;text-align:center">
+      <div style="font-size:13px;font-weight:700;color:#92400e">⚠️ {{ block.settings.variant_notice_text | default: 'Suscripción disponible solo para la presentación de 500g' }}</div>
+      <div style="font-size:12px;color:#78716c;margin-top:4px">Selecciona la variante de <strong>500g</strong> para acceder a los planes de suscripción con descuento.</div>
+    </div>
+    <div id="sub-content-{{ block.id }}">
 
     {% if has_plans %}
       <!-- ── SHOPIFY NATIVE SELLING PLANS ────────────────────────────── -->
@@ -128,11 +145,10 @@
 
       {% if block.settings.show_perks %}
       <div class="lab-sub__perks">
-        <div class="lab-sub__perk">⏸ Pausa hasta 2 meses</div>
-        <div class="lab-sub__perk">⏭ Salta un envío</div>
-        <div class="lab-sub__perk">🚚 Envío automático</div>
-        {% if free_ship %}<div class="lab-sub__perk">🎁 Envío gratis</div>{% endif %}
-        <div class="lab-sub__perk">❌ Cancela cuando quieras</div>
+        {% if block.settings.perk_1 != blank %}<div class="lab-sub__perk">{{ block.settings.perk_1 | escape }}</div>{% endif %}
+        {% if block.settings.perk_2 != blank %}<div class="lab-sub__perk">{{ block.settings.perk_2 | escape }}</div>{% endif %}
+        {% if block.settings.perk_3 != blank %}<div class="lab-sub__perk">{{ block.settings.perk_3 | escape }}</div>{% endif %}
+        {% if block.settings.perk_4 != blank %}<div class="lab-sub__perk">{{ block.settings.perk_4 | escape }}</div>{% endif %}
       </div>
       {% endif %}
 
@@ -149,22 +165,17 @@
       </p>
 
     {% else %}
-      <!-- ── FALLBACK: planes cargados desde backend (antes del Sync) ──── -->
+      <!-- ── FALLBACK: planes cargados desde backend ──── -->
+      <!-- Note: actual plans are loaded dynamically from backend via loadConfig() -->
       <div class="lab-sub__group">
-        <p class="lab-sub__label">Frecuencia de envío</p>
-        <div class="lab-sub__chips" id="freq-{{ block.id }}">
-          <button class="lab-sub__chip lab-sub__chip--active" data-freq="1">Mensual</button>
-          <button class="lab-sub__chip" data-freq="2">Bimestral</button>
+        <p class="lab-sub__label">Elige tu plan</p>
+        <div class="lab-sub__chips" id="plan-chips-{{ block.id }}">
+          <button class="lab-sub__chip lab-sub__chip--active" data-plan-key="m1_p3">Mensual · 3 meses</button>
+          <button class="lab-sub__chip" data-plan-key="m1_p6">Mensual · 6 meses</button>
         </div>
       </div>
-
-      <div class="lab-sub__group">
-        <p class="lab-sub__label">Permanencia</p>
-        <div class="lab-sub__chips" id="perm-{{ block.id }}">
-          <button class="lab-sub__chip lab-sub__chip--active" data-perm="3">3 meses</button>
-          <button class="lab-sub__chip" data-perm="6">6 meses</button>
-          <button class="lab-sub__chip lab-sub__chip--star" data-perm="12">12 meses</button>
-        </div>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#166534;text-align:center">
+        📦 Aplica para <strong>Creatina Monohidratada 500g</strong> · Envío mensual automático
       </div>
 
       {% if block.settings.show_benefit_box %}
@@ -182,11 +193,10 @@
 
       {% if block.settings.show_perks %}
       <div class="lab-sub__perks">
-        <div class="lab-sub__perk">Pausa hasta 2 meses</div>
-        <div class="lab-sub__perk">Salta 1 envío</div>
-        <div class="lab-sub__perk">Envío automático</div>
-        {% if free_ship %}<div class="lab-sub__perk">Envío gratis</div>{% endif %}
-        <div class="lab-sub__perk">Sin letra chica</div>
+        {% if block.settings.perk_1 != blank %}<div class="lab-sub__perk">{{ block.settings.perk_1 | escape }}</div>{% endif %}
+        {% if block.settings.perk_2 != blank %}<div class="lab-sub__perk">{{ block.settings.perk_2 | escape }}</div>{% endif %}
+        {% if block.settings.perk_3 != blank %}<div class="lab-sub__perk">{{ block.settings.perk_3 | escape }}</div>{% endif %}
+        {% if block.settings.perk_4 != blank %}<div class="lab-sub__perk">{{ block.settings.perk_4 | escape }}</div>{% endif %}
       </div>
       {% endif %}
 
@@ -201,6 +211,7 @@
       <div id="lab-msg-{{ block.id }}" style="display:none;padding:8px 12px;border-radius:6px;font-size:12px;margin-top:8px;text-align:center"></div>
     {% endif %}
 
+  </div>{%- comment -%}close #sub-content{%- endcomment -%}
   </div>
 
   {% if block.settings.show_social %}
@@ -275,6 +286,59 @@
     });
   });
 
+  // ── HELPER: actualización instantánea del carrito ────────────────
+  function labCartUpdate() {
+    // 1. Leer carrito actualizado
+    fetch('/cart.js').then(function(r) { return r.json(); }).then(function(cart) {
+      var count = cart.item_count;
+      // 2. Actualizar TODOS los posibles selectores del contador
+      var selectors = [
+        '.cart-bubble__text span',         // Lab Nutrition / Cluster theme
+        '.cart-count-bubble span',         // Dawn theme
+        '[data-cart-count]',               // Generic
+        '.cart-count',                     // Generic
+        '#cart-icon-bubble span',          // Some themes
+        '.header__cart-count'              // Other themes
+      ];
+      selectors.forEach(function(sel) {
+        document.querySelectorAll(sel).forEach(function(el) { el.textContent = count; });
+      });
+      // 3. Mostrar la burbuja del carrito si estaba oculta
+      document.querySelectorAll('.cart-bubble, .cart-count-bubble').forEach(function(el) {
+        el.style.display = '';
+        el.removeAttribute('hidden');
+      });
+    }).catch(function() {});
+
+    // 4. Refrescar el cart-drawer via Section Rendering API (instantáneo)
+    var drawerSection = document.querySelector('cart-drawer');
+    if (drawerSection) {
+      var sectionId = drawerSection.closest('[id^="shopify-section"]');
+      if (sectionId) {
+        var secName = sectionId.id.replace('shopify-section-', '');
+        fetch('/?sections=' + secName).then(function(r) { return r.json(); }).then(function(sections) {
+          if (sections[secName]) {
+            var tmp = document.createElement('div');
+            tmp.innerHTML = sections[secName];
+            var newDrawer = tmp.querySelector('cart-drawer') || tmp.querySelector('.cart-drawer');
+            if (newDrawer && drawerSection) {
+              drawerSection.innerHTML = newDrawer.innerHTML;
+            }
+          }
+        }).catch(function() {});
+      }
+      // Intentar abrir el drawer
+      try {
+        if (typeof drawerSection.open === 'function') drawerSection.open();
+        else if (drawerSection.querySelector('details')) drawerSection.querySelector('details').setAttribute('open', '');
+        else drawerSection.classList.add('is-open', 'active');
+      } catch(e) {}
+    }
+    // 5. Disparar eventos personalizados para que el tema reaccione
+    document.dispatchEvent(new CustomEvent('cart:refresh'));
+    document.dispatchEvent(new CustomEvent('cart:updated'));
+  }
+
   // ── COMPRA ÚNICA: añadir al carrito sin selling_plan ───────────
   window.labSubAddOnce = function(id) {
     if (id !== blkId) return;
@@ -291,13 +355,7 @@
     .then(function(data) {
       if (data.id) {
         if (btn) { btn.querySelector('.lab-sub__cta-text').textContent = '✓ Añadido al carrito'; btn.style.background = '#2E7D49'; }
-        // Update cart count in theme header if available
-        fetch('/cart.js').then(function(r){return r.json()}).then(function(c){
-          document.querySelectorAll('.cart-count-bubble span, [data-cart-count], .cart-count').forEach(function(el){el.textContent=c.item_count});
-        }).catch(function(){});
-        // Try to open theme's native cart drawer
-        if (document.querySelector('cart-notification')) { document.querySelector('cart-notification').renderContents(data); }
-        else if (document.querySelector('cart-drawer')) { document.querySelector('cart-drawer').renderContents(data); }
+        labCartUpdate();
         setTimeout(function() {
           if (btn) { btn.disabled = false; btn.querySelector('.lab-sub__cta-text').textContent = 'Agregar al carrito'; btn.style.background = ''; }
         }, 2500);
@@ -355,7 +413,6 @@
   window.labSubAddWithPlan = function(id) {
     if (id !== blkId) return;
     var variantId = parseInt(wrap.dataset.variant);
-    // Lee el plan de la card seleccionada (ya no hay radio inputs)
     var selectedCard = wrap.querySelector('.lab-sub__plan-card--selected');
     if (!selectedCard || !selectedCard.dataset.planId) {
       alert('Selecciona un plan primero'); return;
@@ -375,13 +432,7 @@
       if (data.id) {
         if (txt) txt.textContent = '✓ Añadido al carrito';
         if (btn) btn.style.background = '#2E7D49';
-        // Update cart count
-        fetch('/cart.js').then(function(r){return r.json()}).then(function(c){
-          document.querySelectorAll('.cart-count-bubble span, [data-cart-count], .cart-count').forEach(function(el){el.textContent=c.item_count});
-        }).catch(function(){});
-        // Try native cart drawer
-        if (document.querySelector('cart-notification')) { document.querySelector('cart-notification').renderContents(data); }
-        else if (document.querySelector('cart-drawer')) { document.querySelector('cart-drawer').renderContents(data); }
+        labCartUpdate();
         setTimeout(function() {
           if (btn) { btn.disabled = false; btn.style.background = ''; }
           if (txt) txt.textContent = 'Suscribirme →';
@@ -408,6 +459,23 @@
   // ── VARIANT-AWARE: actualizar precio cuando cambia variante ───
   var productHandle = '{{ product.handle }}';
 
+  // ── VARIANT RESTRICTION: subscriptions only for specific variants ──
+  var eligibleVariantsRaw = '{{ block.settings.eligible_variant_ids | default: "" }}';
+  var eligibleVariants = eligibleVariantsRaw ? eligibleVariantsRaw.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+  var noticeEl = document.getElementById('variant-notice-' + blkId);
+  var subContentEl = document.getElementById('sub-content-' + blkId);
+
+  function checkVariantEligibility(variantId) {
+    // If no restriction configured, all variants are eligible
+    if (!eligibleVariants.length) return;
+    var isEligible = eligibleVariants.indexOf(String(variantId)) !== -1;
+    if (noticeEl) noticeEl.style.display = isEligible ? 'none' : 'block';
+    if (subContentEl) subContentEl.style.display = isEligible ? '' : 'none';
+  }
+
+  // Check on load
+  checkVariantEligibility(wrap.dataset.variant);
+
   function updateForVariant(v) {
     if (!v || !v.id) return;
     var price = v.price;
@@ -429,6 +497,8 @@
       if (compEl) compEl.style.display = 'none';
       if (pctEl) pctEl.style.display = 'none';
     }
+    // Check variant eligibility for subscriptions
+    checkVariantEligibility(v.id);
   }
 
   function fetchVariant(variantId) {
@@ -494,21 +564,28 @@
       chipsHtml += '</div></div>';
 
       // Benefit box
+      {% if block.settings.show_benefit_box %}
       chipsHtml += '<div class="lab-sub__benefit" id="benefit-' + blkId + '">' +
         '<div class="lab-sub__benefit-top">' +
         '<div class="lab-sub__pct" id="pct-' + blkId + '">–% OFF</div>' +
         '<div class="lab-sub__prices"><span class="lab-sub__was" id="was-' + blkId + '"></span><span class="lab-sub__now" id="now-' + blkId + '"></span></div>' +
         '</div><div class="lab-sub__saving" id="saving-' + blkId + '"></div></div>';
+      {% endif %}
 
       // Perks
+      {% if block.settings.show_perks %}
       chipsHtml += '<div class="lab-sub__perks">' +
-        '<div class="lab-sub__perk">Pausa hasta 2 meses</div>' +
-        '<div class="lab-sub__perk">Salta 1 envío</div>' +
-        '<div class="lab-sub__perk">Envío automático</div>' +
+        {% if block.settings.perk_1 != blank %} '<div class="lab-sub__perk">{{ block.settings.perk_1 | escape }}</div>' + {% endif %}
+        {% if block.settings.perk_2 != blank %} '<div class="lab-sub__perk">{{ block.settings.perk_2 | escape }}</div>' + {% endif %}
+        {% if block.settings.perk_3 != blank %} '<div class="lab-sub__perk">{{ block.settings.perk_3 | escape }}</div>' + {% endif %}
+        {% if block.settings.perk_4 != blank %} '<div class="lab-sub__perk">{{ block.settings.perk_4 | escape }}</div>' + {% endif %}
         '</div>';
+      {% endif %}
 
       // Legal
-      chipsHtml += '<div class="lab-sub__legal">{{ legal_txt }}</div>';
+      {% if block.settings.show_legal %}
+      chipsHtml += '<div class="lab-sub__legal">{{ legal_txt | escape }}</div>';
+      {% endif %}
 
       // CTA
       chipsHtml += '<button class="lab-sub__cta" id="cta-' + blkId + '" onclick="labSubOpenModal(\'' + blkId + '\')">' +
@@ -536,21 +613,30 @@
 
     function renderSelectedPlan(plan) {
       if (!plan) return;
-      var disc = plan.discount || 0;
       var base = parseFloat(wrap.dataset.price || 0);
-      var cur = wrap.dataset.currency || 'PEN';
-      var finalPrice = (base * (1 - disc / 100)).toFixed(2);
-      var saving = (base - parseFloat(finalPrice)).toFixed(2);
+      var cur = wrap.dataset.curSymbol || wrap.dataset.currency || 'PEN';
+      var forceP = plan.forcePrice;
+      var rawDisc, finalPrice;
+      if (plan.hasForce) {
+        finalPrice = forceP;
+        rawDisc = ((base - finalPrice) / base) * 100;
+      } else {
+        var apiDisc = plan.discount || 0;
+        rawDisc = apiDisc;
+        finalPrice = base * (1 - rawDisc / 100);
+      }
+      var saving = (base - finalPrice).toFixed(2);
+      var displayDisc = Math.round(rawDisc);
       var pctEl = document.getElementById('pct-' + blkId);
       var nowEl = document.getElementById('now-' + blkId);
       var wasEl = document.getElementById('was-' + blkId);
       var savEl = document.getElementById('saving-' + blkId);
       var ctaTxt = document.getElementById('cta-txt-' + blkId);
-      if (pctEl) pctEl.textContent = disc + '% OFF';
-      if (nowEl) nowEl.textContent = cur + ' ' + finalPrice;
-      if (wasEl) wasEl.textContent = disc > 0 ? cur + ' ' + base.toFixed(2) : '';
-      if (savEl) savEl.textContent = disc > 0 ? 'Ahorras ' + cur + ' ' + saving + ' por envío' : '';
-      if (ctaTxt) ctaTxt.textContent = 'Suscribirme — ' + disc + '% OFF →';
+      if (pctEl) pctEl.textContent = displayDisc + '% OFF';
+      if (nowEl) nowEl.textContent = cur + ' ' + finalPrice.toFixed(2);
+      if (wasEl) wasEl.textContent = rawDisc > 0 ? cur + ' ' + base.toFixed(2) : '';
+      if (savEl) savEl.textContent = rawDisc > 0 ? 'Ahorras ' + cur + ' ' + saving + ' por envío' : '';
+      if (ctaTxt) ctaTxt.textContent = 'Suscribirme — ' + displayDisc + '% OFF →';
     }
 
     function loadConfig() {
@@ -580,7 +666,17 @@
               { key: 'm2_p12', label: 'Bimestral · 12 meses', frequency: 2, permanence: 12, discount: cfg.discounts.m2_p12 || 30, enabled: true },
             ];
           }
-          if (activePlans.length) buildChipsFromPlans(activePlans);
+          if (activePlans.length) {
+            var overrides = [wrap.dataset.p1, wrap.dataset.p2, wrap.dataset.p3, wrap.dataset.p4];
+            activePlans.forEach(function(p, i) {
+              var o = overrides[i];
+              if (o) {
+                p.forcePrice = parseFloat(o.replace(',', '.'));
+                p.hasForce = !isNaN(p.forcePrice);
+              }
+            });
+            buildChipsFromPlans(activePlans);
+          }
         })
         .catch(function() {});
     }
@@ -598,16 +694,26 @@
         var discEl = document.getElementById('modal-disc-' + id);
         var savingEl = document.getElementById('modal-saving-' + id);
         var base = parseFloat(wrap.dataset.price || 0);
-        var cur = wrap.dataset.currency || 'PEN';
-        var finalP = (base * (1 - plan.discount / 100)).toFixed(2);
+        var cur = wrap.dataset.curSymbol || wrap.dataset.currency || 'PEN';
+        var rawDisc, finalPrice;
+        if (plan && plan.hasForce) {
+          finalPrice = plan.forcePrice;
+          rawDisc = ((base - finalPrice) / base) * 100;
+        } else {
+          var apiD = plan ? plan.discount : 0;
+          rawDisc = apiD;
+          finalPrice = base * (1 - rawDisc / 100);
+        }
+        var displayDisc = Math.round(rawDisc);
+        var finalP_fmt = finalPrice.toFixed(2);
         if (title) title.textContent = plan.label || 'Suscripción';
-        if (priceEl) priceEl.textContent = cur + ' ' + finalP;
-        if (discEl) discEl.textContent = plan.discount + '% OFF';
-        if (savingEl) savingEl.textContent = 'Ahorras ' + cur + ' ' + (base - parseFloat(finalP)).toFixed(2);
+        if (priceEl) priceEl.textContent = cur + ' ' + finalP_fmt;
+        if (discEl) discEl.textContent = displayDisc + '% OFF';
+        if (savingEl) savingEl.textContent = 'Ahorras ' + cur + ' ' + (base - finalPrice).toFixed(2);
       }
     };
 
-    // Modal submit → MP checkout
+    // Modal submit → Add to cart + MP checkout
     var mBtn = document.getElementById('m-btn-' + blkId);
     if (mBtn) {
       mBtn.addEventListener('click', function() {
@@ -621,47 +727,86 @@
         var plan = selectedPlanKey && activePlans.find(function(p) { return p.key === selectedPlanKey; });
         var currentFreq = plan ? plan.frequency : 1;
         var currentPerm = plan ? plan.permanence : 3;
-        var disc = plan ? plan.discount : 10;
         var base = parseFloat(wrap.dataset.price || 0);
-        var finalPrice = parseFloat((base * (1 - disc / 100)).toFixed(2));
+        var rawDisc, finalPrice;
+        if (plan && plan.hasForce) {
+          finalPrice = plan.forcePrice;
+          rawDisc = ((base - finalPrice) / base) * 100;
+        } else {
+          var apiDisc = plan ? plan.discount : 10;
+          rawDisc = apiDisc;
+          finalPrice = base * (1 - rawDisc / 100);
+        }
+        var finalPriceNum = parseFloat(finalPrice.toFixed(2));
+        var discNum = parseFloat(rawDisc.toFixed(2));
         var backendUrl = wrap.dataset.backend || 'https://pixel-suite-pro-production.up.railway.app';
-        mBtn.disabled = true; mBtn.textContent = 'Procesando...';
-        fetch(backendUrl + '/api/subscriptions/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            // snake_case (v6.2.3+ backend)
-            customer_name: name,
-            customer_email: email,
-            phone: (document.getElementById('m-phone-' + blkId) || {}).value || '',
-            product_id: wrap.dataset.product,
-            variant_id: wrap.dataset.variant,
-            product_title: wrap.dataset.title,
-            base_price: base,
-            final_price: finalPrice,
-            discount_pct: disc,
-            frequency_months: currentFreq,
-            permanence_months: currentPerm,
-            free_shipping: wrap.dataset.freeShip === 'true',
-            // camelCase (v6.2.0 backend — backwards compat)
-            customerName: name,
-            customerEmail: email,
-            customerPhone: (document.getElementById('m-phone-' + blkId) || {}).value || '',
-            productId: wrap.dataset.product,
-            variantId: wrap.dataset.variant,
-            productTitle: wrap.dataset.title,
-            basePrice: base,
-            finalPrice: finalPrice,
-            discountPct: disc,
-            frequencyMonths: currentFreq,
-            permanenceMonths: currentPerm,
-            freeShipping: wrap.dataset.freeShip === 'true'
-          })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          if (d.init_point || d.url) window.location.href = d.init_point || d.url;
-          else throw new Error(d.error || 'No se pudo crear el pago');
+        var variantId = parseInt(wrap.dataset.variant);
+        mBtn.disabled = true; mBtn.textContent = 'Añadiendo al carrito...';
+
+        // PASO 1: Agregar producto al carrito en tiempo real
+        var addToCartPromise = variantId
+          ? fetch('/cart/add.js', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: variantId, quantity: 1 })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(cartData) {
+              if (cartData.id) {
+                // Actualizar carrito en tiempo real
+                labCartUpdate();
+                // Mostrar confirmación
+                var msgEl = document.getElementById('m-msg-' + blkId);
+                if (msgEl) { msgEl.style.display = 'block'; msgEl.style.background = '#dcfce7'; msgEl.style.color = '#166534'; msgEl.textContent = '✓ Producto añadido al carrito'; }
+              }
+              return cartData;
+            })
+            .catch(function() { return null; })
+          : Promise.resolve(null);
+
+        // PASO 2: Crear checkout MP (en paralelo o después)
+        mBtn.textContent = 'Procesando suscripción...';
+        Promise.all([
+          addToCartPromise,
+          fetch(backendUrl + '/api/subscriptions/checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              customer_name: name,
+              customer_email: email,
+              phone: (document.getElementById('m-phone-' + blkId) || {}).value || '',
+              product_id: wrap.dataset.product,
+              variant_id: wrap.dataset.variant,
+              product_title: wrap.dataset.title,
+              base_price: base,
+              final_price: finalPriceNum,
+              discount_pct: discNum,
+              frequency_months: currentFreq,
+              permanence_months: currentPerm,
+              free_shipping: wrap.dataset.freeShip === 'true',
+              customerName: name,
+              customerEmail: email,
+              customerPhone: (document.getElementById('m-phone-' + blkId) || {}).value || '',
+              productId: wrap.dataset.product,
+              variantId: wrap.dataset.variant,
+              productTitle: wrap.dataset.title,
+              basePrice: base,
+              finalPrice: finalPriceNum,
+              discountPct: discNum,
+              frequencyMonths: currentFreq,
+              permanenceMonths: currentPerm,
+              freeShipping: wrap.dataset.freeShip === 'true'
+            })
+          }).then(function(r) { return r.json(); })
+        ])
+        .then(function(results) {
+          var d = results[1]; // MP checkout response
+          if (d.init_point || d.url) {
+            mBtn.textContent = '✓ Redirigiendo a Mercado Pago...';
+            setTimeout(function() { window.location.href = d.init_point || d.url; }, 500);
+          } else {
+            throw new Error(d.error || 'No se pudo crear el pago');
+          }
         })
         .catch(function(err) {
           var msgEl = document.getElementById('m-msg-' + blkId);
@@ -685,23 +830,39 @@
   "name": "LAB Subscription Widget",
   "target": "section",
   "settings": [
-    { "type": "header", "content": "Conexión Backend" },
     { "type": "text", "id": "backend_url", "label": "URL del backend (Railway)", "default": "https://pixel-suite-pro-production.up.railway.app" },
-    { "type": "header", "content": "Textos" },
     { "type": "text", "id": "text_btn_once", "label": "Botón — Compra única", "default": "Compra única" },
     { "type": "text", "id": "text_btn_sub", "label": "Botón — Suscripción", "default": "Suscripción" },
     { "type": "text", "id": "badge_text", "label": "Badge de descuento", "default": "HASTA -30%" },
-    { "type": "textarea", "id": "text_legal", "label": "Aviso legal de cancelación", "default": "Cancelación disponible entre los días 30 y 15 antes de cada envío, una vez completada la permanencia." },
-    { "type": "header", "content": "Apariencia" },
     { "type": "color", "id": "primary_color", "label": "Color primario", "default": "#9d2a23" },
-    { "type": "header", "content": "Envío gratis" },
     { "type": "checkbox", "id": "free_shipping", "label": "Activar envío gratis en suscripciones", "default": false },
-    { "type": "header", "content": "Mostrar / Ocultar" },
+    { "type": "textarea", "id": "text_legal", "label": "Aviso legal general", "default": "Cancelación disponible entre los días 30 y 15 antes de cada envío, una vez completada la permanencia." },
+    { "type": "color", "id": "color_bg", "label": "Color de Fondo General", "default": "#ffffff" },
+    { "type": "color", "id": "color_benefit", "label": "Color Fondo Ahorros (Caja)", "default": "#fdf2f2" },
+    { "type": "text", "id": "currency_sym", "label": "Símbolo de Moneda Visual", "default": "S/ ", "info": "Útil para esconder el default del sistema (PEN)." },
+    { "type": "text", "id": "plan_1_price", "label": "Precio Final - Plan #1 (S/)", "info": "Sobreescribe el precio del plan en la 1ra posición visual (Ej: 90.00)." },
+    { "type": "text", "id": "plan_2_price", "label": "Precio Final - Plan #2 (S/)", "info": "Sobreescribe el precio del plan en la 2da posición visual (Ej: 85.00)." },
+    { "type": "text", "id": "plan_3_price", "label": "Precio Final - Plan #3 (S/)", "info": "Sobreescribe el precio del plan en la 3ra posición visual." },
+    { "type": "text", "id": "plan_4_price", "label": "Precio Final - Plan #4 (S/)", "info": "Sobreescribe el precio del plan en la 4ta posición visual." },
+    { "type": "color", "id": "color_tab_bg", "label": "Color de Fondo Selector (Gris)", "default": "#f9fafb" },
+    { "type": "color", "id": "color_tab_act", "label": "Color Botón Selección (Activo)", "default": "#ffffff" },
+    { "type": "color", "id": "color_tab_text", "label": "Color Texto Apagado", "default": "#6b7280" },
+    { "type": "color", "id": "color_tab_act_text", "label": "Color Texto Encendido", "default": "#9d2a23" },
+    { "type": "range", "id": "font_size_tabs", "min": 10, "max": 24, "step": 1, "unit": "px", "label": "Tamaño Letra (Selector)", "default": 13 },
+    { "type": "header", "content": "Visibilidad de Bloques" },
     { "type": "checkbox", "id": "show_badge", "label": "Mostrar badge de descuento en tab", "default": true },
-    { "type": "checkbox", "id": "show_benefit_box", "label": "Mostrar caja de beneficios (precio + ahorro) — solo fallback", "default": true },
-    { "type": "checkbox", "id": "show_perks", "label": "Mostrar beneficios (Pausa, Salta envío, etc)", "default": true },
-    { "type": "checkbox", "id": "show_social", "label": "Mostrar prueba social (suscriptores activos)", "default": true },
-    { "type": "checkbox", "id": "show_legal", "label": "Mostrar aviso legal de cancelación", "default": true }
+    { "type": "checkbox", "id": "show_benefit_box", "label": "Mostrar caja M principal (precio + ahorro)", "default": true },
+    { "type": "checkbox", "id": "show_social", "label": "Mostrar prueba social (suscriptores)", "default": true },
+    { "type": "checkbox", "id": "show_legal", "label": "Mostrar aviso legal local", "default": true },
+    { "type": "checkbox", "id": "show_perks", "label": "Mostrar Bloque Beneficios", "default": true },
+    { "type": "header", "content": "Textos de Beneficios" },
+    { "type": "text", "id": "perk_1", "label": "Beneficio 1 (Pausa)", "default": "Pausa hasta 2 meses" },
+    { "type": "text", "id": "perk_2", "label": "Beneficio 2 (Salto)", "default": "Salta 1 envío" },
+    { "type": "text", "id": "perk_3", "label": "Beneficio 3 (Envío)", "default": "Envío gratis" },
+    { "type": "text", "id": "perk_4", "label": "Beneficio 4 (Extras)", "default": "Cancela sin costo" },
+    { "type": "header", "content": "Restricción de Variante" },
+    { "type": "text", "id": "eligible_variant_ids", "label": "IDs de variantes elegibles (separados por coma)", "default": "58307532587089", "info": "Solo estas variantes mostrarán las opciones de suscripción. Dejar vacío para permitir todas." },
+    { "type": "text", "id": "variant_notice_text", "label": "Mensaje variante no elegible", "default": "Suscripción disponible solo para la presentación de 500g" }
   ]
 }
 {% endschema %}
