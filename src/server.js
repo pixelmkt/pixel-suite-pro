@@ -798,121 +798,165 @@ app.post('/webhooks/shopify/orders-paid', express.raw({ type: 'application/json'
 
     try {
         const order = JSON.parse(req.body.toString());
-        console.log('[ORDER_PAID] Order #' + order.order_number + ' — checking for selling plans...');
+        console.log('[ORDER_PAID] Order #' + order.order_number + ' — checking for subscription line items...');
 
-        // Find line items with selling plan allocations (= subscription purchases)
-        const subLines = (order.line_items || []).filter(li => li.selling_plan_allocation);
+        // Detect subscription items by line_item properties: { name: "_subscription", value: "true" }
+        const subLines = (order.line_items || []).filter(li => {
+            const props = li.properties || [];
+            return props.some(p => p.name === '_subscription' && p.value === 'true');
+        });
+
         if (!subLines.length) {
-            console.log('[ORDER_PAID] No selling plan line items in order #' + order.order_number);
+            console.log('[ORDER_PAID] No subscription line items in order #' + order.order_number);
             return;
         }
 
+        console.log(`[ORDER_PAID] Found ${subLines.length} subscription item(s) in order #${order.order_number}`);
+
         const customer = order.customer;
         const shippingAddr = order.shipping_address || null;
-        const customerId = customer && customer.id ? `gid://shopify/Customer/${customer.id}` : null;
-        const customerEmail = customer && customer.email ? customer.email : null;
+        const customerEmail = customer?.email || order.email || null;
+        const customerName = customer ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() : customerEmail;
 
-        // Read plan config to get real permanence (NOT hardcoded 12)
-        const _settingsForPlans = await readFromShopify().catch(() => ({}));
-        const _plansConfig = Array.isArray(_settingsForPlans.plans_config) ? _settingsForPlans.plans_config : [];
+        // Reload MP token
+        const dynSettings = await readFromShopify().catch(() => ({}));
+        if (dynSettings?.mp_access_token) process.env.MP_ACCESS_TOKEN = dynSettings.mp_access_token;
 
         for (const line of subLines) {
-            const alloc = line.selling_plan_allocation;
-            const sellingPlanId = alloc && alloc.selling_plan && alloc.selling_plan.id
-                ? `gid://shopify/SellingPlan/${alloc.selling_plan.id}` : null;
-            const variantGid = `gid://shopify/ProductVariant/${line.variant_id}`;
-            const linePrice = parseFloat(line.price || 0);
-            const frequency = alloc && alloc.selling_plan && alloc.selling_plan.billing_policy
-                ? (alloc.selling_plan.billing_policy.interval_count || 1) : 1;
+            const props = line.properties || [];
+            const getProp = (name) => { const p = props.find(x => x.name === name); return p ? p.value : null; };
 
-            // 1. Create SubscriptionContract in Shopify
-            let shopifyContractId = null;
-            if (subscriptionContracts.createContract && customerId) {
-                try {
-                    const contract = await subscriptionContracts.createContract({
-                        customerId,
-                        customerEmail,
-                        sellingPlanId,
-                        variantId: variantGid,
-                        linePrice,
-                        currencyCode: order.currency || 'PEN',
-                        shipAddress: shippingAddr,
-                        intervalCount: frequency
-                    });
-                    if (contract) {
-                        shopifyContractId = contract.id;
-                        console.log('[CONTRACT] Created Shopify SubscriptionContract:', shopifyContractId);
-                    }
-                } catch (e) {
-                    console.error('[CONTRACT] Failed to create contract:', e.message);
-                }
-            }
+            const frequency = parseInt(getProp('_frequency')) || 1;
+            const permanence = parseInt(getProp('_permanence')) || 3;
+            const discountPct = parseFloat(getProp('_discount_pct')) || 0;
+            const finalPrice = parseFloat(getProp('_final_price')) || parseFloat(line.price || 0);
+            const basePrice = parseFloat(getProp('_base_price')) || parseFloat(line.price || 0);
+            const planLabel = getProp('_plan_label') || `Mensual × ${permanence} meses`;
 
-            // 2. Look up the discount from the selling plan pricing policy
-            const discountPct = alloc && alloc.selling_plan && alloc.selling_plan.price_adjustments
-                ? (alloc.selling_plan.price_adjustments[0] && alloc.selling_plan.price_adjustments[0].value ? alloc.selling_plan.price_adjustments[0].value : 0)
-                : 0;
+            console.log(`[ORDER_PAID] Sub line: ${line.title} | freq=${frequency} perm=${permanence} disc=${discountPct}% price=${finalPrice}`);
 
-            // Look up real permanence from plan config for this frequency
-            const _matchedPlan = _plansConfig.find(p => (p.frequency || p.frequency_months) == frequency && p.active !== false);
-            const _planPermanence = _matchedPlan ? (_matchedPlan.permanence || _matchedPlan.permanence_months || frequency) : frequency;
-            console.log(`[ORDER_PAID] frequency=${frequency}, matched plan permanence=${_planPermanence}`);
-
-            // 3. Create MP PreApproval subscription for recurring billing
+            // 1. Create MP PreApproval plan for FUTURE recurring charges (month 2+)
+            //    start_date = now + frequency months so MP doesn't double-charge month 1
             let mpPlanId = null;
+            let mpInitPoint = null;
             if (mp.createPlan) {
                 try {
-                    // Reload MP token dynamically
-                    const dynamicSettings = await readFromShopify('lab_app', 'settings').catch(() => ({}));
-                    if (dynamicSettings && dynamicSettings.mp_access_token) {
-                        process.env.MP_ACCESS_TOKEN = dynamicSettings.mp_access_token;
-                    }
-                    const productTitle = line.title || 'Producto LAB';
+                    const startDate = new Date();
+                    startDate.setMonth(startDate.getMonth() + frequency);
                     const mpPlan = await mp.createPlan({
                         frequency,
-                        permanence: _planPermanence,
-                        amount: linePrice,
-                        productTitle
+                        permanence,
+                        amount: finalPrice,
+                        productTitle: line.title || 'Producto LAB',
+                        startDate: startDate.toISOString()
                     });
-                    mpPlanId = mpPlan && mpPlan.id ? mpPlan.id : null;
-                    console.log('[MP] PreApprovalPlan created:', mpPlanId);
+                    mpPlanId = mpPlan?.id || null;
+                    mpInitPoint = mpPlan?.init_point || mpPlan?.sandbox_init_point || null;
+                    console.log('[MP] PreApprovalPlan created:', mpPlanId, '| init_point:', mpInitPoint ? 'YES' : 'NO');
                 } catch (e) {
                     console.error('[MP] Failed to create PreApprovalPlan:', e.message);
                 }
             }
 
-            // 4. Save subscription record to Shopify Metaobjects
-            if (db && db.createSubscription) {
+            // 2. Save subscription record to Shopify Metaobjects
+            let subRecord = null;
+            if (db?.createSubscription) {
                 try {
-                    const subRecord = {
+                    subRecord = await db.createSubscription({
                         customer_email: customerEmail,
-                        customer_name: (customer && customer.first_name ? customer.first_name + ' ' + customer.last_name : null) || customerEmail,
+                        customer_name: customerName,
                         shopify_order_id: String(order.id),
                         shopify_order_number: String(order.order_number),
-                        shopify_contract_id: shopifyContractId,
                         variant_id: String(line.variant_id),
                         product_id: String(line.product_id),
                         product_title: line.title,
                         product_image: null,
-                        base_price: parseFloat(line.price_set && line.price_set.shop_money ? line.price_set.shop_money.amount : line.price),
-                        final_price: linePrice,
+                        base_price: basePrice,
+                        final_price: finalPrice,
                         discount_pct: discountPct,
                         frequency_months: frequency,
-                        permanence_months: _planPermanence,
-                        cycles_required: Math.ceil(_planPermanence / frequency),
-                        cycles_completed: 1, // First cycle = the order just paid
+                        permanence_months: permanence,
+                        cycles_required: Math.ceil(permanence / frequency),
+                        cycles_completed: 1, // First cycle = paid via Shopify checkout
                         mp_plan_id: mpPlanId,
+                        mp_init_point: mpInitPoint,
                         shipping_address: shippingAddr,
-                        free_shipping: false,
-                        status: 'active',
+                        free_shipping: (order.shipping_lines || []).some(s => parseFloat(s.price) === 0),
+                        status: mpInitPoint ? 'pending_mp_activation' : 'active',
                         started_at: new Date().toISOString(),
-                        next_charge_at: new Date(Date.now() + frequency * 30 * 24 * 60 * 60 * 1000).toISOString()
-                    };
-                    await db.createSubscription(subRecord);
+                        next_charge_at: new Date(Date.now() + frequency * 30 * 86400000).toISOString()
+                    });
                     console.log('[ORDER_PAID] Subscription record created for', customerEmail);
+
+                    // 3. Log first charge event
+                    if (db?.createEvent) {
+                        await db.createEvent({
+                            subscription_id: subRecord?.id || 'unknown',
+                            event_type: 'charge_success',
+                            metadata: JSON.stringify({
+                                order_name: '#' + order.order_number,
+                                shopify_order_id: order.id,
+                                amount: finalPrice,
+                                source: 'shopify_checkout'
+                            })
+                        }).catch(() => {});
+                    }
                 } catch (e) {
                     console.error('[ORDER_PAID] Failed to save subscription record:', e.message);
                 }
+            }
+
+            // 4. Send activation email with MP link for recurring charges
+            if (mpInitPoint && customerEmail) {
+                const activationHtml = `
+                    <div style="font-family:Montserrat,Arial,sans-serif;max-width:520px;margin:0 auto;padding:20px">
+                        <div style="text-align:center;padding:24px 0">
+                            <div style="font-size:11px;font-weight:800;letter-spacing:2px;color:#9d2a23;text-transform:uppercase">LAB NUTRITION</div>
+                        </div>
+                        <div style="background:#fff;border-radius:12px;padding:32px 28px;border:1px solid #e5e7eb">
+                            <div style="text-align:center;margin-bottom:24px">
+                                <div style="font-size:40px">🔄</div>
+                                <h2 style="font-size:20px;font-weight:900;color:#1a1a1a;margin:12px 0 6px">Activa tu suscripción recurrente</h2>
+                                <p style="font-size:13px;color:#666;margin:0">¡Gracias por tu compra, ${customerName.split(' ')[0]}!</p>
+                            </div>
+                            <p style="font-size:14px;color:#444;line-height:1.6;margin-bottom:16px">
+                                Tu primer envío de <strong>${line.title}</strong> ya está en camino.
+                                Para que recibas tu producto automáticamente cada mes con <strong>${Math.round(discountPct)}% de descuento</strong>,
+                                necesitas activar el cobro recurrente en Mercado Pago:
+                            </p>
+                            <div style="background:#f8f8f8;border-radius:8px;padding:14px;margin-bottom:20px">
+                                <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+                                    <span style="color:#888">Plan:</span>
+                                    <span style="font-weight:700">${planLabel}</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+                                    <span style="color:#888">Monto mensual:</span>
+                                    <span style="font-weight:700;color:#9d2a23">S/ ${finalPrice.toFixed(2)}</span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;font-size:13px">
+                                    <span style="color:#888">Primer cobro automático:</span>
+                                    <span style="font-weight:700">En ${frequency} mes(es)</span>
+                                </div>
+                            </div>
+                            <div style="text-align:center;margin:24px 0">
+                                <a href="${mpInitPoint}" style="display:inline-block;background:#9d2a23;color:#fff;padding:15px 36px;border-radius:10px;text-decoration:none;font-weight:800;font-size:14px;letter-spacing:.3px">
+                                    Activar suscripción en Mercado Pago →
+                                </a>
+                            </div>
+                            <p style="font-size:12px;color:#999;text-align:center;margin-top:16px">
+                                Este enlace te lleva a Mercado Pago donde autorizarás los cobros automáticos.
+                                Tu primer mes ya fue pagado en tu compra. Los cobros recurrentes empiezan desde el mes 2.
+                            </p>
+                        </div>
+                        <p style="font-size:11px;color:#bbb;text-align:center;margin-top:16px">
+                            LAB NUTRITION · Suscripciones · Puedes cancelar en cualquier momento
+                        </p>
+                    </div>`;
+                sendAutoEmail({
+                    to: customerEmail,
+                    subject: '🔄 Activa tu suscripción recurrente — LAB NUTRITION',
+                    html: activationHtml
+                }).catch(e => console.warn('[ORDER_PAID] Email error:', e.message));
             }
         }
     } catch (e) {
@@ -1836,7 +1880,7 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
             tags: 'suscripcion,lab-nutrition,recurrente',
             shipping_address: shippingAddr || undefined,
-            shipping_lines: sub.free_shipping ? [{ title: 'Envío gratis (suscriptor)', price: '0.00', code: 'free_sub', source: 'lab_sub' }] : []
+            shipping_lines: [{ title: sub.free_shipping ? 'Envío gratis (suscriptor)' : 'Envío suscripción', price: sub.free_shipping ? '0.00' : (sub.shipping_cost || '0.00'), code: sub.free_shipping ? 'free_sub' : 'sub_ship', source: 'lab_sub' }]
         }
     };
 

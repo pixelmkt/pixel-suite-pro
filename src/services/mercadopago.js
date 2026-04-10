@@ -23,29 +23,34 @@ async function verifyConnection() {
 }
 
 /* ─── CREATE PREAPPROVAL PLAN (template) ─── */
-async function createPlan({ frequency, permanence, amount, productTitle }) {
+async function createPlan({ frequency, permanence, amount, productTitle, startDate }) {
     const mp = getMP();
     const plan = new PreApprovalPlan(mp);
-    const cycles = Math.ceil(permanence / frequency);
+    // If first charge was via Shopify checkout, remaining cycles = total - 1
+    const totalCycles = Math.ceil(permanence / frequency);
+    const cycles = startDate ? Math.max(totalCycles - 1, 1) : totalCycles;
     const reason = `LAB NUTRITION — ${productTitle} (${frequency === 1 ? 'Mensual' : `Cada ${frequency} meses`} × ${permanence} meses)`;
-    return plan.create({
-        body: {
-            reason,
-            auto_recurring: {
-                frequency,
-                frequency_type: 'months',
-                transaction_amount: parseFloat(Number(amount).toFixed(2)),
-                currency_id: 'PEN',
-                repetitions: cycles,
-                free_trial: null
-            },
-            back_url: `${BACKEND_URL()}/subscriptions/success`,
-            notification_url: WEBHOOK_URL(),
-            payment_methods_allowed: {
-                payment_types: [{ id: 'credit_card' }, { id: 'debit_card' }]
-            }
+    const body = {
+        reason,
+        auto_recurring: {
+            frequency,
+            frequency_type: 'months',
+            transaction_amount: parseFloat(Number(amount).toFixed(2)),
+            currency_id: 'PEN',
+            repetitions: cycles,
+            free_trial: null
+        },
+        back_url: `${BACKEND_URL()}/subscriptions/success`,
+        notification_url: WEBHOOK_URL(),
+        payment_methods_allowed: {
+            payment_types: [{ id: 'credit_card' }, { id: 'debit_card' }]
         }
-    });
+    };
+    // If startDate provided, MP won't charge until that date (avoids double-charging month 1)
+    if (startDate) {
+        body.auto_recurring.start_date = startDate;
+    }
+    return plan.create({ body });
 }
 
 /**
