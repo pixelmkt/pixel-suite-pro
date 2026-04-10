@@ -461,6 +461,21 @@ app.get('/api/subscriptions/customer/:customerId', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ── UPDATE subscription fields (admin) ── */
+app.patch('/api/subscriptions/:id', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Not found' });
+        // Only allow safe field updates
+        const allowed = ['permanence_months', 'cycles_required', 'discount_pct', 'frequency_months', 'customer_name', 'product_title', 'variant_id', 'product_id', 'status', 'next_charge_at'];
+        const updates = {};
+        for (const key of allowed) { if (req.body[key] !== undefined) updates[key] = req.body[key]; }
+        if (!Object.keys(updates).length) return res.status(400).json({ error: 'No valid fields to update' });
+        const updated = await db.updateSubscription(sub.id, updates);
+        res.json(updated);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ── PAUSE subscription ── */
 app.post('/api/subscriptions/:id/pause', async (req, res) => {
     try {
@@ -984,6 +999,27 @@ async function autoImportMpSubs(existing = []) {
 
     const allLocal = await db.getSubscriptions().catch(() => []);
     const existingIds = new Set(allLocal.map(s => s.mp_preapproval_id).filter(Boolean));
+
+    // Fix existing records that had hardcoded permanence_months: 12 from old code
+    for (const loc of allLocal) {
+        if (loc.permanence_months == 12 && loc.frequency_months && loc.imported_from_mp) {
+            try {
+                const freq = parseInt(loc.frequency_months) || 1;
+                // Look up MP preapproval for actual repetitions
+                const mpPre = preapprovals.find(p => p.id === loc.mp_preapproval_id);
+                const reps = mpPre?.auto_recurring?.repetitions;
+                const correctedPermanence = reps ? reps * freq : freq;
+                const correctedCycles = reps || 1;
+                if (correctedPermanence !== 12 || correctedCycles !== 12) {
+                    await db.updateSubscription(loc.id, {
+                        permanence_months: correctedPermanence,
+                        cycles_required: correctedCycles
+                    });
+                    console.log(`[AUTO-IMPORT] Fixed permanence for ${loc.customer_email}: 12 → ${correctedPermanence} months, cycles: ${correctedCycles}`);
+                }
+            } catch (e) { console.warn('[AUTO-IMPORT] Fix permanence error:', e.message); }
+        }
+    }
 
     const imported = [];
     for (const pre of preapprovals) {
