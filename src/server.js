@@ -2297,11 +2297,38 @@ app.post('/api/subscriptions/:id/resume', async (req, res) => {
    backend crea pedido Shopify por cada cobro automático
 ══════════════════════════════════════════════════════ */
 
-/* Helper: create a Shopify order for each MP recurring payment */
+/* Helper: create a Shopify order for each MP recurring payment
+   Handles missing variant_id gracefully with product search + custom line item fallback */
 async function createShopifyOrderFromSubscription({ customerEmail, customerName, variantId, price, productTitle, subscriptionNote }) {
     const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
     const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
     if (!token) throw new Error('No Shopify token for order creation');
+
+    // Resolve variant_id if missing — search Shopify products by title
+    let resolvedVariantId = variantId ? parseInt(variantId) : null;
+    if (!resolvedVariantId && productTitle && token) {
+        try {
+            const titleSearch = (productTitle || '').split(' ')[0];
+            const sr = await fetch(`https://${shop}/admin/api/2026-01/products.json?title=${encodeURIComponent(titleSearch)}&limit=5&fields=id,title,variants,images`, {
+                headers: { 'X-Shopify-Access-Token': token }
+            });
+            if (sr.ok) {
+                const sd = await sr.json();
+                const match = (sd.products || []).find(p => p.title?.toLowerCase().includes(productTitle.toLowerCase().split(' ')[0])) || (sd.products || [])[0];
+                if (match?.variants?.[0]?.id) {
+                    resolvedVariantId = match.variants[0].id;
+                    console.log(`[ORDER] Resolved variant_id ${resolvedVariantId} from product "${match.title}"`);
+                }
+            }
+        } catch (e) { console.warn('[ORDER] variant resolve error:', e.message); }
+    }
+
+    // Build line item — with variant if available, custom line item if not
+    const lineItem = resolvedVariantId
+        ? { variant_id: resolvedVariantId, quantity: 1, price: parseFloat(price).toFixed(2), requires_shipping: true, title: productTitle || 'Suscripción LAB' }
+        : { title: productTitle || 'Suscripción LAB NUTRITION', quantity: 1, price: parseFloat(price || 0).toFixed(2), requires_shipping: true };
+
+    if (!resolvedVariantId) console.warn(`[ORDER] ⚠️ Creating order WITHOUT variant_id for ${customerEmail} — custom line item`);
 
     const body = {
         order: {
@@ -2311,13 +2338,7 @@ async function createShopifyOrderFromSubscription({ customerEmail, customerName,
             send_fulfillment_receipt: true,
             note: subscriptionNote || 'LAB NUTRITION — Cobro automático de suscripción',
             tags: 'suscripcion,cobro-automatico,mercadopago',
-            line_items: [{
-                variant_id: parseInt(variantId),
-                quantity: 1,
-                price: parseFloat(price).toFixed(2),
-                requires_shipping: true,
-                title: productTitle || 'Suscripción LAB'
-            }],
+            line_items: [lineItem],
             customer: { email: customerEmail }
         }
     };
@@ -2433,7 +2454,21 @@ app.post('/webhooks/mp', express.json(), async (req, res) => {
             }
 
             if (!sub) {
-                console.warn(`[MP WEBHOOK] ⚠️  No subscription found for preapproval:${preapprovalId} email:${payerEmail}`);
+                console.warn(`[MP WEBHOOK] ⚠️  No subscription found for preapproval:${preapprovalId} email:${payerEmail} — creating order with payment data`);
+                // Orphan fallback: create order anyway using payment data
+                try {
+                    const order = await createShopifyOrderFromSubscription({
+                        customerEmail: payerEmail,
+                        customerName: paymentData?.payer?.first_name || payerEmail,
+                        variantId: null,
+                        price: transAmount,
+                        productTitle: paymentData?.description || 'Suscripción LAB',
+                        subscriptionNote: `Suscripción LAB — Cobro automático MP (orphan) — Pago MP #${resourceId}`
+                    });
+                    console.log(`[MP WEBHOOK] ✅ Orphan Shopify order created: ${order.name} for ${payerEmail}`);
+                } catch (orphanErr) {
+                    console.error(`[MP WEBHOOK] ❌ Orphan order failed:`, orphanErr.message);
+                }
                 return;
             }
 
