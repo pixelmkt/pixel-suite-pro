@@ -55,10 +55,10 @@
     }
     /* sb-hidden solo se aplica si se necesita ocultar en móvil */
     .sb.sb-hidden { display: none }
-    /* FIX 2026-04-09: el menú lateral SIEMPRE visible en el módulo izquierdo,
-       incluso cuando la app corre embebida dentro de Shopify Admin */
-    body.shopify-embedded .sb { display: flex }
-    body.shopify-embedded .main { flex: 1 }
+    /* Cuando embebida en Shopify Admin, usar NavigationMenu nativo de Shopify
+       y ocultar el sidebar propio de la app para evitar duplicación */
+    body.shopify-embedded .sb { display: none !important }
+    body.shopify-embedded .main { width: 100% }
 
     .sb-brand {
       padding: 22px 18px 16px;

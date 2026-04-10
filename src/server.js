@@ -947,9 +947,9 @@ app.get('/api/subscriptions', async (req, res) => {
 /* ── Helper: importa MP preapprovals que no estén en metaobjects ── */
 let _lastAutoImportAt = 0;
 async function autoImportMpSubs(existing = []) {
-    // Throttle: max 1 ejecución cada 30 segundos
+    // Throttle: max 1 ejecución cada 60 segundos
     const now = Date.now();
-    if (now - _lastAutoImportAt < 30000) return [];
+    if (now - _lastAutoImportAt < 60000) return [];
     _lastAutoImportAt = now;
 
     // Cargar settings dinámicos desde Shopify si MP_ACCESS_TOKEN no está en env
@@ -957,18 +957,18 @@ async function autoImportMpSubs(existing = []) {
     if (!mpToken) {
         try {
             const dyn = await readFromShopify().catch(() => ({}));
-            if (dyn?.mp_access_token) {
-                process.env.MP_ACCESS_TOKEN = dyn.mp_access_token;
-                mpToken = dyn.mp_access_token;
-            }
+            if (dyn?.mp_access_token) { process.env.MP_ACCESS_TOKEN = dyn.mp_access_token; mpToken = dyn.mp_access_token; }
         } catch {}
     }
     if (!mpToken || !db?.createSubscription) return [];
 
-    const r = await fetch('https://api.mercadopago.com/preapproval/search?status=authorized&limit=100', {
-        headers: { Authorization: `Bearer ${mpToken}` }
-    });
-    if (!r.ok) return [];
+    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+    const shopToken = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+    const mpHeaders = { Authorization: `Bearer ${mpToken}` };
+
+    // 1) Obtener preapprovals autorizados en MP
+    const r = await fetch('https://api.mercadopago.com/preapproval/search?status=authorized&limit=100', { headers: mpHeaders });
+    if (!r.ok) { console.warn('[AUTO-IMPORT] MP search failed:', r.status); return []; }
     const mpData = await r.json();
     const preapprovals = mpData?.results || [];
     if (!preapprovals.length) return [];
@@ -977,30 +977,36 @@ async function autoImportMpSubs(existing = []) {
     const existingIds = new Set(allLocal.map(s => s.mp_preapproval_id).filter(Boolean));
 
     const imported = [];
-    for (const preListItem of preapprovals) {
-        if (existingIds.has(preListItem.id)) continue;
+    for (const pre of preapprovals) {
+        if (existingIds.has(pre.id)) continue;
 
-        // /preapproval/search devuelve objeto reducido. Fetch individual.
-        let pre = preListItem;
-        try {
-            const fr = await fetch(`https://api.mercadopago.com/preapproval/${pre.id}`, {
-                headers: { Authorization: `Bearer ${mpToken}` }
-            });
-            if (fr.ok) pre = { ...pre, ...(await fr.json()) };
-        } catch { /* ignore */ }
-
-        // MP no devuelve payer_email (privacy). Extraerlo del back_url (?email=X)
-        // que nuestro propio checkout guardó al crear la suscripción.
-        let email = pre.payer_email || '';
-        if (!email && pre.back_url) {
+        // 2) Resolver email — MP no lo incluye por privacidad
+        //    Estrategia: buscar payments del payer_id y obtener payer.email
+        let email = '';
+        const payerId = pre.payer_id;
+        if (payerId) {
             try {
-                const u = new URL(pre.back_url);
-                email = u.searchParams.get('email') || '';
-            } catch { /* bad url, ignore */ }
+                const pr = await fetch(`https://api.mercadopago.com/v1/payments/search?sort=date_created&criteria=desc&payer.id=${payerId}&limit=1`, { headers: mpHeaders });
+                if (pr.ok) {
+                    const pd = await pr.json();
+                    email = pd.results?.[0]?.payer?.email || '';
+                }
+            } catch {}
         }
-        if (!email) { console.warn('[AUTO-IMPORT] skipped pre without email:', pre.id); continue; }
+        // Fallback: buscar payments asociados a este preapproval vía metadata
+        if (!email) {
+            try {
+                const pr = await fetch(`https://api.mercadopago.com/v1/payments/search?sort=date_created&criteria=desc&limit=5`, { headers: mpHeaders });
+                if (pr.ok) {
+                    const pd = await pr.json();
+                    const match = (pd.results || []).find(p => p.preapproval_id === pre.id);
+                    if (match?.payer?.email) email = match.payer.email;
+                }
+            } catch {}
+        }
+        if (!email) { console.warn('[AUTO-IMPORT] No email for preapproval', pre.id, '(payer_id:', payerId, ')'); continue; }
 
-        // Si existe una sub pending_payment del mismo email + plan_id → UPDATE (no crear duplicado)
+        // 3) Dedup: si existe un registro pending del mismo email → actualizar
         const orphan = allLocal.find(s =>
             (s.customer_email || '').toLowerCase() === email.toLowerCase() &&
             (s.mp_plan_id === pre.preapproval_plan_id || !s.mp_preapproval_id) &&
@@ -1009,26 +1015,26 @@ async function autoImportMpSubs(existing = []) {
         if (orphan) {
             try {
                 const updated = await db.updateSubscription(orphan.id, {
-                    mp_preapproval_id: pre.id,
-                    status: 'active',
+                    mp_preapproval_id: pre.id, status: 'active',
                     next_charge_at: pre.next_payment_date || null,
                     activated_at: pre.date_created || new Date().toISOString()
                 });
                 if (updated) imported.push(updated);
-                console.log(`[AUTO-IMPORT] Linked orphan pending → active: ${email}`);
+                console.log(`[AUTO-IMPORT] Linked orphan → active: ${email}`);
                 continue;
             } catch (e) { console.warn('[AUTO-IMPORT] link orphan failed:', e.message); }
         }
-        // Buscar variant_id posible: match por título de producto (reason) en Shopify
+
+        // Ya existe con otro estado? Skip
+        if (allLocal.find(s => (s.customer_email || '').toLowerCase() === email.toLowerCase() && s.mp_preapproval_id === pre.id)) continue;
+
+        // 4) Resolver variant_id buscando producto en Shopify por título
         let variantId = null, productId = null, productImage = null;
         try {
-            const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
-            const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
-            if (token && pre.reason) {
-                // Extraer solo el título principal: "LAB NUTRITION — Creatina sin sabor (Mensual × 12 meses)" → "Creatina sin sabor"
+            if (shopToken && pre.reason) {
                 const titleGuess = (pre.reason.match(/—\s*(.+?)\s*\(/) || [])[1] || pre.reason;
                 const sr = await fetch(`https://${shop}/admin/api/2026-01/products.json?title=${encodeURIComponent(titleGuess)}&limit=5`, {
-                    headers: { 'X-Shopify-Access-Token': token }
+                    headers: { 'X-Shopify-Access-Token': shopToken }
                 });
                 if (sr.ok) {
                     const sd = await sr.json();
@@ -1042,14 +1048,14 @@ async function autoImportMpSubs(existing = []) {
             }
         } catch {}
 
+        // 5) Crear registro en metaobjects
         const newSub = {
             mp_preapproval_id: pre.id,
             mp_plan_id: pre.preapproval_plan_id || '',
             customer_email: email,
             customer_name: pre.payer_first_name || email.split('@')[0],
             product_title: (pre.reason || '').replace(/^LAB NUTRITION —\s*/, '').replace(/\s*\(.+\)\s*$/, '') || 'Suscripción MP',
-            product_id: productId || '',
-            variant_id: variantId || '',
+            product_id: productId || '', variant_id: variantId || '',
             product_image: productImage || '',
             final_price: pre.auto_recurring?.transaction_amount || 0,
             base_price: pre.auto_recurring?.transaction_amount || 0,
@@ -1061,16 +1067,14 @@ async function autoImportMpSubs(existing = []) {
             status: 'active',
             next_charge_at: pre.next_payment_date || null,
             activated_at: pre.date_created || new Date().toISOString(),
-            imported_from_mp: true,
-            free_shipping: false
+            imported_from_mp: true, free_shipping: false
         };
         try {
             const created = await db.createSubscription(newSub);
-            if (created) imported.push(created);
-        } catch (e) {
-            console.warn(`[AUTO-IMPORT] Failed for ${email}:`, e.message);
-        }
+            if (created) { imported.push(created); console.log(`[AUTO-IMPORT] ✅ Imported: ${email} | ${newSub.product_title}`); }
+        } catch (e) { console.warn(`[AUTO-IMPORT] Failed for ${email}:`, e.message); }
     }
+    if (imported.length) console.log(`[AUTO-IMPORT] Total imported: ${imported.length}`);
     return imported;
 }
 
@@ -1683,8 +1687,19 @@ app.post('/webhooks/mercadopago', async (req, res) => {
     }
 });
 
-/* También registrar en /api/webhooks/mercadopago para la URL de MP Dashboard */
-app.post('/api/webhooks/mercadopago', (req, res, next) => { req.url = '/webhooks/mercadopago'; next('route'); });
+/* También registrar en /api/webhooks/mercadopago para la URL de MP Dashboard.
+   Reenvía internamente al handler real de /webhooks/mercadopago via HTTP */
+app.post('/api/webhooks/mercadopago', async (req, res) => {
+    res.sendStatus(200);
+    console.log('[MP WEBHOOK /api alias] forwarding to /webhooks/mercadopago');
+    try {
+        await fetch(`http://localhost:${PORT}/webhooks/mercadopago`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(req.body)
+        });
+    } catch (e) { console.warn('[MP WEBHOOK /api alias] forward error:', e.message); }
+});
 
 /* ── Helper: Obtener dirección predeterminada del cliente en Shopify por email ── */
 async function getCustomerAddress(email, token, shop) {
@@ -1717,14 +1732,36 @@ async function getCustomerAddress(email, token, shop) {
 async function createShopifyOrderFromSub(sub, mpPaymentId) {
     const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
     const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
-    if (!token || !sub.variant_id) return null;
+    if (!token) { console.error('[ORDER] No SHOPIFY_ACCESS_TOKEN — cannot create order'); return null; }
+
+    // Si falta variant_id, intentar resolverlo buscando por título de producto
+    let variantId = sub.variant_id;
+    if (!variantId && sub.product_title && token) {
+        try {
+            const titleSearch = sub.product_title.split(' ')[0]; // primera palabra
+            const sr = await fetch(`https://${shop}/admin/api/2026-01/products.json?title=${encodeURIComponent(titleSearch)}&limit=5`, {
+                headers: { 'X-Shopify-Access-Token': token }
+            });
+            if (sr.ok) {
+                const sd = await sr.json();
+                const match = (sd.products || []).find(p => (p.title || '').toLowerCase().includes(titleSearch.toLowerCase())) || (sd.products || [])[0];
+                if (match?.variants?.[0]?.id) {
+                    variantId = String(match.variants[0].id);
+                    console.log(`[ORDER] Resolved variant_id ${variantId} from product "${match.title}"`);
+                    // Guardar para futuros cobros
+                    if (db?.updateSubscription && sub.id && !sub.id.startsWith('orphan_')) {
+                        db.updateSubscription(sub.id, { variant_id: variantId, product_id: String(match.id) }).catch(() => {});
+                    }
+                }
+            }
+        } catch (e) { console.warn('[ORDER] variant resolve error:', e.message); }
+    }
 
     // Resolver dirección de envío
     let shippingAddr = sub.shipping_address || null;
     if (!shippingAddr && sub.customer_email) {
         shippingAddr = await getCustomerAddress(sub.customer_email, token, shop);
-        if (shippingAddr) {
-            // Guardar para cobros futuros (fire & forget)
+        if (shippingAddr && db?.updateSubscription && sub.id && !sub.id.startsWith('orphan_')) {
             db.updateSubscription(sub.id, { shipping_address: shippingAddr }).catch(function() {});
         }
     }
@@ -1733,13 +1770,20 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         ? ('Ciclo ' + sub.cycles_completed + '/' + (sub.cycles_required || '?'))
         : 'Ciclo 1';
 
+    // Construir line_items: con variant_id si existe, o custom line item con título si no
+    const lineItem = variantId
+        ? { variant_id: parseInt(variantId), quantity: 1, price: String(parseFloat(sub.final_price || sub.base_price).toFixed(2)) }
+        : { title: sub.product_title || 'Suscripción LAB NUTRITION', quantity: 1, price: String(parseFloat(sub.final_price || sub.base_price || 0).toFixed(2)), requires_shipping: true };
+
+    if (!variantId) console.warn(`[ORDER] ⚠️ Creating order WITHOUT variant_id for ${sub.customer_email} — using custom line item "${lineItem.title}"`);
+
     const orderBody = {
         order: {
             email: sub.customer_email,
             financial_status: 'paid',
             send_receipt: true,
             send_fulfillment_receipt: true,
-            line_items: [{ variant_id: parseInt(sub.variant_id), quantity: 1, price: String(parseFloat(sub.final_price || sub.base_price).toFixed(2)) }],
+            line_items: [lineItem],
             note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
             tags: 'suscripcion,lab-nutrition,recurrente',
             shipping_address: shippingAddr || undefined,
