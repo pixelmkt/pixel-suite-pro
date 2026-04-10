@@ -12,6 +12,7 @@ function getMP() {
 }
 
 const BACKEND_URL = () => process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
+const WEBHOOK_URL = () => `${BACKEND_URL()}/webhooks/mp`;
 
 /* ─── VERIFY CONNECTION ─── */
 async function verifyConnection() {
@@ -39,6 +40,7 @@ async function createPlan({ frequency, permanence, amount, productTitle }) {
                 free_trial: null
             },
             back_url: `${BACKEND_URL()}/subscriptions/success`,
+            notification_url: WEBHOOK_URL(),
             payment_methods_allowed: {
                 payment_types: [{ id: 'credit_card' }, { id: 'debit_card' }]
             }
@@ -74,6 +76,7 @@ async function createCheckout({ frequency, permanence, amount, productTitle, cus
                 repetitions: cycles
             },
             back_url: back,
+            notification_url: WEBHOOK_URL(),
             payment_methods_allowed: {
                 payment_types: [{ id: 'credit_card' }, { id: 'debit_card' }]
             }
