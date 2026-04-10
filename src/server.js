@@ -1905,6 +1905,8 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             financial_status: 'paid',
             send_receipt: true,
             send_fulfillment_receipt: true,
+            source_name: 'web',
+            payment_gateway_names: ['Mercado Pago Tarjetas'],
             line_items: [lineItem],
             note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
             tags: 'suscripcion',
