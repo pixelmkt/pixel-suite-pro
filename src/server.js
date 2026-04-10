@@ -1882,7 +1882,7 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
             tags: 'suscripcion,lab-nutrition,recurrente',
             shipping_address: shippingAddr || undefined,
-            shipping_lines: [{ title: 'Envío suscripción', price: '15.00', code: 'sub_ship', source: 'lab_sub' }]
+            shipping_lines: [{ title: 'Envío suscripción', price: '10.00', code: 'sub_ship', source: 'lab_sub' }]
         }
     };
 
