@@ -115,6 +115,21 @@ async function getSubscription(preapprovalId) {
     return sub.get({ id: preapprovalId });
 }
 
+/** Update notification_url on existing preapproval so MP sends webhooks */
+async function ensureNotificationUrl(preapprovalId) {
+    const mp = getMP();
+    const sub = new PreApproval(mp);
+    try {
+        return await sub.update({
+            id: preapprovalId,
+            body: { notification_url: WEBHOOK_URL() }
+        });
+    } catch (e) {
+        console.warn(`[MP] Could not update notification_url for ${preapprovalId}:`, e.message);
+        return null;
+    }
+}
+
 async function pauseSubscription(preapprovalId) {
     const mp = getMP();
     const sub = new PreApproval(mp);
@@ -145,6 +160,7 @@ module.exports = {
     createCheckout,
     createSubscription,
     getSubscription,
+    ensureNotificationUrl,
     pauseSubscription,
     resumeSubscription,
     cancelSubscription,

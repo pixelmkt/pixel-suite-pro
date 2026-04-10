@@ -1004,11 +1004,9 @@ async function autoImportMpSubs(existing = []) {
         if (loc.permanence_months == 12 && loc.frequency_months && loc.imported_from_mp) {
             try {
                 const freq = parseInt(loc.frequency_months) || 1;
-                // Look up MP preapproval for actual repetitions
                 const mpPre = preapprovals.find(p => p.id === loc.mp_preapproval_id);
                 const reps = mpPre?.auto_recurring?.repetitions;
-                // If MP has repetitions, use them; otherwise default to plan-based permanence
-                const correctedPermanence = reps ? reps * freq : freq * 3; // 3 months default for monthly
+                const correctedPermanence = reps ? reps * freq : freq * 3;
                 const correctedCycles = reps || 3;
                 await db.updateSubscription(loc.id, {
                     permanence_months: correctedPermanence,
@@ -1016,6 +1014,10 @@ async function autoImportMpSubs(existing = []) {
                 });
                 console.log(`[AUTO-IMPORT] Fixed permanence for ${loc.customer_email}: 12 → ${correctedPermanence} months, cycles: ${correctedCycles}`);
             } catch (e) { console.warn('[AUTO-IMPORT] Fix permanence error:', e.message); }
+        }
+        // Ensure MP preapprovals have notification_url for webhooks
+        if (loc.mp_preapproval_id && mp.ensureNotificationUrl) {
+            mp.ensureNotificationUrl(loc.mp_preapproval_id).catch(() => {});
         }
     }
 
