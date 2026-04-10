@@ -1933,7 +1933,7 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             send_fulfillment_receipt: true,
             line_items: [lineItem],
             discount_codes: [],
-            shipping_lines: [{ title: 'Envío suscripción', price: '10.00', code: 'sub_ship' }],
+            shipping_lines: [{ title: 'Envío suscripción', price: '10.00', code: '02' }],
             note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
             tags: 'suscripcion',
             note_attributes: noteAttrs,
