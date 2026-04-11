@@ -13,11 +13,12 @@ function buildPlanInput(plan) {
     const intervalCount = plan.frequency || 1;
     const maxCycles = plan.permanence ? Math.ceil(plan.permanence / intervalCount) : null;
     const discountPct = plan.discount || 0;
-    const label = `${intervalCount === 1 ? 'Mensual' : `Cada ${intervalCount} meses`} · ${plan.permanence || 0} meses · ${discountPct}% OFF`;
+    const freqLabel = intervalCount === 1 ? 'Mensual' : `Cada ${intervalCount} meses`;
+    const label = `${freqLabel} · ${plan.permanence || 0} meses · ${discountPct}% OFF`;
 
     const sellingPlan = {
         name: label,
-        options: [`${intervalCount === 1 ? 'Mensual' : `Cada ${intervalCount} meses`}`],
+        options: [label],
         position: 1,
         category: 'SUBSCRIPTION',
         billingPolicy: {
@@ -87,7 +88,7 @@ async function createSellingPlanGroup({ productGid, variantGids, plans, productT
         input: {
             name: groupName,
             merchantCode: 'lab-nutrition-sub',
-            options: ['Frecuencia'],
+            options: ['Plan'],
             position: 1,
             sellingPlansToCreate
         },
