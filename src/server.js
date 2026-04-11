@@ -804,7 +804,7 @@ app.delete('/api/selling-plans/:productId', async (req, res) => {
         const groups = product && product.sellingPlanGroups ? product.sellingPlanGroups.nodes : [];
         let deleted = 0;
         for (const g of groups) {
-            if (g.name && g.name.includes('LAB')) {
+            if (g.name && (g.name.includes('LAB') || g.name.includes('PRUEBA') || g.name.includes('Suscripción'))) {
                 await sellingPlans.deleteSellingPlanGroup(g.id).catch(() => {});
                 deleted++;
             }
