@@ -49,8 +49,8 @@ function buildPlanInput(plan) {
     return sellingPlan;
 }
 
-/* ── Create a SellingPlanGroup on a Shopify product ── */
-async function createSellingPlanGroup({ productGid, plans, productTitle }) {
+/* ── Create a SellingPlanGroup on a Shopify product (or specific variants) ── */
+async function createSellingPlanGroup({ productGid, variantGids, plans, productTitle }) {
     const groupName = `LAB Suscripción — ${productTitle || 'Producto'}`;
 
     const sellingPlansToCreate = plans
@@ -76,6 +76,13 @@ async function createSellingPlanGroup({ productGid, plans, productTitle }) {
         }
     `;
 
+    // FIX 2026-04-11: Use productVariantIds when specific variants are configured,
+    // so SellingPlans only appear on eligible variants (e.g. 500g, not 300g).
+    // Falls back to productIds (all variants) only if no variants specified.
+    const resources = (variantGids && variantGids.length)
+        ? { productVariantIds: variantGids }
+        : { productIds: [productGid] };
+
     const data = await gql(mutation, {
         input: {
             name: groupName,
@@ -84,9 +91,7 @@ async function createSellingPlanGroup({ productGid, plans, productTitle }) {
             position: 1,
             sellingPlansToCreate
         },
-        resources: {
-            productIds: [productGid]
-        }
+        resources
     });
 
     const result = data.sellingPlanGroupCreate;
@@ -153,14 +158,14 @@ async function removeProductFromGroup(groupGid, productGid) {
 }
 
 /* ── Sync plans for a product: delete old group if exists, create new one ── */
-async function syncProductPlans({ productId, productGid, productTitle, plans }) {
+async function syncProductPlans({ productId, productGid, productTitle, plans, variantGids }) {
     // 1. Get existing groups
     const product = await getProductSellingPlans(productGid).catch(() => null);
     const existingGroups = product && product.sellingPlanGroups ? product.sellingPlanGroups.nodes : [];
 
-    // 2. Delete LAB groups
+    // 2. Delete existing subscription groups (LAB, PRUEBA, or any app-created groups)
     for (const group of existingGroups) {
-        if (group.name && group.name.includes('LAB')) {
+        if (group.name && (group.name.includes('LAB') || group.name.includes('PRUEBA') || group.name.includes('Suscripción'))) {
             await deleteSellingPlanGroup(group.id).catch(() => {});
         }
     }
@@ -170,8 +175,8 @@ async function syncProductPlans({ productId, productGid, productTitle, plans }) 
     if (!activePlans.length) {
         return { synced: false, reason: 'No active plans' };
     }
-    const group = await createSellingPlanGroup({ productGid, plans: activePlans, productTitle });
-    return { synced: true, group };
+    const group = await createSellingPlanGroup({ productGid, variantGids, plans: activePlans, productTitle });
+    return { synced: true, group, variantGids: variantGids || [] };
 }
 
 module.exports = { createSellingPlanGroup, getProductSellingPlans, deleteSellingPlanGroup, syncProductPlans };

@@ -2197,23 +2197,54 @@
 
         const savedCfg = await api(`/api/products/${id}/config`).catch(() => ({}));
 
+        // Obtener variantes del producto desde _shopifyProds
+        const prod = _shopifyProds.find(p => String(p.shopify_id) === String(id));
+        const variants = (prod && prod.variants) ? prod.variants : [];
+        const savedVariantIds = (savedCfg && Array.isArray(savedCfg.eligible_variant_ids)) ? savedCfg.eligible_variant_ids : [];
+
         _drawerPlans = Array.isArray(_plans) ? _plans.filter(p => p.active !== false && p.frequency && p.permanence) : [];
-        const savedPlans = (savedCfg && savedCfg.plans) ? savedCfg.plans : {}; // { planId: { enabled, discount } }
+        const savedPlans = (savedCfg && savedCfg.plans) ? savedCfg.plans : {};
 
         if (!_drawerPlans.length) {
           document.getElementById('drawer-body-content').innerHTML =
             '<div style="padding:20px;background:#fffbeb;border-radius:8px;border:1px solid #fde68a;color:#92400e;font-size:13px">' +
-            '⚠️ No hay planes activos. Ve a <strong>Planes de Suscripción</strong> y crea al menos un plan primero.</div>';
+            'No hay planes activos. Ve a <strong>Planes de Suscripcion</strong> y crea al menos un plan primero.</div>';
           return;
         }
 
         const freqLabel = f => f === 1 ? 'Mensual' : f === 2 ? 'Bimestral' : `Cada ${f} meses`;
+
+        // Seccion de variantes elegibles
+        const variantSection = variants.length > 1 ? `
+          <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin-bottom:10px">
+            Variantes elegibles para suscripcion
+          </div>
+          <div style="font-size:11px;color:var(--mut);margin-bottom:10px;background:#f0f9ff;padding:8px 12px;border-radius:6px;border:1px solid #bae6fd">
+            Selecciona que variantes pueden comprarse con suscripcion. Si no seleccionas ninguna, todas estaran disponibles.
+          </div>
+          <div style="margin-bottom:16px">
+            ${variants.map(v => {
+              const checked = savedVariantIds.length === 0 || savedVariantIds.includes(String(v.id));
+              return `<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:1px solid var(--bdr);margin-bottom:6px;cursor:pointer;background:${checked ? '#f0fdf4' : '#fff'}">
+                <input type="checkbox" class="variant-cb" value="${v.id}" ${checked ? 'checked' : ''}
+                  onchange="this.parentElement.style.background=this.checked?'#f0fdf4':'#fff'"
+                  style="width:16px;height:16px;accent-color:#16a34a;cursor:pointer">
+                <div style="flex:1">
+                  <div style="font-size:13px;font-weight:600">${v.title}</div>
+                  <div style="font-size:11px;color:var(--mut)">S/ ${v.price}${v.sku ? ' · SKU: ' + v.sku : ''} · ID: ${v.id}</div>
+                </div>
+              </label>`;
+            }).join('')}
+          </div>
+        ` : '';
+
         const html = `
+          ${variantSection}
           <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin-bottom:10px">
             Planes disponibles — activa y configura el descuento para este producto
           </div>
           <div style="font-size:11px;color:var(--mut);margin-bottom:14px;background:#f8f8f8;padding:8px 12px;border-radius:6px">
-            ✓ Activa los planes que quieres para este producto. El descuento puede ser diferente al del plan global.
+            Activa los planes que quieres para este producto. El descuento puede ser diferente al del plan global.
           </div>
           <div class="disc-matrix" id="plan-assign-matrix">
             ${_drawerPlans.map(plan => {
@@ -2279,10 +2310,19 @@
           label: (plan.frequency === 1 ? 'Mensual' : plan.frequency === 2 ? 'Bimestral' : `Cada ${plan.frequency} meses`) + ' · ' + plan.permanence + ' meses'
         };
       });
-      const config = { plans: plansConfig, updated_at: new Date().toISOString() };
+      // Recoger variantes seleccionadas
+      const variantCbs = document.querySelectorAll('.variant-cb');
+      const selectedVariants = [];
+      variantCbs.forEach(cb => { if (cb.checked) selectedVariants.push(String(cb.value)); });
+      // Si todas estan marcadas o no hay checkboxes, enviar array vacio (= todas elegibles)
+      const allChecked = variantCbs.length === 0 || selectedVariants.length === variantCbs.length;
+      const eligibleVariantIds = allChecked ? [] : selectedVariants;
+
+      const config = { plans: plansConfig, eligible_variant_ids: eligibleVariantIds, updated_at: new Date().toISOString() };
       try {
         await api(`/api/products/${_currentProdId}/config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
-        toast('✅ Configuración guardada — el widget ahora usará estos planes y descuentos');
+        const varMsg = eligibleVariantIds.length ? ` (${eligibleVariantIds.length} variante${eligibleVariantIds.length > 1 ? 's' : ''} seleccionada${eligibleVariantIds.length > 1 ? 's' : ''})` : '';
+        toast('Configuracion guardada' + varMsg + ' — el widget usara estos planes y descuentos');
         closeDrawer();
       } catch (e) { toast('Error: ' + e.message, 'err'); }
     }

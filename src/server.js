@@ -372,9 +372,21 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
             return res.status(400).json({ error: 'Faltan datos: email, frecuencia, permanencia, precio y DNI son obligatorios.' });
         }
 
-        // Refresh MP token from Shopify settings at runtime
+        // Refresh MP token + variant validation from Shopify settings (single call)
         const dynSettings = await readFromShopify().catch(() => ({}));
         if (dynSettings?.mp_access_token) process.env.MP_ACCESS_TOKEN = dynSettings.mp_access_token;
+
+        // FIX 2026-04-11: Validate variant_id against eligible variants for the product
+        if (pId && vId) {
+            const pConfigs = (typeof dynSettings?.product_configs === 'object' && !Array.isArray(dynSettings?.product_configs)) ? dynSettings.product_configs : {};
+            const pCfg = pConfigs[pId] || {};
+            if (Array.isArray(pCfg.eligible_variant_ids) && pCfg.eligible_variant_ids.length > 0) {
+                if (!pCfg.eligible_variant_ids.includes(String(vId))) {
+                    console.warn(`[CHECKOUT] ⚠️ Variant ${vId} NOT in eligible list [${pCfg.eligible_variant_ids}] for product ${pId}`);
+                    return res.status(400).json({ error: 'Esta variante no está habilitada para suscripción. Solo la variante 500g está disponible.' });
+                }
+            }
+        }
 
         const backUrl = `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/subscriptions/success?email=${encodeURIComponent(email)}&product=${encodeURIComponent(title)}`;
 
@@ -502,20 +514,7 @@ app.post('/api/subscriptions/:id/pause', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* ── SKIP one shipment ── */
-app.post('/api/subscriptions/:id/skip', async (req, res) => {
-    try {
-        const sub = await db.getSubscription(req.params.id);
-        if (!sub || sub.status !== 'active') return res.status(400).json({ error: 'Cannot skip' });
-
-        const newNext = new Date(sub.next_charge_at);
-        newNext.setMonth(newNext.getMonth() + sub.frequency_months);
-
-        await db.updateSubscription(sub.id, { next_charge_at: newNext.toISOString() });
-        await db.createEvent({ subscription_id: sub.id, event_type: 'skipped', metadata: { skipped_date: sub.next_charge_at } });
-        res.json({ success: true, newNextChargeAt: newNext });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
+/* ── SKIP removed 2026-04-11: feature disabled per business rules ── */
 
 /* ── CANCEL subscription (with anti-abuse window check) ── */
 app.post('/api/subscriptions/:id/cancel', async (req, res) => {
@@ -629,7 +628,13 @@ app.get('/api/products', async (req, res) => {
             image: p.images?.[0]?.src || null,
             price: p.variants?.[0]?.price || '0',
             status: p.status,
-            subscription_enabled: activeIds.has(String(p.id))
+            subscription_enabled: activeIds.has(String(p.id)),
+            variants: (p.variants || []).map(v => ({
+                id: String(v.id),
+                title: v.title,
+                price: v.price,
+                sku: v.sku || ''
+            }))
         }));
         console.log('[PRODUCTS] ' + products.length + ' total, ' + activeIds.size + ' active');
         res.json(products);
@@ -729,8 +734,8 @@ app.post('/api/selling-plans/sync', async (req, res) => {
 
         // CASE 1: Single product passed directly in body (from product card Sync button)
         if (req.body && req.body.productId) {
-            prodsToSync = [{ shopify_id: req.body.productId, product_title: req.body.productTitle || 'Producto' }];
-            console.log('[SELLING_PLANS] Single product sync:', req.body.productId);
+            prodsToSync = [{ shopify_id: req.body.productId, product_title: req.body.productTitle || 'Producto', eligible_variant_ids: req.body.eligible_variant_ids || [] }];
+            console.log('[SELLING_PLANS] Single product sync:', req.body.productId, req.body.eligible_variant_ids ? `variants: ${req.body.eligible_variant_ids}` : '(all)');
         } else {
             // CASE 2: Sync all active products from settings.eligible_products sub-key
             const eligibleProducts = Array.isArray(settingsData.eligible_products) ? settingsData.eligible_products : [];
@@ -740,18 +745,29 @@ app.post('/api/selling-plans/sync', async (req, res) => {
             }
         }
 
+        // FIX 2026-04-11: Read per-product config to get eligible variant IDs
+        // so SellingPlans only apply to specific variants (e.g. 500g, not 300g)
+        const productConfigs = (typeof settingsData.product_configs === 'object' && !Array.isArray(settingsData.product_configs))
+            ? settingsData.product_configs : {};
+
         const results = [];
         for (const prod of prodsToSync) {
             const productGid = `gid://shopify/Product/${prod.shopify_id}`;
+            const pCfg = productConfigs[prod.shopify_id] || {};
+            // Build variant GIDs from config — if eligible_variant_ids is set, restrict to those
+            const variantGids = Array.isArray(pCfg.eligible_variant_ids) && pCfg.eligible_variant_ids.length
+                ? pCfg.eligible_variant_ids.map(vid => `gid://shopify/ProductVariant/${vid}`)
+                : null;
             try {
                 const result = await sellingPlans.syncProductPlans({
                     productId: prod.shopify_id,
                     productGid,
                     productTitle: prod.product_title || '',
-                    plans: normalizedPlans
+                    plans: normalizedPlans,
+                    variantGids
                 });
                 results.push({ product: prod.product_title, productId: prod.shopify_id, ...result });
-                console.log('[SELLING_PLANS] Synced:', prod.product_title, '→ synced:', result.synced);
+                console.log('[SELLING_PLANS] Synced:', prod.product_title, variantGids ? `(${variantGids.length} variants)` : '(all variants)', '→ synced:', result.synced);
             } catch (e) {
                 results.push({ product: prod.product_title, productId: prod.shopify_id, synced: false, error: e.message });
                 console.error('[SELLING_PLANS] Error on', prod.product_title, ':', e.message);
@@ -1707,8 +1723,25 @@ app.post('/webhooks/mercadopago', async (req, res) => {
                 await db.createEvent({ subscription_id: sub.id, event_type: 'activated',
                     metadata: JSON.stringify({ mp_preapproval_id: preapprovalId }) }).catch(() => {});
 
-                // Crear primera orden en Shopify
-                await createShopifyOrderFromSub(sub, preapprovalId).catch(e => console.error('[MP WEBHOOK] Order error:', e.message));
+                // FIX 2026-04-11: Dedup — check if first order was already created (webhook retry)
+                const activationEvents = db?.getEvents ? await db.getEvents(sub.id, 10).catch(() => []) : [];
+                const alreadyHasOrder = activationEvents.some(e => e.event_type === 'first_order_created');
+
+                if (!alreadyHasOrder) {
+                    // Crear primera orden en Shopify
+                    const firstOrder = await createShopifyOrderFromSub(sub, preapprovalId).catch(e => { console.error('[MP WEBHOOK] Order error:', e.message); return null; });
+                    if (firstOrder?.id) {
+                        await db.updateSubscription(sub.id, {
+                            shopify_order_id: String(firstOrder.id),
+                            shopify_order_name: firstOrder.name,
+                            cycles_completed: 1
+                        }).catch(() => {});
+                        await db.createEvent({ subscription_id: sub.id, event_type: 'first_order_created',
+                            metadata: JSON.stringify({ shopify_order_id: firstOrder.id, order_name: firstOrder.name }) }).catch(() => {});
+                    }
+                } else {
+                    console.log(`[MP WEBHOOK] First order already created for ${sub.id} — skipping (dedup)`);
+                }
 
                 // Email de bienvenida
                 if (notifications.sendWelcome) notifications.sendWelcome({ ...sub, mp_preapproval_id: preapprovalId }).catch(() => {});
@@ -1804,22 +1837,35 @@ app.post('/webhooks/mercadopago', async (req, res) => {
                 sub.mp_preapproval_id = preapprovalId;
             }
 
+            // FIX 2026-04-11: Dedup — check if this payment was already processed
+            const paymentEvents = db?.getEvents ? await db.getEvents(sub.id, 100).catch(() => []) : [];
+            const alreadyProcessed = paymentEvents.some(e => {
+                try { const m = JSON.parse(e.metadata || '{}'); return m.mp_payment_id === resourceId; } catch { return false; }
+            });
+            if (alreadyProcessed) {
+                console.log(`[MP WEBHOOK] Payment ${resourceId} already processed for ${sub.id} — skipping (dedup)`);
+                return;
+            }
+
             const cyclesCompleted = (parseInt(sub.cycles_completed) || 0) + 1;
             const nextCharge = new Date();
             nextCharge.setMonth(nextCharge.getMonth() + (parseInt(sub.frequency_months) || 1));
             const isComplete = cyclesCompleted >= (parseInt(sub.cycles_required) || 999);
 
+            // Crear orden Shopify
+            const order = await createShopifyOrderFromSub(sub, resourceId).catch(e => {
+                console.error('[MP WEBHOOK] ❌ Shopify order error:', e.message); return null;
+            });
+
+            // FIX 2026-04-11: Save shopify_order_id + cycle update together
             await db.updateSubscription(sub.id, {
                 cycles_completed: cyclesCompleted,
                 last_charge_at: new Date().toISOString(),
                 next_charge_at: nextCharge.toISOString(),
-                status: isComplete ? 'completed' : 'active'
+                status: isComplete ? 'completed' : 'active',
+                shopify_order_id: order?.id ? String(order.id) : undefined,
+                shopify_order_name: order?.name || undefined
             }).catch(e => console.warn('[MP WEBHOOK] updateSub:', e.message));
-
-            // Crear orden Shopify SIEMPRE (esta es la clave del fix)
-            const order = await createShopifyOrderFromSub(sub, resourceId).catch(e => {
-                console.error('[MP WEBHOOK] ❌ Shopify order error:', e.message); return null;
-            });
 
             await db.createEvent({ subscription_id: sub.id, event_type: 'charge_success',
                 metadata: JSON.stringify({ mp_payment_id: resourceId, cycle: cyclesCompleted,
@@ -2171,7 +2217,13 @@ app.get('/api/shopify/products', async (req, res) => {
                 title: p.title,
                 image: p.images?.[0]?.src || null,
                 price: p.variants?.[0]?.price || '0',
-                status: p.status
+                status: p.status,
+                variants: (p.variants || []).map(v => ({
+                    id: v.id,
+                    title: v.title,
+                    price: v.price,
+                    sku: v.sku || ''
+                }))
             }))
         });
     } catch (e) { res.json({ products: [], error: e.message }) }
@@ -2363,29 +2415,19 @@ app.post('/api/settings/test-mp', async (req, res) => {
 
 /* ═══════════════════════════════════════════════
    👤 PORTAL DEL SUSCRIPTOR (customer self-service)
+   FIX 2026-04-11: Specific routes MUST come BEFORE the :email catch-all,
+   otherwise Express captures "subscription" as an email parameter.
 ═══════════════════════════════════════════════ */
 
-/* GET /api/portal/:email — all subscriptions for a customer */
-app.get('/api/portal/:email', async (req, res) => {
-    const email = decodeURIComponent(req.params.email).toLowerCase().trim();
-    try {
-        const allSubs = await db.getSubscriptions();
-        const subs = allSubs.filter(s => (s.customer_email || '').toLowerCase() === email);
-        res.json({ subscriptions: subs, email });
-    } catch (e) {
-        res.json({ subscriptions: [], email, note: 'Error: ' + e.message });
-    }
-});
-
-/* GET /api/portal/subscription/:id/history */
+/* GET /api/portal/subscription/:id/history — MUST be before :email route */
 app.get('/api/portal/subscription/:id/history', async (req, res) => {
     try {
-        const events = await db.getEvents ? await db.getEvents(req.params.id) : [];
+        const events = db?.getEvents ? await db.getEvents(req.params.id) : [];
         res.json({ events: events || [] });
     } catch (e) { res.json({ events: [] }); }
 });
 
-/* POST /api/portal/subscription/:id/pause */
+/* POST /api/portal/subscription/:id/pause — MUST be before :email route */
 app.post('/api/portal/subscription/:id/pause', async (req, res) => {
     try {
         const { pauseMonths = 1 } = req.body;
@@ -2400,18 +2442,7 @@ app.post('/api/portal/subscription/:id/pause', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* POST /api/portal/subscription/:id/skip */
-app.post('/api/portal/subscription/:id/skip', async (req, res) => {
-    try {
-        const sub = await db.getSubscription(req.params.id);
-        if (!sub || sub.status !== 'active') return res.status(400).json({ error: 'Cannot skip' });
-        const newNext = new Date(sub.next_charge_at);
-        newNext.setMonth(newNext.getMonth() + sub.frequency_months);
-        await db.updateSubscription(sub.id, { next_charge_at: newNext.toISOString() });
-        await db.createEvent({ subscription_id: sub.id, event_type: 'skipped' });
-        res.json({ success: true, newNextChargeAt: newNext });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
+/* Portal skip removed 2026-04-11: feature disabled per business rules */
 
 /* POST /api/subscriptions/:id/resume (for portal reactivation) */
 app.post('/api/subscriptions/:id/resume', async (req, res) => {
@@ -2425,279 +2456,23 @@ app.post('/api/subscriptions/:id/resume', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* ══════════════════════════════════════════════════════
-   🛒 MP CHECKOUT — Suscripción recurrente real con Mercado Pago
-   Widget (modal) → POST /api/subscriptions/checkout →
-   MP PreApproval (init_point) → cliente autoriza tarjeta →
-   MP cobra mensualmente → webhook /webhooks/mp →
-   backend crea pedido Shopify por cada cobro automático
-══════════════════════════════════════════════════════ */
-
-/* Helper: create a Shopify order for each MP recurring payment
-   Handles missing variant_id gracefully with product search + custom line item fallback */
-async function createShopifyOrderFromSubscription({ customerEmail, customerName, variantId, price, productTitle, subscriptionNote }) {
-    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
-    const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
-    if (!token) throw new Error('No Shopify token for order creation');
-
-    // Resolve variant_id if missing — search Shopify products by title
-    let resolvedVariantId = variantId ? parseInt(variantId) : null;
-    if (!resolvedVariantId && productTitle && token) {
-        try {
-            const titleSearch = (productTitle || '').split(' ')[0];
-            const sr = await fetch(`https://${shop}/admin/api/2026-01/products.json?title=${encodeURIComponent(titleSearch)}&limit=5&fields=id,title,variants,images`, {
-                headers: { 'X-Shopify-Access-Token': token }
-            });
-            if (sr.ok) {
-                const sd = await sr.json();
-                const match = (sd.products || []).find(p => p.title?.toLowerCase().includes(productTitle.toLowerCase().split(' ')[0])) || (sd.products || [])[0];
-                if (match?.variants?.[0]?.id) {
-                    resolvedVariantId = match.variants[0].id;
-                    console.log(`[ORDER] Resolved variant_id ${resolvedVariantId} from product "${match.title}"`);
-                }
-            }
-        } catch (e) { console.warn('[ORDER] variant resolve error:', e.message); }
-    }
-
-    // Build line item — with variant if available, custom line item if not
-    const lineItem = resolvedVariantId
-        ? { variant_id: resolvedVariantId, quantity: 1, price: parseFloat(price).toFixed(2), requires_shipping: true, title: productTitle || 'Suscripción LAB' }
-        : { title: productTitle || 'Suscripción LAB NUTRITION', quantity: 1, price: parseFloat(price || 0).toFixed(2), requires_shipping: true };
-
-    if (!resolvedVariantId) console.warn(`[ORDER] ⚠️ Creating order WITHOUT variant_id for ${customerEmail} — custom line item`);
-
-    const body = {
-        order: {
-            email: customerEmail,
-            financial_status: 'paid',
-            send_receipt: true,
-            send_fulfillment_receipt: true,
-            note: subscriptionNote || 'LAB NUTRITION — Cobro automático de suscripción',
-            tags: 'suscripcion,cobro-automatico,mercadopago',
-            line_items: [lineItem],
-            customer: { email: customerEmail }
-        }
-    };
-    const r = await fetch(`https://${shop}/admin/api/2026-01/orders.json`, {
-        method: 'POST',
-        headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-    if (!r.ok) {
-        const errTxt = await r.text();
-        throw new Error(`Shopify order failed ${r.status}: ${errTxt.slice(0, 200)}`);
-    }
-    return (await r.json()).order;
-}
-
-/* NOTE: /api/subscriptions/checkout is already defined above (line ~349).
-   Duplicate route removed — Express only matches the first handler. */
-
-/* NOTE: GET /subscriptions/success is already defined above (line ~439).
-   Duplicate route removed — Express only matches the first handler. */
-
-/* ──────────────────────────────────────────────────────────────────────────
-   📡 MP WEBHOOKS — Maneja todos los eventos de Mercado Pago
-   
-   IMPORTANTE: Configurar en MP Developer Dashboard → Aplicación → Webhooks:
-   URL: https://pixel-suite-pro-production.up.railway.app/webhooks/mp
-   Eventos: preapproval, payment
-   
-   Flujo:
-   • preapproval (status=authorized) → suscripción activada → notificar cliente
-   • payment (created by MP for a subscription) → crear pedido Shopify
-   • preapproval (status=cancelled/paused) → actualizar estado en BD
-──────────────────────────────────────────────────────────────────────────── */
-app.post('/webhooks/mp', express.json(), async (req, res) => {
-    res.status(200).send('ok'); // Always ack immediately to prevent MP retries
-
-    const { type, action, data } = req.body || {};
-    const resourceId = data?.id;
-
-    if (!type || !resourceId) return;
-    console.log(`[MP WEBHOOK] type:${type} action:${action} id:${resourceId}`);
-
+/* GET /api/portal/:email — all subscriptions for a customer (MUST be LAST portal route) */
+app.get('/api/portal/:email', async (req, res) => {
+    const email = decodeURIComponent(req.params.email).toLowerCase().trim();
     try {
-        // ── PAYMENT EVENT: MP charged a subscription → create Shopify order ──
-        if (type === 'payment') {
-            const payment = await mp.getPayment(resourceId).catch(() => null);
-            if (!payment) return console.warn('[MP WEBHOOK] Could not fetch payment:', resourceId);
-
-            // Only process approved subscription payments
-            if (payment.status !== 'approved') {
-                console.log(`[MP WEBHOOK] Payment ${resourceId} status: ${payment.status} — skipped`);
-                return;
-            }
-
-            // FIX 2026-04-09: priorizar campo directo preapproval_id del payment
-            const preapprovalId = payment.preapproval_id
-                || payment.metadata?.preapproval_id
-                || payment.external_reference
-                || null;
-            const payerEmail = payment.payer?.email;
-            const transAmount = payment.transaction_amount;
-
-            console.log(`[MP WEBHOOK] ✅ Payment approved — preapproval:${preapprovalId} amount:${transAmount} email:${payerEmail}`);
-
-            // Find subscription with multi-fallback strategy
-            let sub = null;
-            const allSubs = db?.getSubscriptions ? await db.getSubscriptions().catch(() => []) : [];
-
-            // 1) Match por preapproval_id
-            if (preapprovalId) sub = allSubs.find(s => s.mp_preapproval_id === preapprovalId) || null;
-
-            // 2) Fallback por email del payer
-            if (!sub && payerEmail) {
-                const byEmail = allSubs
-                    .filter(s => (s.customer_email || '').toLowerCase() === payerEmail.toLowerCase())
-                    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-                sub = byEmail.find(s => s.status === 'active' || s.status === 'pending_payment' || s.status === 'pending') || byEmail[0] || null;
-                if (sub) console.log(`[MP WEBHOOK] Matched by email fallback: ${sub.id}`);
-            }
-
-            // 3) Fallback: pending_subscriptions en settings metafield
-            if (!sub) {
-                const settings = await readFromShopify().catch(() => ({}));
-                sub = (settings.pending_subscriptions || []).find(s =>
-                    s.mp_preapproval_id === preapprovalId ||
-                    (s.customer_email || '').toLowerCase() === (payerEmail || '').toLowerCase()
-                );
-            }
-
-            if (!sub) {
-                console.warn(`[MP WEBHOOK] ⚠️  No subscription found for preapproval:${preapprovalId} email:${payerEmail} — creating order with payment data`);
-                // Orphan fallback: create order anyway using payment data
-                try {
-                    const order = await createShopifyOrderFromSubscription({
-                        customerEmail: payerEmail,
-                        customerName: paymentData?.payer?.first_name || payerEmail,
-                        variantId: null,
-                        price: transAmount,
-                        productTitle: paymentData?.description || 'Suscripción LAB',
-                        subscriptionNote: `Suscripción LAB — Cobro automático MP (orphan) — Pago MP #${resourceId}`
-                    });
-                    console.log(`[MP WEBHOOK] ✅ Orphan Shopify order created: ${order.name} for ${payerEmail}`);
-                } catch (orphanErr) {
-                    console.error(`[MP WEBHOOK] ❌ Orphan order failed:`, orphanErr.message);
-                }
-                return;
-            }
-
-            // Link preapproval_id si no estaba linkeado
-            if (preapprovalId && !sub.mp_preapproval_id && db?.updateSubscription && sub.id) {
-                await db.updateSubscription(sub.id, { mp_preapproval_id: preapprovalId }).catch(() => {});
-                sub.mp_preapproval_id = preapprovalId;
-            }
-
-            // Create Shopify order for this payment
-            try {
-                const order = await createShopifyOrderFromSubscription({
-                    customerEmail: sub.customer_email || payerEmail,
-                    customerName: sub.customer_name || '',
-                    variantId: sub.variant_id,
-                    price: transAmount || sub.final_price,
-                    productTitle: sub.product_title,
-                    subscriptionNote: `Suscripción LAB — Cobro automático MP (${sub.frequency_months === 1 ? 'Mensual' : `Cada ${sub.frequency_months} meses`}) — Pago MP #${resourceId}`
-                });
-
-                console.log(`[MP WEBHOOK] ✅ Shopify order created: ${order.name} for ${sub.customer_email}`);
-
-                // Update subscription cycles count
-                if (db?.updateSubscription && sub.id) {
-                    const nextCharge = new Date();
-                    nextCharge.setMonth(nextCharge.getMonth() + (sub.frequency_months || 1));
-                    await db.updateSubscription(sub.id, {
-                        status: 'active',
-                        cycles_completed: (sub.cycles_completed || 0) + 1,
-                        last_charge_at: new Date().toISOString(),
-                        next_charge_at: nextCharge.toISOString(),
-                        last_order_name: order.name
-                    }).catch(() => {});
-                }
-
-                // Send charge confirmation email
-                await sendAutoEmail({
-                    to: sub.customer_email || payerEmail,
-                    subject: `✅ Tu suscripción LAB se renovó — Pedido ${order.name}`,
-                    html: tplChargeSuccess(
-                        sub.customer_name || payerEmail,
-                        sub.product_title || 'Producto LAB',
-                        transAmount?.toFixed(2) || sub.final_price,
-                        'PEN',
-                        order.name,
-                        new Date(Date.now() + (sub.frequency_months || 1) * 30 * 86400000).toISOString()
-                    )
-                }).catch(() => {});
-
-            } catch (orderErr) {
-                console.error('[MP WEBHOOK] Order creation failed:', orderErr.message);
-            }
-        }
-
-        // ── PREAPPROVAL EVENT: subscription status changed ──
-        if (type === 'preapproval') {
-            const preapproval = await mp.getSubscription(resourceId).catch(() => null);
-            if (!preapproval) return;
-
-            const status = preapproval.status; // authorized, paused, cancelled, pending
-            const payerEmail = preapproval.payer_email;
-            console.log(`[MP WEBHOOK] PreApproval ${resourceId} → status:${status} email:${payerEmail}`);
-
-            // Find local subscription record (filter now supported in shopify-storage.js)
-            let sub = null;
-            if (db?.getSubscriptions) {
-                const allSubs = await db.getSubscriptions().catch(() => []);
-                sub = allSubs.find(s => s.mp_preapproval_id === resourceId) || null;
-                // Fallback por plan_id + email (preapproval recién creada, sub aún pending)
-                if (!sub && preapproval.preapproval_plan_id) {
-                    const candidates = allSubs.filter(s =>
-                        s.mp_plan_id === preapproval.preapproval_plan_id &&
-                        (payerEmail ? (s.customer_email || '').toLowerCase() === payerEmail.toLowerCase() : true)
-                    );
-                    sub = candidates.find(s => s.status === 'pending_payment' || s.status === 'pending') || candidates[0] || null;
-                    if (sub) {
-                        // Link the preapproval_id now
-                        await db.updateSubscription(sub.id, { mp_preapproval_id: resourceId }).catch(() => {});
-                        sub.mp_preapproval_id = resourceId;
-                    }
-                }
-            }
-
-            if (sub && db?.updateSubscription) {
-                const newStatus = status === 'authorized' ? 'active'
-                    : status === 'paused' ? 'paused'
-                    : status === 'cancelled' ? 'cancelled'
-                    : sub.status;
-                await db.updateSubscription(sub.id, { status: newStatus }).catch(() => {});
-
-                if (status === 'authorized' && sub.status === 'pending') {
-                    // First authorization — send welcome email
-                    await sendAutoEmail({
-                        to: sub.customer_email || payerEmail,
-                        subject: '🎉 Tu suscripción LAB está activa',
-                        html: `<!DOCTYPE html><html><body style="font-family:Montserrat,sans-serif;background:#f5f5f5;padding:20px">
-                        <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 20px rgba(0,0,0,.1)">
-                        <div style="background:#9d2a23;color:#fff;padding:28px 32px;font-size:20px;font-weight:900">🎉 ¡Bienvenido a LAB NUTRITION!</div>
-                        <div style="padding:32px;line-height:1.7;color:#222">
-                        <p>Hola <strong>${sub.customer_name || payerEmail}</strong>,</p>
-                        <p>Tu suscripción de <strong>${sub.product_title}</strong> está activa. recibirás tu producto cada ${sub.frequency_months === 1 ? 'mes' : `${sub.frequency_months} meses`} automáticamente.</p>
-                        <div style="background:#d1fae5;border-radius:10px;padding:14px 18px;margin:16px 0;color:#065f46;font-weight:700">
-                        ✅ Descuento: ${sub.discount_pct || 0}% OFF cada pedido<br>
-                        📦 Permanencia: ${sub.permanence_months} meses<br>
-                        💳 Cobro automático: ${sub.frequency_months === 1 ? 'Mensual' : `Cada ${sub.frequency_months} meses`}
-                        </div>
-                        <p>Mercado Pago se encargará de los cobros automáticamente. No necesitas hacer nada.</p>
-                        </div>
-                        <div style="background:#f2f2f2;padding:14px 32px;text-align:center;font-size:11px;color:#aaa">LAB NUTRITION</div>
-                        </div></body></html>`
-                    }).catch(() => {});
-                }
-            }
-        }
+        const allSubs = await db.getSubscriptions();
+        const subs = allSubs.filter(s => (s.customer_email || '').toLowerCase() === email);
+        res.json({ subscriptions: subs, email });
     } catch (e) {
-        console.error('[MP WEBHOOK] Processing error:', e.message);
+        res.json({ subscriptions: [], email, note: 'Error: ' + e.message });
     }
 });
+
+/* FIX 2026-04-11: Duplicate handler /webhooks/mp REMOVED.
+   All MP webhook processing now goes through /webhooks/mercadopago (line ~1665)
+   which includes Navasoft note_attributes, shipping, and address resolution.
+   Configure MP Dashboard → Webhooks URL: .../webhooks/mercadopago
+   The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
 app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.2.0', ts: new Date() }));
@@ -2721,7 +2496,8 @@ app.get('*', (req, res) => {
 /** Send transactional email via configured SMTP */
 async function sendAutoEmail({ to, subject, html }) {
     try {
-        const settings = (await readFromShopify()).settings || await readFromShopify() || {};
+        const raw = await readFromShopify().catch(() => null);
+        const settings = (raw && raw.settings) ? raw.settings : (raw || {});
         const nodemailer = require('nodemailer');
         const host = process.env.SMTP_HOST || settings.smtp_host || 'smtp.gmail.com';
         const user = process.env.SMTP_USER || settings.smtp_user || '';
