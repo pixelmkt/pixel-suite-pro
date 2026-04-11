@@ -353,7 +353,7 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
         // Acepta snake_case del widget actual O camelCase de versiones anteriores
         const email        = b.customer_email   || b.customerEmail;
         const name         = b.customer_name    || b.customerName   || '';
-        const phone        = b.phone            || b.customerPhone  || '';
+        const phone        = b.customer_phone   || b.phone || b.customerPhone  || '';
         const pId          = b.product_id       || b.productId      || '';
         const vId          = b.variant_id       || b.variantId      || '';
         const title        = b.product_title    || b.productTitle   || 'Producto LAB';
