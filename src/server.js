@@ -367,9 +367,16 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
         const shipAddr     = b.shipping_address || null;
         const tipDoc       = b.tipo_documento   || '01';
         const dni          = b.dni              || '';
+        const tcAccepted   = b.tc_accepted === true;
+        const tcVersion    = b.tc_version       || '1.0';
+        const tcAcceptedAt = b.tc_accepted_at   || new Date().toISOString();
+        const tcIp         = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
 
         if (!email || !freq || !perm || !finalPrice || !dni) {
             return res.status(400).json({ error: 'Faltan datos: email, frecuencia, permanencia, precio y DNI son obligatorios.' });
+        }
+        if (!tcAccepted) {
+            return res.status(400).json({ error: 'Debes aceptar los Términos y Condiciones para continuar.' });
         }
 
         // Refresh MP token + variant validation from Shopify settings (single call)
@@ -435,7 +442,11 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
             tipo_documento: tipDoc,
             dni: dni,
             next_charge_at: null,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            tc_accepted: true,
+            tc_version: tcVersion,
+            tc_accepted_at: tcAcceptedAt,
+            tc_ip: tcIp
         };
 
         if (db?.createSubscription) {
@@ -517,41 +528,141 @@ app.post('/api/subscriptions/:id/pause', async (req, res) => {
 /* ── SKIP removed 2026-04-11: feature disabled per business rules ── */
 
 /* ── CANCEL subscription (with anti-abuse window check) ── */
+/**
+ * Calcula la penalidad por cancelación anticipada.
+ * Fórmula: (precio_regular - precio_suscripcion) × ciclos_completados
+ * = descuento mensual × meses entregados
+ * Dentro del retracto de 7 días desde el primer cobro: penalidad 0.
+ */
+function calculateEarlyCancellationPenalty(sub) {
+    const basePrice = parseFloat(sub.base_price || 0);
+    const finalPrice = parseFloat(sub.final_price || basePrice);
+    const monthlyDiscount = Math.max(0, basePrice - finalPrice);
+    const cyclesCompleted = parseInt(sub.cycles_completed || 0);
+    const cyclesRequired = parseInt(sub.cycles_required || 0);
+
+    // Retracto Ley 29571 Art. 58: 7 días desde primer cobro
+    const firstChargeAt = sub.activated_at || sub.last_charge_at;
+    let withinRetracto = false;
+    if (firstChargeAt) {
+        const daysSinceFirst = (Date.now() - new Date(firstChargeAt).getTime()) / 86400000;
+        withinRetracto = daysSinceFirst <= 7;
+    }
+
+    const completedPermanence = cyclesCompleted >= cyclesRequired;
+    const penalty = (withinRetracto || completedPermanence) ? 0 : parseFloat((monthlyDiscount * cyclesCompleted).toFixed(2));
+
+    return {
+        penalty,
+        monthly_discount: parseFloat(monthlyDiscount.toFixed(2)),
+        cycles_completed: cyclesCompleted,
+        cycles_required: cyclesRequired,
+        within_retracto: withinRetracto,
+        completed_permanence: completedPermanence,
+        free_cancel: penalty === 0
+    };
+}
+
+// PREVIEW: devuelve cuánto pagaría el cliente si cancela ahora
+app.get('/api/subscriptions/:id/cancel/preview', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Not found' });
+        const info = calculateEarlyCancellationPenalty(sub);
+        let message;
+        if (info.within_retracto) {
+            message = 'Estás dentro de los 7 días de retracto. Puedes cancelar sin penalidad.';
+        } else if (info.completed_permanence) {
+            message = 'Ya cumpliste tu permanencia. Cancelación gratuita.';
+        } else {
+            message = `Has recibido ${info.cycles_completed} ${info.cycles_completed === 1 ? 'mes' : 'meses'} con descuento de S/${info.monthly_discount.toFixed(2)} cada uno. Para cancelar antes de cumplir la permanencia debes reintegrar el descuento recibido: S/${info.penalty.toFixed(2)}. No es una multa, es la devolución del beneficio otorgado por un compromiso que no se completó. (Ley 29571, Art. 50 — cláusula no abusiva según INDECOPI).`;
+        }
+        res.json({ success: true, ...info, message, tc_version: sub.tc_version || '1.0' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/subscriptions/:id/cancel', async (req, res) => {
     try {
         const sub = await db.getSubscription(req.params.id);
         if (!sub) return res.status(404).json({ error: 'Not found' });
 
-        // Anti-abuse: must complete minimum permanence
-        if (sub.cycles_completed < sub.cycles_required) {
-            return res.status(403).json({
-                error: 'Permanencia incompleta',
-                cyclesCompleted: sub.cycles_completed,
-                cyclesRequired: sub.cycles_required,
-                message: `Debes completar ${sub.cycles_required - sub.cycles_completed} ciclos más antes de cancelar.`
-            });
-        }
-
-        // Cancellation window check (30-15 days before next charge)
         const now = new Date();
-        const nextCharge = new Date(sub.next_charge_at);
-        const daysUntil = (nextCharge - now) / (1000 * 60 * 60 * 24);
+        const info = calculateEarlyCancellationPenalty(sub);
+        const confirmPenalty = req.body?.confirm_penalty === true;
 
-        if (daysUntil < 15) {
-            return res.status(403).json({
-                error: 'Ventana cerrada',
-                daysUntil: Math.round(daysUntil),
-                message: `La ventana de cancelación está cerrada. El próximo envío es en ${Math.round(daysUntil)} días. Podrás cancelar desde ${new Date(nextCharge.getTime() + (daysUntil + sub.frequency_months * 30 - 30) * 86400000).toLocaleDateString('es-PE')}.`
+        // CASO 1: cancelación libre (retracto o permanencia cumplida)
+        if (info.free_cancel) {
+            // Aún respetar ventana de cancelación si permanencia cumplida
+            if (info.completed_permanence && sub.next_charge_at) {
+                const daysUntil = (new Date(sub.next_charge_at) - now) / (1000 * 60 * 60 * 24);
+                if (daysUntil < 15 && daysUntil > 0) {
+                    return res.status(403).json({
+                        error: 'Ventana cerrada',
+                        daysUntil: Math.round(daysUntil),
+                        message: `La ventana de cancelación está cerrada. El próximo envío es en ${Math.round(daysUntil)} días. Podrás cancelar después del siguiente ciclo.`
+                    });
+                }
+            }
+            if (mp.cancelSubscription) await mp.cancelSubscription(sub.mp_preapproval_id).catch(() => { });
+            await db.updateSubscription(sub.id, { status: 'cancelled', cancelled_at: now.toISOString() });
+            await db.createEvent({ subscription_id: sub.id, event_type: 'cancelled', metadata: { penalty: 0, reason: info.within_retracto ? 'retracto' : 'permanencia_cumplida' } });
+            if (sub.customer_id) shopify.tagCustomerAsSubscriber(sub.customer_id, false).catch(console.error);
+            if (notifications?.sendCancellationConfirmation) notifications.sendCancellationConfirmation(sub).catch(e => console.warn('[CANCEL] Email error:', e.message));
+            return res.json({ success: true, cancelled: true, penalty: 0, message: 'Suscripción cancelada correctamente.' });
+        }
+
+        // CASO 2: cancelación con penalidad — requiere confirmación explícita del cliente
+        if (!confirmPenalty) {
+            return res.status(402).json({
+                error: 'Penalidad requerida',
+                requires_penalty_payment: true,
+                penalty: info.penalty,
+                monthly_discount: info.monthly_discount,
+                cycles_completed: info.cycles_completed,
+                cycles_required: info.cycles_required,
+                message: `Para cancelar antes de cumplir la permanencia debes reintegrar S/${info.penalty.toFixed(2)} (el descuento recibido durante ${info.cycles_completed} meses). Confirma para generar el link de pago.`
             });
         }
 
+        // El cliente confirmó → crear link de pago MP + suspender recurrencia
+        const backUrl = `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/subscriptions/success?email=${encodeURIComponent(sub.customer_email)}&penalty_paid=1`;
+        let penaltyCheckout = null;
+        try {
+            penaltyCheckout = await mp.createOneTimePayment({
+                amount: info.penalty,
+                title: `Reintegro por cancelación anticipada — ${sub.product_title}`,
+                customerEmail: sub.customer_email,
+                externalReference: `penalty_${sub.id}_${Date.now()}`,
+                backUrl
+            });
+        } catch (e) { console.error('[CANCEL] Error creando link de penalidad:', e.message); }
+
+        if (!penaltyCheckout?.init_point) {
+            return res.status(500).json({ error: 'No se pudo generar el link de pago. Intenta nuevamente o contacta soporte.' });
+        }
+
+        // Suspender recurrencia inmediatamente (no más cobros)
         if (mp.cancelSubscription) await mp.cancelSubscription(sub.mp_preapproval_id).catch(() => { });
-        await db.updateSubscription(sub.id, { status: 'cancelled', cancelled_at: now.toISOString() });
-        await db.createEvent({ subscription_id: sub.id, event_type: 'cancelled' });
+        await db.updateSubscription(sub.id, {
+            status: 'cancelled',
+            cancelled_at: now.toISOString(),
+            penalty_amount: info.penalty,
+            penalty_payment_url: penaltyCheckout.init_point,
+            penalty_external_ref: `penalty_${sub.id}_${Date.now()}`,
+            penalty_status: 'pending'
+        });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'cancelled_with_penalty', metadata: { penalty: info.penalty, cycles_completed: info.cycles_completed } });
         if (sub.customer_id) shopify.tagCustomerAsSubscriber(sub.customer_id, false).catch(console.error);
         if (notifications?.sendCancellationConfirmation) notifications.sendCancellationConfirmation(sub).catch(e => console.warn('[CANCEL] Email error:', e.message));
-        res.json({ success: true, message: 'Suscripción cancelada correctamente.' });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+
+        res.json({
+            success: true,
+            cancelled: true,
+            penalty: info.penalty,
+            penalty_payment_url: penaltyCheckout.init_point,
+            message: `Suscripción cancelada. Para completar el proceso, paga el reintegro de S/${info.penalty.toFixed(2)}.`
+        });
+    } catch (e) { console.error('[CANCEL] Error:', e); res.status(500).json({ error: e.message }); }
 });
 
 /* ── PLANS — stored inside the proven settings metafield as 'plans_config' sub-key ── */

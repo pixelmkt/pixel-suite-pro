@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { MercadoPagoConfig, PreApproval, PreApprovalPlan, Payment } = require('mercadopago');
+const { MercadoPagoConfig, PreApproval, PreApprovalPlan, Payment, Preference } = require('mercadopago');
 
 /**
  * Returns a fresh MercadoPagoConfig with the current token.
@@ -159,6 +159,32 @@ async function getPayment(paymentId) {
     return payment.get({ id: paymentId });
 }
 
+/**
+ * Crea una Preferencia de pago ÚNICO (no recurrente).
+ * Usado para cobrar la penalidad de cancelación anticipada.
+ * Devuelve init_point (URL de pago) — el cliente paga y MP notifica vía webhook.
+ */
+async function createOneTimePayment({ amount, title, customerEmail, externalReference, backUrl }) {
+    const mp = getMP();
+    const pref = new Preference(mp);
+    const body = {
+        items: [{
+            id: externalReference || `penalty_${Date.now()}`,
+            title: title || 'Penalidad por cancelación anticipada',
+            quantity: 1,
+            currency_id: 'PEN',
+            unit_price: parseFloat(Number(amount).toFixed(2))
+        }],
+        payer: customerEmail ? { email: customerEmail } : undefined,
+        external_reference: externalReference,
+        back_urls: backUrl ? { success: backUrl, failure: backUrl, pending: backUrl } : undefined,
+        auto_return: backUrl ? 'approved' : undefined,
+        statement_descriptor: 'LAB NUTRITION'
+    };
+    const result = await pref.create({ body });
+    return { id: result.id, init_point: result.init_point, sandbox_init_point: result.sandbox_init_point };
+}
+
 module.exports = {
     verifyConnection,
     createPlan,
@@ -170,5 +196,6 @@ module.exports = {
     resumeSubscription,
     cancelSubscription,
     getPayment,
+    createOneTimePayment,
     get MP_PUBLIC_KEY() { return process.env.MP_PUBLIC_KEY; }
 };
