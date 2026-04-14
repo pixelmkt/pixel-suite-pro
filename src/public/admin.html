@@ -1181,6 +1181,15 @@
           </div>
         </div>
 
+        <!-- ORDEN DE SECCIONES -->
+        <div class="card">
+          <div class="card-head"><span class="card-title">Orden de secciones</span></div>
+          <div style="padding:20px">
+            <div class="info-box">Define el orden en que se muestran los bloques al suscriptor. Usa las flechas para mover.</div>
+            <div id="section-order-list" style="display:flex;flex-direction:column;gap:6px"></div>
+          </div>
+        </div>
+
         <!-- BENEFICIOS DEL SUSCRIPTOR -->
         <div class="card">
           <div class="card-head">
@@ -1229,7 +1238,7 @@
           <div style="padding:20px">
             <div class="info-box">Personaliza los títulos que aparecen en la página del suscriptor.</div>
             <div class="frow">
-              <div class="fg"><label class="fl">Título principal</label><input class="fi" id="pc-page-title" placeholder="Mi Suscripción"></div>
+              <div class="fg"><label class="fl">Título principal (reemplaza "Suscriptions MP" en la cuenta)</label><input class="fi" id="pc-page-title" placeholder="Cliente Black Diamond"></div>
               <div class="fg"><label class="fl">Subtítulo</label><input class="fi" id="pc-page-subtitle" placeholder="Beneficios exclusivos para miembros"></div>
             </div>
             <div class="frow">
@@ -1305,8 +1314,13 @@
             </div>
             <div class="frow">
               <div class="fg"><label class="fl">Texto del botón</label><input class="fi" id="pc-bd-btn-text" placeholder="Quiero ser Black Diamond"></div>
-              <div class="fg"><label class="fl">Link (a producto con widget)</label><input class="fi" id="pc-bd-btn-url" placeholder="https://labnutrition.com/products/..."></div>
+              <div class="fg">
+                <label class="fl">Link del botón (producto con widget)</label>
+                <div style="display:flex;gap:6px"><input class="fi" id="pc-bd-btn-url" placeholder="https://labnutrition.com/products/creatina" style="flex:1"><button class="btn btn-g btn-sm" onclick="pickProductForField('pc-bd-btn-url')">Elegir</button></div>
+              </div>
             </div>
+            <div class="fg"><label class="fl">Imagen del CTA (opcional)</label><input class="fi" id="pc-bd-image" placeholder="https://cdn.shopify.com/..."></div>
+            <div class="fg"><label class="fl">Imagen hero (arriba del portal, opcional)</label><input class="fi" id="pc-hero-image" placeholder="https://cdn.shopify.com/..."></div>
           </div>
         </div>
 
@@ -2614,14 +2628,58 @@
           + '<div style="color:#D4502A;font-size:12px;font-weight:700">Elegir →</div></div>';
       }).join('');
     }
+    let _pickerTargetField = null;
+    async function pickProductForField(fieldId) {
+      _pickerTargetField = fieldId;
+      await openProductPicker();
+    }
     function selectPickerProduct(json) {
       const p = typeof json === 'string' ? JSON.parse(json) : json;
-      document.getElementById('pw-name').value = p.title || '';
-      document.getElementById('pw-image').value = p.image || '';
-      document.getElementById('pw-price').value = p.price || '';
-      document.getElementById('pw-url').value = p.url || '';
+      if (_pickerTargetField) {
+        const el = document.getElementById(_pickerTargetField);
+        if (el) el.value = p.url || '';
+        _pickerTargetField = null;
+        toast('Link del producto cargado');
+      } else {
+        document.getElementById('pw-name').value = p.title || '';
+        document.getElementById('pw-image').value = p.image || '';
+        document.getElementById('pw-price').value = p.price || '';
+        document.getElementById('pw-url').value = p.url || '';
+        toast('Producto cargado — ajusta precio suscriptor y cupón');
+      }
       document.getElementById('product-picker-modal')?.remove();
-      toast('✅ Producto cargado — ajusta precio suscriptor y cupón');
+    }
+
+    // ──── SECTION ORDER (reorderable) ────
+    const SECTION_LABELS = {
+      bd_cta: 'CTA Black Diamond (solo no-miembros)',
+      banner: 'Banner promocional',
+      benefits: 'Beneficios',
+      product: 'Producto destacado',
+      events: 'Eventos y promos',
+      ctas: 'Botones de acción',
+      custom_html: 'HTML personalizado',
+      subscriptions: 'Mis suscripciones (del cliente)',
+      whatsapp: 'Botón de WhatsApp'
+    };
+    let _sectionOrder = ['bd_cta', 'banner', 'benefits', 'product', 'events', 'ctas', 'custom_html', 'subscriptions', 'whatsapp'];
+    function renderSectionOrder() {
+      const el = document.getElementById('section-order-list');
+      if (!el) return;
+      el.innerHTML = _sectionOrder.map((key, i) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
+          <span style="font-family:monospace;font-size:11px;color:#888;width:22px">${String(i + 1).padStart(2, '0')}</span>
+          <span style="flex:1;font-size:13px;font-weight:600">${SECTION_LABELS[key] || key}</span>
+          <button onclick="moveSection(${i}, -1)" ${i === 0 ? 'disabled' : ''} style="background:#fff;border:1px solid var(--bdr);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px">↑</button>
+          <button onclick="moveSection(${i}, 1)" ${i === _sectionOrder.length - 1 ? 'disabled' : ''} style="background:#fff;border:1px solid var(--bdr);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px">↓</button>
+        </div>
+      `).join('');
+    }
+    function moveSection(i, dir) {
+      const j = i + dir;
+      if (j < 0 || j >= _sectionOrder.length) return;
+      [_sectionOrder[i], _sectionOrder[j]] = [_sectionOrder[j], _sectionOrder[i]];
+      renderSectionOrder();
     }
 
     async function loadPortalConfig() {
@@ -2658,6 +2716,16 @@
         if (d.bd_subtitle !== undefined) document.getElementById('pc-bd-subtitle').value = d.bd_subtitle || '';
         if (d.bd_btn_text !== undefined) document.getElementById('pc-bd-btn-text').value = d.bd_btn_text || '';
         if (d.bd_btn_url !== undefined) document.getElementById('pc-bd-btn-url').value = d.bd_btn_url || '';
+        if (d.bd_image !== undefined) document.getElementById('pc-bd-image').value = d.bd_image || '';
+        if (d.hero_image !== undefined) document.getElementById('pc-hero-image').value = d.hero_image || '';
+        if (Array.isArray(d.section_order) && d.section_order.length) {
+          // Preserve any new sections not in saved order
+          const known = new Set(Object.keys(SECTION_LABELS));
+          const fromCfg = d.section_order.filter(k => known.has(k));
+          const missing = Object.keys(SECTION_LABELS).filter(k => !fromCfg.includes(k));
+          _sectionOrder = [...fromCfg, ...missing];
+        }
+        renderSectionOrder();
         renderBenefits();
         renderEvents();
         renderCTAs();
@@ -2698,6 +2766,9 @@
           bd_subtitle: document.getElementById('pc-bd-subtitle').value,
           bd_btn_text: document.getElementById('pc-bd-btn-text').value,
           bd_btn_url: document.getElementById('pc-bd-btn-url').value,
+          bd_image: document.getElementById('pc-bd-image').value,
+          hero_image: document.getElementById('pc-hero-image').value,
+          section_order: _sectionOrder,
           banner_text: document.getElementById('pc-banner-text').value,
           banner_url: document.getElementById('pc-banner-url').value,
           banner_image: document.getElementById('pc-banner-image').value,
