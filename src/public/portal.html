@@ -143,6 +143,17 @@
           <div class="container">
         `;
 
+        // BANNER PROMOCIONAL (arriba de todo, bajo hero)
+        if (config.banner_text || config.banner_image) {
+          const bUrl = config.banner_url || '';
+          const bImg = config.banner_image || '';
+          const bTxt = config.banner_text || '';
+          html += `<a ${bUrl ? `href="${bUrl}" target="_blank" rel="noopener"` : ''} style="display:block;margin-bottom:24px;border-radius:${12}px;overflow:hidden;text-decoration:none;color:inherit;background:linear-gradient(135deg,var(--pri),var(--pri2));border:1px solid var(--bdr)">`;
+          if (bImg) html += `<img src="${bImg}" alt="" style="width:100%;display:block;max-height:220px;object-fit:cover">`;
+          if (bTxt) html += `<div style="padding:16px 20px;color:#fff;font-weight:700;font-size:15px;text-align:center">${bTxt}</div>`;
+          html += `</a>`;
+        }
+
         // BENEFITS
         const layout = config.benefits_layout || 'grid';
         if (benefits.length) {
@@ -199,6 +210,11 @@
               Soporte por WhatsApp
             </a>
           </div>`;
+
+        // CUSTOM HTML (modo marketing libre)
+        if (config.custom_html) {
+          html += `<div class="card"><div class="card-inner">${config.custom_html}</div></div>`;
+        }
 
         html += `</div><div class="footer">${brandName} · Portal del Suscriptor<br>Powered by Suscriptions MP</div>`;
         document.getElementById('app').innerHTML = html;

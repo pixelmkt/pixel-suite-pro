@@ -1156,9 +1156,9 @@
           <button class="btn btn-r" onclick="savePortalConfig()">Guardar todo</button>
         </div>
       </div>
-      <div class="content" style="display:flex;gap:20px;flex-wrap:wrap">
+      <div class="content" style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
         <!-- LEFT: CONFIG -->
-        <div style="flex:1;min-width:340px">
+        <div style="flex:1 1 440px;min-width:340px;max-width:720px">
 
         <!-- PERMISOS -->
         <div class="card">
@@ -1263,6 +1263,45 @@
             <div id="events-list" style="display:flex;flex-direction:column;gap:10px"></div>
           </div>
         </div>
+
+        <!-- BANNER PROMOCIONAL -->
+        <div class="card">
+          <div class="card-head"><span class="card-title">Banner promocional</span></div>
+          <div style="padding:20px">
+            <div class="info-box">Imagen/texto destacado que verá el suscriptor arriba del portal. Dejar vacío para ocultar.</div>
+            <div class="frow">
+              <div class="fg"><label class="fl">Texto del banner</label><input class="fi" id="pc-banner-text" placeholder="Ej: ¡30% OFF esta semana en creatina!"></div>
+              <div class="fg"><label class="fl">Link al hacer clic</label><input class="fi" id="pc-banner-url" placeholder="https://labnutrition.com/collections/..."></div>
+            </div>
+            <div class="fg"><label class="fl">URL de imagen (opcional)</label><input class="fi" id="pc-banner-image" placeholder="https://cdn.shopify.com/..."></div>
+          </div>
+        </div>
+
+        <!-- HTML PERSONALIZADO -->
+        <div class="card">
+          <div class="card-head"><span class="card-title">HTML personalizado (modo marketing libre)</span></div>
+          <div style="padding:20px">
+            <div class="info-box" style="background:#fef3c7;border-color:#fcd34d;color:#92400e">⚠ Modo avanzado. Inserta HTML/CSS que quieras (campañas, videos embed, countdown, etc.). Se renderiza al final del portal. Usa con responsabilidad.</div>
+            <textarea id="pc-custom-html" placeholder="<div style='padding:20px;background:#000;color:#fff'>Tu contenido libre aquí...</div>" style="width:100%;min-height:160px;border:1.5px solid var(--bdr);border-radius:8px;padding:12px;font-size:12px;font-family:monospace;resize:vertical;outline:none;box-sizing:border-box"></textarea>
+          </div>
+        </div>
+        </div>
+
+        <!-- RIGHT: LIVE PREVIEW -->
+        <div style="flex:1 1 360px;min-width:320px;position:sticky;top:20px;align-self:flex-start">
+          <div class="card">
+            <div class="card-head" style="background:#0f0f0f;color:#fff">
+              <span class="card-title" style="color:#fff">👁 Preview en vivo</span>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-sm" onclick="refreshPortalPreview()" style="background:#fff;color:#000">Recargar</button>
+                <button class="btn btn-sm" onclick="window.open('/portal','_blank')" style="background:transparent;color:#fff;border:1px solid #444">↗ Nueva pestaña</button>
+              </div>
+            </div>
+            <div style="padding:0;background:#0f0f0f">
+              <iframe id="portal-preview" src="/portal" style="width:100%;height:680px;border:0;display:block;background:#0f0f0f"></iframe>
+            </div>
+          </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--mut);text-align:center">Guarda para ver los cambios. Preview pública: <span id="portal-url" style="color:var(--pri);font-weight:600"></span></div>
         </div>
 
       </div>
@@ -2529,6 +2568,10 @@
         if (d.events_title) document.getElementById('pc-events-title').value = d.events_title;
         if (d.product_section_title) document.getElementById('pc-product-title').value = d.product_section_title;
         if (d.product_button_text) document.getElementById('pc-product-btn').value = d.product_button_text;
+        if (d.banner_text !== undefined) document.getElementById('pc-banner-text').value = d.banner_text || '';
+        if (d.banner_url !== undefined) document.getElementById('pc-banner-url').value = d.banner_url || '';
+        if (d.banner_image !== undefined) document.getElementById('pc-banner-image').value = d.banner_image || '';
+        if (d.custom_html !== undefined) document.getElementById('pc-custom-html').value = d.custom_html || '';
         renderBenefits();
         renderEvents();
         renderCTAs();
@@ -2561,6 +2604,10 @@
           events_title: document.getElementById('pc-events-title').value,
           product_section_title: document.getElementById('pc-product-title').value,
           product_button_text: document.getElementById('pc-product-btn').value,
+          banner_text: document.getElementById('pc-banner-text').value,
+          banner_url: document.getElementById('pc-banner-url').value,
+          banner_image: document.getElementById('pc-banner-image').value,
+          custom_html: document.getElementById('pc-custom-html').value,
           product_of_week: {
             name: document.getElementById('pw-name').value,
             image: document.getElementById('pw-image').value,
@@ -2576,7 +2623,8 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        toast('✅ Portal guardado — los cambios aparecen al recargar la página del suscriptor');
+        toast('✅ Portal guardado');
+        refreshPortalPreview();
       } catch (e) { toast('Error: ' + e.message, 'err'); }
     }
 
