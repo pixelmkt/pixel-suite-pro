@@ -574,6 +574,8 @@ app.get('/api/subscriptions/:id/cancel/preview', async (req, res) => {
             message = 'Estás dentro de los 7 días de retracto. Puedes cancelar sin penalidad.';
         } else if (info.completed_permanence) {
             message = 'Ya cumpliste tu permanencia. Cancelación gratuita.';
+        } else if (info.penalty === 0) {
+            message = 'Cancelación gratuita: no se registró descuento mensual sobre esta suscripción.';
         } else {
             message = `Has recibido ${info.cycles_completed} ${info.cycles_completed === 1 ? 'mes' : 'meses'} con descuento de S/${info.monthly_discount.toFixed(2)} cada uno. Para cancelar antes de cumplir la permanencia debes reintegrar el descuento recibido: S/${info.penalty.toFixed(2)}. No es una multa, es la devolución del beneficio otorgado por un compromiso que no se completó. (Ley 29571, Art. 50 — cláusula no abusiva según INDECOPI).`;
         }
