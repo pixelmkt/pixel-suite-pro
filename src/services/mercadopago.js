@@ -164,10 +164,12 @@ async function getPayment(paymentId) {
  * Fetch directo a MP porque el SDK no expone authorized_payments/search.
  * Devuelve array ordenado desc por fecha con: id, status, transaction_amount, debit_date, payment_id.
  */
-async function listPreapprovalPayments(preapprovalId, limit = 50) {
+async function listPreapprovalPayments(preapprovalId, limit = 10) {
     const token = process.env.MP_ACCESS_TOKEN;
     if (!token) throw new Error('MP_ACCESS_TOKEN not configured');
-    const url = `https://api.mercadopago.com/authorized_payments/search?preapproval_id=${encodeURIComponent(preapprovalId)}&limit=${limit}&sort=date_created:desc`;
+    // MP authorized_payments/search: limit 0-10, no admite sort param
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 10);
+    const url = `https://api.mercadopago.com/authorized_payments/search?preapproval_id=${encodeURIComponent(preapprovalId)}&limit=${safeLimit}`;
     const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
     });
@@ -177,6 +179,8 @@ async function listPreapprovalPayments(preapprovalId, limit = 50) {
     }
     const data = await res.json();
     const items = Array.isArray(data.results) ? data.results : (Array.isArray(data) ? data : []);
+    // Orden desc por fecha (MP no siempre devuelve ordenado)
+    items.sort((a, b) => new Date(b.date_created || 0) - new Date(a.date_created || 0));
     return items.map(p => ({
         id: p.id,
         status: p.status,
