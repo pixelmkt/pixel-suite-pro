@@ -915,68 +915,85 @@
     <div id="p-remarketing" class="panel">
       <div class="ph">
         <div>
-          <div class="pt">Remarketing</div>
-          <div class="ps">Envía campañas de email a segmentos de suscriptores</div>
+          <div class="pt">Mailing</div>
+          <div class="ps">Compositor de campañas con segmentación real, variables y preview en vivo</div>
         </div>
       </div>
       <div class="content">
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px">
-          <div class="stat" style="cursor:pointer" onclick="setRemSegment('active',this)">
-            <div class="stat-val" id="rm-active" style="color:var(--grn)">-</div>
-            <div class="stat-lbl">Activos</div>
-          </div>
-          <div class="stat" style="cursor:pointer" onclick="setRemSegment('paused',this)">
-            <div class="stat-val" id="rm-paused" style="color:var(--amber)">-</div>
-            <div class="stat-lbl">Pausados</div>
-          </div>
-          <div class="stat" style="cursor:pointer" onclick="setRemSegment('cancelled',this)">
-            <div class="stat-val" id="rm-cancelled" style="color:var(--red)">-</div>
-            <div class="stat-lbl">Cancelados</div>
-          </div>
-          <div class="stat" style="cursor:pointer" onclick="setRemSegment('next7d',this)">
-            <div class="stat-val" id="rm-next7d">-</div>
-            <div class="stat-lbl">Cobros próx. 7d</div>
-          </div>
-          <div class="stat" style="cursor:pointer;border:1.5px solid var(--acc)" onclick="setRemSegment('all_customers',this)">
-            <div class="stat-val" id="rm-all-customers" style="color:var(--acc)">-</div>
-            <div class="stat-lbl">Todos en Shopify</div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-head"><span class="card-title">Nueva campaña de email</span></div>
-          <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
-            <div>
-              <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">Segmento</label>
-              <select id="rm-segment" onchange="updateRemCount()" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;outline:none;background:#fff">
-                <option value="active">Suscriptores activos</option>
-                <option value="paused">Suscriptores pausados</option>
-                <option value="cancelled">Suscriptores cancelados</option>
-                <option value="next7d">Con cobro en los próximos 7 días</option>
-                <option value="all_subscribers">Todos los suscriptores</option>
-                <option value="all_customers">Todos los clientes en Shopify (base de datos completa)</option>
-              </select>
-              <div id="rm-recipient-count" style="font-size:11px;color:var(--mut);margin-top:5px"></div>
-            </div>
-            <div>
-              <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">Asunto del email</label>
-              <input id="rm-subject" type="text" placeholder="Ej: Tu resumen de suscripción" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
-            </div>
-            <div>
-              <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">Mensaje</label>
-              <textarea id="rm-message" rows="5" placeholder="Escribe el mensaje de la campaña..." style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box"></textarea>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-              <div>
-                <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">Texto del botón (opcional)</label>
-                <input id="rm-cta-text" type="text" placeholder="Ver mis suscripciones" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
-              </div>
-              <div>
-                <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">URL del botón (opcional)</label>
-                <input id="rm-cta-url" type="text" placeholder="https://tu-tienda.myshopify.com/portal" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+          <!-- COLUMNA IZQUIERDA: Editor -->
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div class="card">
+              <div class="card-head"><span class="card-title">1. Elige tu audiencia</span></div>
+              <div style="padding:18px;display:flex;flex-direction:column;gap:12px">
+                <select id="ml-segment" onchange="mlRefreshAudience()" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:10px 12px;font-size:13px;font-family:inherit;outline:none;background:#fff">
+                  <option value="active">Activos (con cobro recurrente)</option>
+                  <option value="paused">Pausados</option>
+                  <option value="cancelled">Cancelados</option>
+                  <option value="failed">Cobro fallido</option>
+                  <option value="bd_completed">Black Diamond completados (permanencia cumplida)</option>
+                  <option value="bd_progress">Black Diamond en progreso</option>
+                  <option value="new_30d">Nuevos últimos 30 días</option>
+                </select>
+                <div id="ml-audience" style="padding:12px 14px;background:#0A0A0A;color:#fff;border-radius:8px;font-size:13px;font-weight:600">Calculando audiencia…</div>
+                <div id="ml-audience-sample" style="font-size:11px;color:var(--mut);line-height:1.6"></div>
               </div>
             </div>
-            <div id="rm-result" style="display:none;padding:10px 14px;border-radius:7px;font-size:13px"></div>
-            <button class="btn btn-r" onclick="sendRemarketing()" style="padding:12px">Enviar campaña</button>
+
+            <div class="card">
+              <div class="card-head"><span class="card-title">2. Redacta el email</span></div>
+              <div style="padding:18px;display:flex;flex-direction:column;gap:12px">
+                <div>
+                  <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Título header (rojo LAB)</label>
+                  <input id="ml-header" type="text" value="Club Black Diamond" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;margin-top:5px;outline:none;box-sizing:border-box" oninput="mlRefreshPreview()">
+                </div>
+                <div>
+                  <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Asunto</label>
+                  <input id="ml-subject" type="text" placeholder="Hola {{first_name}}, tu suscripción a {{product}}" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;margin-top:5px;outline:none;box-sizing:border-box" oninput="mlRefreshPreview()">
+                </div>
+                <div>
+                  <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Cuerpo</label>
+                  <textarea id="ml-body" rows="10" placeholder="Hola {{first_name}},&#10;&#10;Gracias por ser parte del Club Black Diamond. Tu próximo envío de {{product}} será el {{next_charge}}.&#10;&#10;Puedes gestionar tu suscripción en {{portal_link}}&#10;&#10;— Equipo LAB NUTRITION" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:10px 12px;font-size:13px;margin-top:5px;outline:none;resize:vertical;box-sizing:border-box;font-family:inherit" oninput="mlRefreshPreview()"></textarea>
+                </div>
+                <div>
+                  <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">Variables (clic para insertar)</label>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px">
+                    <button type="button" onclick="mlInsertVar('first_name')" class="btn btn-sm" style="background:#f3f4f6;border:1px solid var(--bdr);padding:4px 10px;font-size:11px;cursor:pointer;font-family:monospace;border-radius:5px">{{first_name}}</button>
+                    <button type="button" onclick="mlInsertVar('name')" class="btn btn-sm" style="background:#f3f4f6;border:1px solid var(--bdr);padding:4px 10px;font-size:11px;cursor:pointer;font-family:monospace;border-radius:5px">{{name}}</button>
+                    <button type="button" onclick="mlInsertVar('email')" class="btn btn-sm" style="background:#f3f4f6;border:1px solid var(--bdr);padding:4px 10px;font-size:11px;cursor:pointer;font-family:monospace;border-radius:5px">{{email}}</button>
+                    <button type="button" onclick="mlInsertVar('product')" class="btn btn-sm" style="background:#f3f4f6;border:1px solid var(--bdr);padding:4px 10px;font-size:11px;cursor:pointer;font-family:monospace;border-radius:5px">{{product}}</button>
+                    <button type="button" onclick="mlInsertVar('next_charge')" class="btn btn-sm" style="background:#f3f4f6;border:1px solid var(--bdr);padding:4px 10px;font-size:11px;cursor:pointer;font-family:monospace;border-radius:5px">{{next_charge}}</button>
+                    <button type="button" onclick="mlInsertVar('final_price')" class="btn btn-sm" style="background:#f3f4f6;border:1px solid var(--bdr);padding:4px 10px;font-size:11px;cursor:pointer;font-family:monospace;border-radius:5px">{{final_price}}</button>
+                    <button type="button" onclick="mlInsertVar('portal_link')" class="btn btn-sm" style="background:#f3f4f6;border:1px solid var(--bdr);padding:4px 10px;font-size:11px;cursor:pointer;font-family:monospace;border-radius:5px">{{portal_link}}</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head"><span class="card-title">3. Enviar</span></div>
+              <div style="padding:18px;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;gap:8px">
+                  <input id="ml-test-email" type="email" placeholder="tu@email.com para prueba" style="flex:1;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;outline:none;box-sizing:border-box">
+                  <button onclick="mlSendTest()" class="btn" style="background:#0A0A0A;color:#fff;border:none;padding:9px 18px;border-radius:7px;font-weight:600;cursor:pointer;white-space:nowrap">Enviar prueba</button>
+                </div>
+                <button onclick="mlSendCampaign()" class="btn btn-r" style="background:#E30613;color:#fff;border:none;padding:12px;border-radius:7px;font-weight:700;cursor:pointer;font-size:14px">Enviar campaña real</button>
+                <div id="ml-result" style="display:none;padding:10px 14px;border-radius:7px;font-size:12px"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- COLUMNA DERECHA: Preview sticky -->
+          <div style="position:sticky;top:16px;align-self:start">
+            <div class="card">
+              <div class="card-head" style="display:flex;justify-content:space-between;align-items:center">
+                <span class="card-title">Preview en vivo</span>
+                <span style="font-size:10px;color:var(--mut)">Datos mock</span>
+              </div>
+              <div style="padding:0;background:#f5f5f5">
+                <iframe id="ml-preview" style="width:100%;height:720px;border:none;background:#f5f5f5" srcdoc="<div style='padding:40px;text-align:center;color:#888;font-family:system-ui'>Escribe asunto y cuerpo para ver el preview…</div>"></iframe>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1678,8 +1695,14 @@
     })();
 
     function api(url, opts) {
+      opts = opts || {};
+      // Auto-serialize object body as JSON + set Content-Type
+      if (opts.body && typeof opts.body === 'object' && !(opts.body instanceof FormData) && !(opts.body instanceof Blob) && typeof opts.body !== 'string') {
+        opts.headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+        opts.body = JSON.stringify(opts.body);
+      }
       return fetch(BASE + url, opts).then(r => {
-        if (!r.ok) return r.json().then(e => { throw new Error(e.error || r.statusText); });
+        if (!r.ok) return r.json().then(e => { throw new Error(e.error || r.statusText); }).catch(() => { throw new Error(r.statusText); });
         const ct = r.headers.get('content-type') || '';
         return ct.includes('application/json') ? r.json() : r.text();
       });
@@ -1803,60 +1826,109 @@
     }
     function getCustSegmentForRemarketing() { nav('remarketing'); }
 
-    // \u2500\u2500\u2500\u2500 REMARKETING \u2500\u2500\u2500\u2500
-    let _remSegments = {};
+    // ════════════════════════════════════════════════
+    // MAILING v2 — compositor con preview + variables
+    // ════════════════════════════════════════════════
+    let _mlAudienceCache = null;
+    let _mlPreviewTimer = null;
 
     async function loadRemarketing() {
+      // Entry point para el tab — carga audiencia inicial + preview
+      await mlRefreshAudience();
+      mlRefreshPreview();
+    }
+
+    async function mlRefreshAudience() {
+      const seg = document.getElementById('ml-segment').value;
+      const box = document.getElementById('ml-audience');
+      const sample = document.getElementById('ml-audience-sample');
+      box.textContent = 'Calculando…';
       try {
-        _remSegments = await api('/api/remarketing/segments').catch(() => ({}));
-        document.getElementById('rm-active').textContent = _remSegments.active || 0;
-        document.getElementById('rm-paused').textContent = _remSegments.paused || 0;
-        document.getElementById('rm-cancelled').textContent = _remSegments.cancelled || 0;
-        document.getElementById('rm-next7d').textContent = _remSegments.next7d || 0;
-        const allCustEl = document.getElementById('rm-all-customers');
-        if (allCustEl) allCustEl.textContent = _remSegments.all_customers > 0 ? _remSegments.all_customers.toLocaleString() : '-';
-        updateRemCount();
-      } catch (e) { console.error('[REMARKETING]', e); }
-    }
-
-    function setRemSegment(seg, el) {
-      document.getElementById('rm-segment').value = seg;
-      updateRemCount();
-    }
-
-    function updateRemCount() {
-      const seg = document.getElementById('rm-segment').value;
-      const count = _remSegments[seg] || _remSegments.all_subscribers || 0;
-      const el = document.getElementById('rm-recipient-count');
-      if (el) el.textContent = count + ' destinatarios en este segmento';
-    }
-
-    async function sendRemarketing() {
-      const segment = document.getElementById('rm-segment').value;
-      const subject = document.getElementById('rm-subject').value.trim();
-      const message = document.getElementById('rm-message').value.trim();
-      const cta_text = document.getElementById('rm-cta-text').value.trim();
-      const cta_url = document.getElementById('rm-cta-url').value.trim();
-      if (!subject || !message) { toast('Completa el asunto y el mensaje', 'err'); return; }
-      const btn = document.querySelector('#p-remarketing .btn-r');
-      if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
-      try {
-        const res = await api('/api/remarketing', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ segment, subject, message, cta_text, cta_url })
-        });
-        const resultEl = document.getElementById('rm-result');
-        resultEl.style.display = 'block';
-        resultEl.style.background = res.errors > 0 ? '#fff3cd' : '#d1fae5';
-        resultEl.style.border = '1px solid ' + (res.errors > 0 ? '#ffc107' : '#6ee7b7');
-        resultEl.style.color = '#2C2C2C';
-        resultEl.textContent = 'Enviado a ' + res.sent + ' de ' + res.total_recipients + ' destinatarios' + (res.errors > 0 ? '. Errores: ' + res.errors : '');
-        toast('Campaña enviada: ' + res.sent + ' emails');
+        const res = await api('/api/mailing/audience', { method: 'POST', body: { segment: seg } });
+        _mlAudienceCache = res;
+        box.innerHTML = '<strong style="color:#E30613;font-size:18px">' + res.count + '</strong> destinatarios en este segmento';
+        if (res.sample && res.sample.length) {
+          sample.innerHTML = 'Ejemplos: ' + res.sample.map(s => (s.name || s.email) + ' (' + (s.product || 'sin producto') + ')').join(' · ');
+        } else {
+          sample.innerHTML = 'Sin muestras disponibles';
+        }
       } catch (e) {
-        toast('Error al enviar: ' + e.message, 'err');
+        box.textContent = 'Error: ' + e.message;
+        sample.textContent = '';
+      }
+    }
+
+    function mlInsertVar(name) {
+      const ta = document.getElementById('ml-body');
+      const token = '{{' + name + '}}';
+      const start = ta.selectionStart || ta.value.length;
+      const end = ta.selectionEnd || ta.value.length;
+      ta.value = ta.value.slice(0, start) + token + ta.value.slice(end);
+      ta.focus();
+      ta.setSelectionRange(start + token.length, start + token.length);
+      mlRefreshPreview();
+    }
+
+    function mlRefreshPreview() {
+      clearTimeout(_mlPreviewTimer);
+      _mlPreviewTimer = setTimeout(async () => {
+        const subject = document.getElementById('ml-subject').value;
+        const body = document.getElementById('ml-body').value;
+        const headerTitle = document.getElementById('ml-header').value || 'Club Black Diamond';
+        if (!body.trim() && !subject.trim()) return;
+        try {
+          const res = await api('/api/mailing/preview', { method: 'POST', body: { subject, body, headerTitle } });
+          const iframe = document.getElementById('ml-preview');
+          if (iframe) iframe.srcdoc = res.html || '';
+        } catch (e) { console.warn('[MAILING preview]', e); }
+      }, 400);
+    }
+
+    async function mlSendTest() {
+      const test_email = document.getElementById('ml-test-email').value.trim();
+      if (!test_email || !/@/.test(test_email)) { toast('Ingresa un email válido para probar', 'err'); return; }
+      const subject = document.getElementById('ml-subject').value.trim();
+      const body = document.getElementById('ml-body').value.trim();
+      const headerTitle = document.getElementById('ml-header').value.trim() || 'Club Black Diamond';
+      if (!subject || !body) { toast('Completa asunto y cuerpo', 'err'); return; }
+      try {
+        const r = await api('/api/mailing/send', { method: 'POST', body: { subject, body, headerTitle, test_email } });
+        if (r.success) toast('Email de prueba enviado a ' + test_email);
+        else toast('Error: ' + (r.error || 'desconocido'), 'err');
+      } catch (e) { toast('Error: ' + e.message, 'err'); }
+    }
+
+    async function mlSendCampaign() {
+      const segment = document.getElementById('ml-segment').value;
+      const subject = document.getElementById('ml-subject').value.trim();
+      const body = document.getElementById('ml-body').value.trim();
+      const headerTitle = document.getElementById('ml-header').value.trim() || 'Club Black Diamond';
+      if (!subject || !body) { toast('Completa asunto y cuerpo', 'err'); return; }
+      const audCount = _mlAudienceCache ? _mlAudienceCache.count : '?';
+      if (!confirm('Enviarás la campaña a ' + audCount + ' destinatarios del segmento "' + segment + '". ¿Confirmar?')) return;
+      const btn = document.querySelector('#p-remarketing .btn-r');
+      if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
+      const result = document.getElementById('ml-result');
+      result.style.display = 'block';
+      result.style.background = '#fef3c7';
+      result.style.border = '1px solid #fcd34d';
+      result.style.color = '#92400e';
+      result.textContent = 'Enviando… esto puede tardar varios minutos con audiencias grandes.';
+      try {
+        const r = await api('/api/mailing/send', { method: 'POST', body: { segment, subject, body, headerTitle } });
+        result.style.background = r.failed > 0 ? '#fff3cd' : '#d1fae5';
+        result.style.border = '1px solid ' + (r.failed > 0 ? '#ffc107' : '#6ee7b7');
+        result.style.color = '#14532d';
+        result.innerHTML = '<strong>Enviados:</strong> ' + r.sent + ' / ' + r.total + (r.failed ? ' · Fallidos: ' + r.failed : '') + (r.errors && r.errors.length ? '<br>Errores: ' + r.errors.map(e => e.email + ' (' + e.error + ')').join(', ') : '');
+        toast('Campaña: ' + r.sent + '/' + r.total + ' enviados');
+      } catch (e) {
+        result.style.background = '#fee2e2';
+        result.style.border = '1px solid #fca5a5';
+        result.style.color = '#991b1b';
+        result.textContent = 'Error: ' + e.message;
+        toast('Error: ' + e.message, 'err');
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = 'Enviar campaña'; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Enviar campaña real'; }
       }
     }
 
@@ -2132,9 +2204,10 @@
         <td><span class="badge b-${s.status}">${s.status}</span></td>
         <td>${s.next_charge_at ? new Date(s.next_charge_at).toLocaleDateString('es-PE') : '—'}</td>
         <td style="white-space:nowrap">
-          ${s.status === 'active' ? `<button class="btn btn-g btn-sm" onclick="subAction('${s.id}','pause')">⏸</button>` : ''}
-          ${s.status === 'paused' ? `<button class="btn btn-b btn-sm" onclick="subAction('${s.id}','resume')">▶</button>` : ''}
-          ${s.status !== 'cancelled' ? `<button class="btn btn-sm" style="background:#fee2e2;color:#991b1b" onclick="subAction('${s.id}','cancel')">✕</button>` : ''}
+          <button class="btn btn-sm" style="background:#0A0A0A;color:#fff;margin-right:4px" onclick="openSubDetail('${s.id}')">Ver</button>
+          ${s.status === 'active' ? `<button class="btn btn-g btn-sm" onclick="subAction('${s.id}','pause')" title="Pausar">⏸</button>` : ''}
+          ${s.status === 'paused' ? `<button class="btn btn-b btn-sm" onclick="subAction('${s.id}','resume')" title="Reanudar">▶</button>` : ''}
+          ${s.status !== 'cancelled' ? `<button class="btn btn-sm" style="background:#fee2e2;color:#991b1b" onclick="subAction('${s.id}','cancel')" title="Cancelar">✕</button>` : ''}
         </td>
       </tr>`).join('')
         : '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--mut)">Sin resultados</td></tr>';
@@ -2648,6 +2721,290 @@
         toast('Producto cargado — ajusta precio suscriptor y cupón');
       }
       document.getElementById('product-picker-modal')?.remove();
+    }
+
+    // ══════════════════════════════════════════════════════
+    // DETALLE SUSCRIPTOR — modal editable + historial + pagos + acciones
+    // ══════════════════════════════════════════════════════
+    let _detailSub = null;
+    let _detailTab = 'info';
+
+    async function openSubDetail(id) {
+      _detailSub = null;
+      _detailTab = 'info';
+      let modal = document.getElementById('sub-detail-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'sub-detail-modal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+        modal.innerHTML = `
+          <div style="background:#fff;border-radius:14px;max-width:860px;width:100%;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+            <div style="padding:18px 22px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#0A0A0A;color:#fff">
+              <div>
+                <div id="sd-title" style="font-size:15px;font-weight:700">Detalle suscriptor</div>
+                <div id="sd-sub" style="font-size:11px;color:#999;margin-top:2px">Cargando…</div>
+              </div>
+              <button onclick="closeSubDetail()" style="background:none;border:none;font-size:26px;cursor:pointer;color:#fff">&times;</button>
+            </div>
+            <div style="padding:0 22px;border-bottom:1px solid #e5e7eb;display:flex;gap:2px;background:#f9fafb">
+              <button id="sd-tab-info" onclick="switchSubTab('info')" class="sd-tab" style="padding:14px 18px;background:none;border:none;border-bottom:3px solid #E30613;font-weight:700;font-size:13px;cursor:pointer">Información</button>
+              <button id="sd-tab-history" onclick="switchSubTab('history')" class="sd-tab" style="padding:14px 18px;background:none;border:none;border-bottom:3px solid transparent;font-weight:600;font-size:13px;cursor:pointer;color:#666">Historial</button>
+              <button id="sd-tab-payments" onclick="switchSubTab('payments')" class="sd-tab" style="padding:14px 18px;background:none;border:none;border-bottom:3px solid transparent;font-weight:600;font-size:13px;cursor:pointer;color:#666">Cobros MP</button>
+              <button id="sd-tab-actions" onclick="switchSubTab('actions')" class="sd-tab" style="padding:14px 18px;background:none;border:none;border-bottom:3px solid transparent;font-weight:600;font-size:13px;cursor:pointer;color:#666">Acciones</button>
+            </div>
+            <div id="sd-body" style="flex:1;overflow-y:auto;padding:22px">
+              <div style="text-align:center;padding:40px;color:#888">Cargando…</div>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', e => { if (e.target === modal) closeSubDetail(); });
+      }
+      try {
+        const data = await api('/api/admin/subscriptions/' + encodeURIComponent(id));
+        _detailSub = data;
+        renderSubDetail();
+      } catch (e) {
+        document.getElementById('sd-body').innerHTML = '<div style="color:#991b1b">Error: ' + e.message + '</div>';
+      }
+    }
+
+    function closeSubDetail() {
+      document.getElementById('sub-detail-modal')?.remove();
+      _detailSub = null;
+    }
+
+    function switchSubTab(tab) {
+      _detailTab = tab;
+      ['info', 'history', 'payments', 'actions'].forEach(t => {
+        const el = document.getElementById('sd-tab-' + t);
+        if (!el) return;
+        const active = t === tab;
+        el.style.borderBottomColor = active ? '#E30613' : 'transparent';
+        el.style.color = active ? '#0A0A0A' : '#666';
+        el.style.fontWeight = active ? '700' : '600';
+      });
+      renderSubDetail();
+    }
+
+    function renderSubDetail() {
+      if (!_detailSub) return;
+      const s = _detailSub.subscription;
+      document.getElementById('sd-title').textContent = s.customer_name || s.customer_email || 'Suscriptor';
+      document.getElementById('sd-sub').textContent = (s.customer_email || '') + ' · ID ' + s.id + ' · ' + (s.status || '—');
+      const body = document.getElementById('sd-body');
+      if (_detailTab === 'info') body.innerHTML = renderDetailInfo(s);
+      else if (_detailTab === 'history') body.innerHTML = renderDetailHistory(_detailSub.events || []);
+      else if (_detailTab === 'payments') body.innerHTML = renderDetailPayments(_detailSub.payments || [], s);
+      else if (_detailTab === 'actions') body.innerHTML = renderDetailActions(s, _detailSub.penalty_preview);
+    }
+
+    function renderDetailInfo(s) {
+      const field = (label, id, val, type = 'text', extra = '') => `
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.04em">${label}</label>
+          <input id="${id}" type="${type}" value="${(val ?? '').toString().replace(/"/g, '&quot;')}" ${extra} style="width:100%;border:1.5px solid #e5e7eb;border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;margin-top:4px;outline:none;box-sizing:border-box">
+        </div>`;
+      const sel = (label, id, val, opts) => `
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.04em">${label}</label>
+          <select id="${id}" style="width:100%;border:1.5px solid #e5e7eb;border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;margin-top:4px;outline:none;box-sizing:border-box">
+            ${opts.map(o => `<option value="${o.v}" ${o.v === val ? 'selected' : ''}>${o.l}</option>`).join('')}
+          </select>
+        </div>`;
+      const nextCharge = s.next_charge_at ? new Date(s.next_charge_at).toISOString().slice(0, 16) : '';
+      return `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+          <div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#E30613">Cliente</div>
+            ${field('Nombre', 'sd-customer_name', s.customer_name || '')}
+            ${field('Email', 'sd-customer_email', s.customer_email || '', 'email', 'disabled')}
+            ${field('DNI', 'sd-dni', s.dni || '')}
+            ${sel('Tipo doc', 'sd-tipo_documento', s.tipo_documento || 'DNI', [{v:'DNI',l:'DNI'},{v:'CE',l:'CE'},{v:'RUC',l:'RUC'},{v:'Pasaporte',l:'Pasaporte'}])}
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#E30613">Producto</div>
+            ${field('Título producto', 'sd-product_title', s.product_title || '')}
+            ${field('Product ID (Shopify)', 'sd-product_id', s.product_id || '')}
+            ${field('Variant ID', 'sd-variant_id', s.variant_id || '')}
+            ${field('Descuento %', 'sd-discount_pct', s.discount_pct || 0, 'number')}
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#E30613">Recurrencia</div>
+            ${sel('Frecuencia (meses)', 'sd-frequency_months', String(s.frequency_months || 1), [{v:'1',l:'Mensual'},{v:'2',l:'Bimestral'},{v:'3',l:'Trimestral'},{v:'6',l:'Semestral'}])}
+            ${field('Permanencia (meses)', 'sd-permanence_months', s.permanence_months || 0, 'number')}
+            ${field('Ciclos requeridos', 'sd-cycles_required', s.cycles_required || 0, 'number')}
+            ${field('Próximo cobro', 'sd-next_charge_at', nextCharge, 'datetime-local')}
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#E30613">Precios (PEN, IGV incl.)</div>
+            ${field('Precio base S/', 'sd-base_price', s.base_price || 0, 'number')}
+            ${field('Precio suscriptor S/', 'sd-final_price', s.final_price || 0, 'number')}
+            ${sel('Estado', 'sd-status', s.status || 'active', [{v:'active',l:'Activa'},{v:'paused',l:'Pausada'},{v:'cancelled',l:'Cancelada'},{v:'pending',l:'Pendiente'}])}
+            <div style="font-size:11px;color:#888;margin-top:4px">Ciclos completados: <strong>${s.cycles_completed || 0}</strong></div>
+          </div>
+          <div style="grid-column:1 / -1">
+            <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#E30613">Dirección de envío</div>
+            <textarea id="sd-shipping_address" rows="3" style="width:100%;border:1.5px solid #e5e7eb;border-radius:7px;padding:9px 12px;font-size:13px;font-family:inherit;outline:none;box-sizing:border-box;resize:vertical">${(typeof s.shipping_address === 'string' ? s.shipping_address : JSON.stringify(s.shipping_address || '', null, 2)) || ''}</textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid #e5e7eb">
+          <button onclick="saveSubDetail()" class="btn btn-g" style="background:#E30613;color:#fff;border:none;padding:10px 22px;border-radius:8px;font-weight:700;cursor:pointer">Guardar cambios</button>
+          <button onclick="closeSubDetail()" class="btn" style="background:#fff;border:1.5px solid #e5e7eb;padding:10px 22px;border-radius:8px;font-weight:600;cursor:pointer">Cerrar</button>
+        </div>`;
+    }
+
+    function renderDetailHistory(events) {
+      if (!events.length) return '<div style="text-align:center;padding:40px;color:#888">Sin eventos registrados</div>';
+      const label = {
+        created: 'Creada', activated: 'Activada', paused: 'Pausada', resumed: 'Reanudada',
+        cancelled: 'Cancelada (libre)', cancelled_with_penalty: 'Cancelada con penalidad',
+        admin_force_cancel: 'Cancelación admin', charge_success: 'Cobro exitoso', charge_failed: 'Cobro fallido',
+        admin_update: 'Edición admin', welcome_email_sent: 'Email de bienvenida enviado'
+      };
+      return '<div style="display:flex;flex-direction:column;gap:10px">' + events.map(ev => {
+        const meta = ev.metadata && typeof ev.metadata === 'object' ? JSON.stringify(ev.metadata) : (ev.metadata || '');
+        return `
+          <div style="display:flex;gap:14px;padding:14px;border:1px solid #e5e7eb;border-radius:10px;background:#fafafa">
+            <div style="width:6px;border-radius:3px;background:#E30613;flex-shrink:0"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:13px">${label[ev.event_type] || ev.event_type}</div>
+              <div style="font-size:11px;color:#666;margin-top:2px">${new Date(ev.created_at).toLocaleString('es-PE')}</div>
+              ${meta ? `<div style="font-size:11px;color:#888;margin-top:6px;font-family:monospace;word-break:break-all">${meta}</div>` : ''}
+            </div>
+          </div>`;
+      }).join('') + '</div>';
+    }
+
+    function renderDetailPayments(payments, s) {
+      if (!s.mp_preapproval_id) return '<div style="text-align:center;padding:40px;color:#888">Sin preapproval MercadoPago vinculado.<br><span style="font-size:11px">Suscripciones creadas desde Shopify nativo no tienen pagos MP.</span></div>';
+      if (!payments.length) return '<div style="text-align:center;padding:40px;color:#888">Sin cobros MP registrados aún.<br><span style="font-size:11px">Preapproval: ' + s.mp_preapproval_id + '</span></div>';
+      const head = '<tr style="background:#0A0A0A;color:#fff;text-align:left"><th style="padding:10px 12px;font-size:11px;text-transform:uppercase">Fecha</th><th style="padding:10px 12px;font-size:11px;text-transform:uppercase">Monto</th><th style="padding:10px 12px;font-size:11px;text-transform:uppercase">Estado</th><th style="padding:10px 12px;font-size:11px;text-transform:uppercase">Payment ID</th></tr>';
+      const rows = payments.map(p => {
+        const d = p.debit_date || p.date_created;
+        const statusColor = p.status === 'approved' ? '#16a34a' : (p.status === 'rejected' ? '#dc2626' : '#ca8a04');
+        return `<tr style="border-bottom:1px solid #e5e7eb">
+          <td style="padding:10px 12px;font-size:12px">${d ? new Date(d).toLocaleString('es-PE') : '—'}</td>
+          <td style="padding:10px 12px;font-size:12px;font-weight:700">${p.currency_id || 'PEN'} ${p.transaction_amount || 0}</td>
+          <td style="padding:10px 12px;font-size:12px"><span style="background:${statusColor}20;color:${statusColor};padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700">${p.status || '—'}</span></td>
+          <td style="padding:10px 12px;font-size:11px;font-family:monospace;color:#666">${p.payment_id || p.id || '—'}</td>
+        </tr>`;
+      }).join('');
+      return '<table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb">' + head + rows + '</table>';
+    }
+
+    function renderDetailActions(s, preview) {
+      preview = preview || {};
+      const info = s.status !== 'cancelled'
+        ? `<div style="padding:14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;margin-bottom:14px">
+             <div style="font-weight:700;font-size:13px;color:#92400e">Preview de cancelación</div>
+             <div style="font-size:12px;color:#78350f;margin-top:4px">Penalidad calculada: <strong>S/ ${(preview.penalty || 0).toFixed(2)}</strong> · Ciclos: ${preview.cycles_completed || 0}/${preview.cycles_required || 0}${preview.within_retracto ? ' · Dentro de retracto 7d' : ''}${preview.completed_permanence ? ' · Permanencia cumplida' : ''}</div>
+           </div>` : '';
+      return info + `
+        <div style="display:flex;flex-direction:column;gap:12px">
+          ${s.status === 'active' ? `
+            <div style="padding:16px;border:1px solid #e5e7eb;border-radius:10px">
+              <div style="font-weight:700;font-size:13px">Pausar suscripción</div>
+              <div style="font-size:12px;color:#666;margin:4px 0 10px">No cobra por N meses. MP paraliza, cliente puede reanudar.</div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="sd-pause-months" type="number" value="1" min="1" max="6" style="width:80px;border:1.5px solid #e5e7eb;border-radius:6px;padding:7px 10px;font-size:13px;outline:none">
+                <span style="font-size:12px;color:#666">meses</span>
+                <button onclick="doSubAction('pause')" class="btn btn-g" style="background:#0A0A0A;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:600;cursor:pointer;margin-left:auto">Pausar</button>
+              </div>
+            </div>` : ''}
+          ${s.status === 'paused' ? `
+            <div style="padding:16px;border:1px solid #e5e7eb;border-radius:10px">
+              <div style="font-weight:700;font-size:13px">Reanudar suscripción</div>
+              <div style="font-size:12px;color:#666;margin:4px 0 10px">Vuelve a estado activo, MP reanuda cobros.</div>
+              <button onclick="doSubAction('resume')" class="btn btn-g" style="background:#16a34a;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:600;cursor:pointer">Reanudar</button>
+            </div>` : ''}
+          ${s.status !== 'cancelled' ? `
+            <div style="padding:16px;border:1px solid #e5e7eb;border-radius:10px">
+              <div style="font-weight:700;font-size:13px">Cancelar normal (con penalidad si aplica)</div>
+              <div style="font-size:12px;color:#666;margin:4px 0 10px">Genera link de pago de penalidad si no cumplió permanencia.</div>
+              <button onclick="doSubAction('cancel')" class="btn" style="background:#fee2e2;color:#991b1b;border:none;padding:8px 18px;border-radius:6px;font-weight:600;cursor:pointer">Cancelar</button>
+            </div>
+            <div style="padding:16px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2">
+              <div style="font-weight:700;font-size:13px;color:#991b1b">Cancelación forzada (admin)</div>
+              <div style="font-size:12px;color:#7f1d1d;margin:4px 0 10px">Sin penalidad. Usa para casos excepcionales (error, reclamo resuelto, cortesía).</div>
+              <button onclick="doSubAction('force-cancel')" class="btn" style="background:#991b1b;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:600;cursor:pointer">Forzar cancelación sin penalidad</button>
+            </div>` : ''}
+          <div style="padding:16px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2">
+            <div style="font-weight:700;font-size:13px;color:#991b1b">Eliminar registro</div>
+            <div style="font-size:12px;color:#7f1d1d;margin:4px 0 10px">Borra completamente de metaobjects. Usa solo para limpiar duplicados o pruebas.</div>
+            <button onclick="doSubAction('delete')" class="btn" style="background:#0A0A0A;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:600;cursor:pointer">Eliminar de la base</button>
+          </div>
+        </div>`;
+    }
+
+    async function saveSubDetail() {
+      if (!_detailSub) return;
+      const id = _detailSub.subscription.id;
+      const payload = {
+        customer_name: document.getElementById('sd-customer_name').value.trim(),
+        dni: document.getElementById('sd-dni').value.trim(),
+        tipo_documento: document.getElementById('sd-tipo_documento').value,
+        product_title: document.getElementById('sd-product_title').value.trim(),
+        product_id: document.getElementById('sd-product_id').value.trim(),
+        variant_id: document.getElementById('sd-variant_id').value.trim(),
+        discount_pct: parseFloat(document.getElementById('sd-discount_pct').value || 0),
+        frequency_months: parseInt(document.getElementById('sd-frequency_months').value || 1),
+        permanence_months: parseInt(document.getElementById('sd-permanence_months').value || 0),
+        cycles_required: parseInt(document.getElementById('sd-cycles_required').value || 0),
+        base_price: parseFloat(document.getElementById('sd-base_price').value || 0),
+        final_price: parseFloat(document.getElementById('sd-final_price').value || 0),
+        status: document.getElementById('sd-status').value
+      };
+      const nc = document.getElementById('sd-next_charge_at').value;
+      if (nc) payload.next_charge_at = new Date(nc).toISOString();
+      const sa = document.getElementById('sd-shipping_address').value.trim();
+      if (sa) {
+        try { payload.shipping_address = JSON.parse(sa); } catch (e) { payload.shipping_address = sa; }
+      }
+      try {
+        await api('/api/subscriptions/' + encodeURIComponent(id), { method: 'PATCH', body: payload });
+        toast('Cambios guardados');
+        await api('/api/admin/subscriptions/' + encodeURIComponent(id)).then(d => { _detailSub = d; renderSubDetail(); });
+        loadSubs();
+      } catch (e) { toast('Error: ' + e.message, 'err'); }
+    }
+
+    async function doSubAction(action) {
+      if (!_detailSub) return;
+      const id = _detailSub.subscription.id;
+      const confirmMsg = {
+        pause: null,
+        resume: '¿Reanudar esta suscripción?',
+        cancel: '¿Cancelar esta suscripción? Si hay penalidad se generará link de pago.',
+        'force-cancel': '¿Forzar cancelación SIN penalidad? Acción admin, quedará registrada.',
+        delete: 'ELIMINARÁ el registro permanentemente. ¿Continuar?'
+      }[action];
+      if (confirmMsg && !confirm(confirmMsg)) return;
+      try {
+        if (action === 'pause') {
+          const months = parseInt(document.getElementById('sd-pause-months')?.value || 1);
+          await api('/api/subscriptions/' + encodeURIComponent(id) + '/pause', { method: 'POST', body: { pauseMonths: months } });
+          toast('Suscripción pausada');
+        } else if (action === 'resume') {
+          await api('/api/subscriptions/' + encodeURIComponent(id) + '/resume', { method: 'POST' });
+          toast('Suscripción reanudada');
+        } else if (action === 'cancel') {
+          const pv = await api('/api/subscriptions/' + encodeURIComponent(id) + '/cancel/preview');
+          if (pv.penalty > 0 && !confirm('Penalidad: S/' + pv.penalty.toFixed(2) + '. ¿Generar link de pago?')) return;
+          const r = await api('/api/subscriptions/' + encodeURIComponent(id) + '/cancel', { method: 'POST', body: { confirm_penalty: pv.penalty > 0 } });
+          toast(r.penalty_payment_url ? 'Cancelada. Link generado: ' + r.penalty_payment_url : 'Cancelada sin penalidad');
+        } else if (action === 'force-cancel') {
+          await api('/api/admin/subscriptions/' + encodeURIComponent(id) + '/force-cancel', { method: 'POST', body: { reason: 'admin_manual' } });
+          toast('Cancelación admin aplicada');
+        } else if (action === 'delete') {
+          await api('/api/admin/subscriptions/' + encodeURIComponent(id), { method: 'DELETE' });
+          toast('Registro eliminado');
+          closeSubDetail();
+          loadSubs();
+          return;
+        }
+        await api('/api/admin/subscriptions/' + encodeURIComponent(id)).then(d => { _detailSub = d; renderSubDetail(); });
+        loadSubs();
+      } catch (e) { toast('Error: ' + e.message, 'err'); }
     }
 
     // ──── SECTION ORDER (reorderable) ────

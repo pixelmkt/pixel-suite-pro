@@ -183,6 +183,29 @@ async function updateSubscription(id, updates) {
     return { ...updated, _gid: sub._gid };
 }
 
+const M_DELETE = `
+    mutation DeleteMetaobject($id: ID!) {
+        metaobjectDelete(id: $id) {
+            deletedId
+            userErrors { field message }
+        }
+    }
+`;
+
+/**
+ * Elimina completamente una suscripción del metaobject store.
+ * Uso admin: limpieza de duplicados, pruebas, cancelaciones duras.
+ * NO toca MercadoPago ni Shopify contracts — es solo el registro local.
+ */
+async function deleteSubscription(id) {
+    const sub = await getSubscription(id);
+    if (!sub) throw new Error(`Subscription not found: ${id}`);
+    const r = await gql(M_DELETE, { id: sub._gid });
+    const errs = r.metaobjectDelete?.userErrors || [];
+    if (errs.length) throw new Error(errs[0].message);
+    return { deleted: r.metaobjectDelete.deletedId, id };
+}
+
 // ── EVENTS ────────────────────────────────────────────────────
 
 async function createEvent(data) {
@@ -255,6 +278,7 @@ module.exports = {
     getSubscription,
     createSubscription,
     updateSubscription,
+    deleteSubscription,
     createEvent,
     getEvents,
     getMetrics,

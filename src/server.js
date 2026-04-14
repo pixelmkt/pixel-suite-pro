@@ -667,6 +667,74 @@ app.post('/api/subscriptions/:id/cancel', async (req, res) => {
     } catch (e) { console.error('[CANCEL] Error:', e); res.status(500).json({ error: e.message }); }
 });
 
+/* ══════════════════════════════════════════════════════
+   ADMIN — detalle, pagos MP, force-cancel, delete
+   Uso interno del panel admin.html
+   ══════════════════════════════════════════════════════ */
+
+/** GET /api/subscriptions/:id/payments — lista pagos MP (authorized_payments) */
+app.get('/api/subscriptions/:id/payments', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Not found' });
+        if (!sub.mp_preapproval_id) return res.json({ payments: [], note: 'Sin preapproval MP' });
+        let payments = [];
+        try {
+            payments = await mp.listPreapprovalPayments(sub.mp_preapproval_id, 50);
+        } catch (e) {
+            return res.json({ payments: [], error: e.message });
+        }
+        res.json({ payments, preapproval_id: sub.mp_preapproval_id });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/** GET /api/admin/subscriptions/:id — detalle completo (sub + events + payments) */
+app.get('/api/admin/subscriptions/:id', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Not found' });
+        const [events, penaltyPreview] = await Promise.all([
+            db.getEvents(sub.id).catch(() => []),
+            Promise.resolve(calculateEarlyCancellationPenalty(sub))
+        ]);
+        let payments = [];
+        if (sub.mp_preapproval_id && mp.listPreapprovalPayments) {
+            try { payments = await mp.listPreapprovalPayments(sub.mp_preapproval_id, 50); } catch (e) { /* ignore */ }
+        }
+        res.json({ subscription: sub, events: events || [], payments, penalty_preview: penaltyPreview });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/** POST /api/admin/subscriptions/:id/force-cancel — admin cancela sin penalidad (override) */
+app.post('/api/admin/subscriptions/:id/force-cancel', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Not found' });
+        const reason = (req.body && req.body.reason) || 'admin_force';
+        const now = new Date();
+        if (sub.mp_preapproval_id && mp.cancelSubscription) {
+            await mp.cancelSubscription(sub.mp_preapproval_id).catch(e => console.warn('[ADMIN CANCEL] MP error:', e.message));
+        }
+        await db.updateSubscription(sub.id, { status: 'cancelled', cancelled_at: now.toISOString(), penalty_status: 'waived', penalty_amount: 0 });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'admin_force_cancel', metadata: { reason, by: 'admin' } });
+        res.json({ success: true, cancelled: true, penalty: 0, message: 'Cancelación admin sin penalidad aplicada.' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/** DELETE /api/admin/subscriptions/:id — elimina registro (limpieza de duplicados) */
+app.delete('/api/admin/subscriptions/:id', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Not found' });
+        // Si está activa intentamos cancelar el preapproval MP antes de borrar
+        if (sub.status === 'active' && sub.mp_preapproval_id && mp.cancelSubscription) {
+            await mp.cancelSubscription(sub.mp_preapproval_id).catch(e => console.warn('[ADMIN DELETE] MP cancel error:', e.message));
+        }
+        const out = await db.deleteSubscription(sub.id);
+        res.json({ success: true, ...out });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ── PLANS — stored inside the proven settings metafield as 'plans_config' sub-key ── */
 // FIX 2026-03-23: New separate metafields fail silently in API 2026-01 (owner_resource bug).
 // Solution: store plans/products/configs as sub-keys of the EXISTING settings metafield.
@@ -2264,6 +2332,139 @@ app.post('/api/marketing/send', async (req, res) => {
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
+});
+
+/* ══════════════════════════════════════════════════════
+   MAILING v2 — Compositor con segmentos reales + variables
+   POST /api/mailing/preview   → devuelve HTML renderizado
+   POST /api/mailing/audience  → count por segmento (sin enviar)
+   POST /api/mailing/send      → envío masivo con rate-limit
+   Variables soportadas: {{first_name}} {{email}} {{product}}
+                         {{next_charge}} {{final_price}} {{portal_link}}
+   ══════════════════════════════════════════════════════ */
+
+function _renderVars(template, sub) {
+    const firstName = String(sub.customer_name || sub.customer_email || '').split(' ')[0] || 'Cliente';
+    const nextCharge = sub.next_charge_at ? new Date(sub.next_charge_at).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Próximamente';
+    const portalLink = `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/portal/${encodeURIComponent(sub.customer_email || '')}`;
+    const vars = {
+        first_name: firstName,
+        email: sub.customer_email || '',
+        product: sub.product_title || '',
+        next_charge: nextCharge,
+        final_price: sub.final_price ? `S/ ${parseFloat(sub.final_price).toFixed(2)}` : '',
+        portal_link: portalLink,
+        name: sub.customer_name || firstName
+    };
+    return String(template || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => vars[k] !== undefined ? vars[k] : '');
+}
+
+async function _filterMailingAudience(segment) {
+    const all = await db.getSubscriptions();
+    let list = Array.isArray(all) ? all : [];
+    if (segment === 'active') list = list.filter(s => s.status === 'active');
+    else if (segment === 'paused') list = list.filter(s => s.status === 'paused');
+    else if (segment === 'cancelled') list = list.filter(s => s.status === 'cancelled');
+    else if (segment === 'failed') list = list.filter(s => s.status === 'payment_failed');
+    else if (segment === 'bd_completed') list = list.filter(s => s.status === 'active' && (s.cycles_completed || 0) >= (s.cycles_required || 0));
+    else if (segment === 'bd_progress') list = list.filter(s => s.status === 'active' && (s.cycles_completed || 0) < (s.cycles_required || 0));
+    else if (segment === 'new_30d') {
+        const cutoff = Date.now() - 30 * 86400000;
+        list = list.filter(s => s.created_at && new Date(s.created_at).getTime() >= cutoff);
+    }
+    // dedupe by email
+    const unique = Object.values(list.reduce((acc, s) => { if (s.customer_email) acc[s.customer_email.toLowerCase()] = s; return acc; }, {}));
+    return unique;
+}
+
+app.post('/api/mailing/audience', async (req, res) => {
+    try {
+        const { segment = 'active' } = req.body || {};
+        const list = await _filterMailingAudience(segment);
+        res.json({ segment, count: list.length, sample: list.slice(0, 5).map(s => ({ email: s.customer_email, name: s.customer_name, product: s.product_title })) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/mailing/preview', async (req, res) => {
+    try {
+        const { subject = '', body = '', headerTitle = 'Club Black Diamond', testSub } = req.body || {};
+        const mockSub = testSub || {
+            customer_name: 'Jorge Luis Torres',
+            customer_email: 'ejemplo@labnutrition.pe',
+            product_title: 'CREATINE MICRONIZED BLACK',
+            final_price: 90,
+            next_charge_at: new Date(Date.now() + 7 * 86400000).toISOString()
+        };
+        const renderedSubject = _renderVars(subject, mockSub);
+        const bodyHtml = _renderVars(body, mockSub).replace(/\n/g, '<br>');
+        const notifMod = notifications || require('./services/notifications');
+        const baseHTML = notifMod.__baseHTML || null;
+        let html;
+        if (baseHTML) {
+            html = baseHTML(bodyHtml, { headerTitle });
+        } else {
+            // fallback si no exportamos baseHTML
+            html = `<!DOCTYPE html><html><body style="font-family:system-ui;max-width:600px;margin:30px auto;padding:24px;background:#fff;border-radius:12px;border:1px solid #eee"><div style="background:#0A0A0A;color:#fff;padding:24px;text-align:center;border-radius:8px 8px 0 0"><div style="font-size:11px;letter-spacing:4px">LAB NUTRITION</div><div style="color:#E30613;font-size:20px;font-weight:900;margin-top:8px">${headerTitle}</div></div><div style="padding:24px;line-height:1.6;color:#222">${bodyHtml}</div><div style="text-align:center;color:#888;font-size:11px;padding:16px;border-top:1px solid #eee">LAB NUTRITION CORP SAC · Lima, Perú</div></body></html>`;
+        }
+        res.json({ subject: renderedSubject, html });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/mailing/send', async (req, res) => {
+    try {
+        const { segment = 'active', subject, body, headerTitle = 'Club Black Diamond', test_email } = req.body || {};
+        if (!subject || !body) return res.status(400).json({ error: 'subject y body son requeridos' });
+
+        const nodemailer = require('nodemailer');
+        const smtpPort = parseInt(process.env.SMTP_PORT || '465');
+        const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST, port: smtpPort, secure: smtpPort === 465,
+            auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+            connectionTimeout: 10000, socketTimeout: 15000
+        });
+        const FROM = `"${process.env.EMAIL_FROM || 'LAB NUTRITION'}" <${process.env.SMTP_USER || 'contacto@labnutrition.pe'}>`;
+
+        const buildHtml = (sub) => {
+            const rendered = _renderVars(body, sub).replace(/\n/g, '<br>');
+            return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"><style>body{margin:0;padding:0;font-family:'Segoe UI',Helvetica,Arial,sans-serif;background:#f5f5f5;color:#1a1a1a}.outer{max-width:600px;margin:0 auto;padding:24px 16px}.card{background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 20px rgba(0,0,0,.06)}.hero{background:#0A0A0A;padding:36px 32px;text-align:center}.hero .brand{color:#fff;font-size:11px;font-weight:800;letter-spacing:4px;text-transform:uppercase}.hero .title{color:#E30613;font-size:22px;font-weight:900;margin-top:12px;letter-spacing:.5px}.body{padding:32px;color:#1a1a1a;line-height:1.7;font-size:14px}.footer{padding:20px 32px;text-align:center;background:#fafafa;border-top:1px solid #eee;font-size:11px;color:#888}.footer a{color:#E30613;text-decoration:none;font-weight:600}</style></head><body><div class="outer"><div class="card"><div class="hero"><div class="brand">LAB NUTRITION</div><div class="title">${headerTitle}</div></div><div class="body">${rendered}</div><div class="footer">LAB NUTRITION CORP SAC · Lima, Perú · <a href="${_renderVars('{{portal_link}}', sub)}">Gestionar suscripción</a></div></div></div></body></html>`;
+        };
+
+        // Modo test: envía a 1 email con datos mock
+        if (test_email) {
+            const mock = { customer_name: 'Test User', customer_email: test_email, product_title: 'CREATINE MICRONIZED BLACK', final_price: 90, next_charge_at: new Date(Date.now() + 7 * 86400000).toISOString() };
+            const html = buildHtml(mock);
+            const renderedSubject = _renderVars(subject, mock);
+            await transporter.sendMail({ from: FROM, to: test_email, subject: '[TEST] ' + renderedSubject, html });
+            return res.json({ success: true, test: true, to: test_email });
+        }
+
+        const audience = await _filterMailingAudience(segment);
+        let sent = 0, failed = 0;
+        const errors = [];
+        // batch 10 en paralelo con pausa de 500ms
+        for (let i = 0; i < audience.length; i += 10) {
+            const batch = audience.slice(i, i + 10);
+            await Promise.all(batch.map(async (sub) => {
+                try {
+                    const html = buildHtml(sub);
+                    const renderedSubject = _renderVars(subject, sub);
+                    await transporter.sendMail({ from: FROM, to: sub.customer_email, subject: renderedSubject, html });
+                    sent++;
+                } catch (e) {
+                    failed++;
+                    if (errors.length < 5) errors.push({ email: sub.customer_email, error: e.message });
+                }
+            }));
+            if (i + 10 < audience.length) await new Promise(r => setTimeout(r, 500));
+        }
+        if (db && db.createEvent) {
+            await db.createEvent({
+                subscription_id: 'campaign', event_type: 'mailing_sent',
+                metadata: JSON.stringify({ subject, segment, total: audience.length, sent, failed })
+            }).catch(() => {});
+        }
+        res.json({ success: true, segment, total: audience.length, sent, failed, errors });
+    } catch (e) { console.error('[MAILING]', e); res.status(500).json({ error: e.message }); }
 });
 
 /* ── Export subscribers as CSV ── */

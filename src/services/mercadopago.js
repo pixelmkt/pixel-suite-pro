@@ -160,6 +160,39 @@ async function getPayment(paymentId) {
 }
 
 /**
+ * Lista pagos autorizados (cobros recurrentes) de un preapproval.
+ * Fetch directo a MP porque el SDK no expone authorized_payments/search.
+ * Devuelve array ordenado desc por fecha con: id, status, transaction_amount, debit_date, payment_id.
+ */
+async function listPreapprovalPayments(preapprovalId, limit = 50) {
+    const token = process.env.MP_ACCESS_TOKEN;
+    if (!token) throw new Error('MP_ACCESS_TOKEN not configured');
+    const url = `https://api.mercadopago.com/authorized_payments/search?preapproval_id=${encodeURIComponent(preapprovalId)}&limit=${limit}&sort=date_created:desc`;
+    const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`MP authorized_payments ${res.status}: ${txt.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const items = Array.isArray(data.results) ? data.results : (Array.isArray(data) ? data : []);
+    return items.map(p => ({
+        id: p.id,
+        status: p.status,
+        status_detail: p.status_detail,
+        transaction_amount: p.transaction_amount,
+        currency_id: p.currency_id,
+        debit_date: p.debit_date,
+        date_created: p.date_created,
+        last_modified: p.last_modified,
+        payment_id: p.payment?.id || p.payment_id || null,
+        payment_method_id: p.payment?.payment_method_id || null,
+        reason: p.reason
+    }));
+}
+
+/**
  * Crea una Preferencia de pago ÚNICO (no recurrente).
  * Usado para cobrar la penalidad de cancelación anticipada.
  * Devuelve init_point (URL de pago) — el cliente paga y MP notifica vía webhook.
@@ -196,6 +229,7 @@ module.exports = {
     resumeSubscription,
     cancelSubscription,
     getPayment,
+    listPreapprovalPayments,
     createOneTimePayment,
     get MP_PUBLIC_KEY() { return process.env.MP_PUBLIC_KEY; }
 };
