@@ -37,6 +37,7 @@ function baseHTML(content, { headerIcon = '', headerTitle = '' } = {}) {
     .detail-row:last-child { border-bottom:none; }
     .detail-label { color:#888; }
     .detail-value { font-weight:700; color:#1a1a1a; text-align:right; }
+    .igv-note { font-size:10px; color:#888; text-align:right; margin-top:-4px; padding-bottom:6px; font-style:italic; }
     .total-row { font-size:15px; padding:12px 0 0; border-top:2px solid #1a1a1a; margin-top:8px; }
     .total-row .detail-value { color:#9d2a23; font-size:17px; font-weight:900; }
     .badge { display:inline-block; background:#9d2a23; color:#fff; padding:5px 14px; border-radius:20px; font-size:11px; font-weight:800; letter-spacing:0.5px; }
@@ -113,6 +114,7 @@ async function sendWelcome(sub) {
       <div class="detail-row"><span class="detail-label">Tu descuento</span><span class="detail-value"><span class="badge">${Math.round(sub.discount_pct || 0)}% OFF</span></span></div>
       <div class="detail-row"><span class="detail-label">Precio mensual</span><span class="detail-value">${formatPrice(sub.final_price)}</span></div>
       <div class="detail-row"><span class="detail-label">Env&iacute;o</span><span class="detail-value">S/ 10.00</span></div>
+      <div class="igv-note">Todos los precios incluyen IGV</div>
       <div class="detail-row total-row"><span class="detail-label">Cobro mensual</span><span class="detail-value">${formatPrice(parseFloat(sub.final_price) + 10)}</span></div>
     </div>
     <div class="success-box">
@@ -135,6 +137,7 @@ async function sendChargeReminder(sub) {
       <div class="detail-row"><span class="detail-label">Producto</span><span class="detail-value">${sub.product_title}</span></div>
       <div class="detail-row"><span class="detail-label">Precio</span><span class="detail-value">${formatPrice(sub.final_price)}</span></div>
       <div class="detail-row"><span class="detail-label">Env&iacute;o</span><span class="detail-value">S/ 10.00</span></div>
+      <div class="igv-note">Todos los precios incluyen IGV</div>
       <div class="detail-row total-row"><span class="detail-label">Total a cobrar</span><span class="detail-value">${formatPrice(parseFloat(sub.final_price) + 10)}</span></div>
     </div>
     <div class="info-box">
@@ -181,6 +184,7 @@ async function sendChargeSuccess(sub, orderName) {
       <div class="detail-row"><span class="detail-label">Producto</span><span class="detail-value">${sub.product_title}</span></div>
       <div class="detail-row"><span class="detail-label">Precio</span><span class="detail-value">${formatPrice(sub.final_price)}</span></div>
       <div class="detail-row"><span class="detail-label">Env&iacute;o</span><span class="detail-value">S/ 10.00</span></div>
+      <div class="igv-note">Todos los precios incluyen IGV</div>
       <div class="detail-row total-row"><span class="detail-label">Total cobrado</span><span class="detail-value">${formatPrice(parseFloat(sub.final_price) + 10)}</span></div>
     </div>
     <div class="success-box">
@@ -275,6 +279,7 @@ function getPreviewHTML(templateName) {
       <div class="detail-row"><span class="detail-label">Tu descuento</span><span class="detail-value"><span class="badge">${mockSub.discount_pct}% OFF</span></span></div>
       <div class="detail-row"><span class="detail-label">Precio mensual</span><span class="detail-value">${formatPrice(mockSub.final_price)}</span></div>
       <div class="detail-row"><span class="detail-label">Env&iacute;o</span><span class="detail-value">S/ 10.00</span></div>
+      <div class="igv-note">Todos los precios incluyen IGV</div>
       <div class="detail-row total-row"><span class="detail-label">Cobro mensual</span><span class="detail-value">${formatPrice(parseFloat(mockSub.final_price) + 10)}</span></div>
     </div>
     <div class="success-box"><strong>Pr&oacute;ximo env&iacute;o:</strong> ${formatDate(mockSub.next_charge_at)}</div>
@@ -290,6 +295,7 @@ function getPreviewHTML(templateName) {
       <div class="detail-row"><span class="detail-label">Producto</span><span class="detail-value">${mockSub.product_title}</span></div>
       <div class="detail-row"><span class="detail-label">Precio</span><span class="detail-value">${formatPrice(mockSub.final_price)}</span></div>
       <div class="detail-row"><span class="detail-label">Env&iacute;o</span><span class="detail-value">S/ 10.00</span></div>
+      <div class="igv-note">Todos los precios incluyen IGV</div>
       <div class="detail-row total-row"><span class="detail-label">Total a cobrar</span><span class="detail-value">${formatPrice(parseFloat(mockSub.final_price) + 10)}</span></div>
     </div>
     <div class="info-box"><strong>Direcci&oacute;n de env&iacute;o</strong><br>Augusto Tamayo 180<br>San Isidro, Lima</div>
@@ -305,6 +311,7 @@ function getPreviewHTML(templateName) {
       <div class="detail-row"><span class="detail-label">Producto</span><span class="detail-value">${mockSub.product_title}</span></div>
       <div class="detail-row"><span class="detail-label">Precio</span><span class="detail-value">${formatPrice(mockSub.final_price)}</span></div>
       <div class="detail-row"><span class="detail-label">Env&iacute;o</span><span class="detail-value">S/ 10.00</span></div>
+      <div class="igv-note">Todos los precios incluyen IGV</div>
       <div class="detail-row total-row"><span class="detail-label">Total cobrado</span><span class="detail-value">${formatPrice(parseFloat(mockSub.final_price) + 10)}</span></div>
     </div>
     <div class="success-box"><strong>Progreso:</strong> Ciclo 2 de 6</div>

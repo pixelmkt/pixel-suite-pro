@@ -2006,7 +2006,10 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         { name: 'courier_id', value: '02' },
         { name: 'courier', value: 'Urbaner' },
         { name: 'ClusterCart-shipping_code', value: '02' },
-        { name: 'ClusterCart-courier', value: 'Urbaner' }
+        { name: 'ClusterCart-courier', value: 'Urbaner' },
+        // IGV incluido en todos los precios (Ley 29571 Art. 5.4)
+        { name: 'igv_incluido', value: 'true' },
+        { name: 'tax_included', value: 'true' }
     ].filter(a => a.value);
 
     const orderBody = {
@@ -2019,7 +2022,7 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             line_items: [lineItem],
             discount_codes: [],
             shipping_lines: [{ title: 'Envío suscripción', price: '10.00', code: '02' }],
-            note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
+            note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF | IGV incluido${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
             tags: 'suscripcion',
             note_attributes: noteAttrs,
             shipping_address: shippingAddr || undefined,
