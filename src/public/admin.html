@@ -943,6 +943,18 @@
             <div class="card">
               <div class="card-head"><span class="card-title">2. Redacta el email</span></div>
               <div style="padding:18px;display:flex;flex-direction:column;gap:12px">
+                <div style="background:linear-gradient(135deg,#0A0A0A,#1a1a1a);color:#fff;padding:12px 14px;border-radius:8px;border:1px solid #E30613">
+                  <label style="font-size:10px;font-weight:800;color:#E30613;text-transform:uppercase;letter-spacing:1.2px">⚡ Plantillas LAB listas para usar</label>
+                  <select id="ml-template" onchange="mlApplyTemplate(this.value)" style="width:100%;background:#0A0A0A;color:#fff;border:1.5px solid #333;border-radius:6px;padding:9px 12px;font-size:13px;margin-top:6px;outline:none;box-sizing:border-box;cursor:pointer">
+                    <option value="">— Empezar de cero —</option>
+                    <option value="bd_graduate">🏆 Graduado Black Diamond (felicitación + renovación)</option>
+                    <option value="winback">💎 Win-back (recuperar cancelados)</option>
+                    <option value="progress">📦 Recordatorio miembros en progreso</option>
+                    <option value="welcome_new">👋 Bienvenida nuevos suscriptores</option>
+                    <option value="upsell">🔥 Upsell productos complementarios</option>
+                  </select>
+                  <div id="ml-template-notice" style="font-size:10px;color:#999;margin-top:6px;transition:opacity .4s, color .4s">Cargás la plantilla y editás libre. Tus cambios quedan en el editor.</div>
+                </div>
                 <div>
                   <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Título header (rojo LAB)</label>
                   <input id="ml-header" type="text" value="Club Black Diamond" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;margin-top:5px;outline:none;box-sizing:border-box" oninput="mlRefreshPreview()">
@@ -1867,6 +1879,149 @@
       ta.focus();
       ta.setSelectionRange(start + token.length, start + token.length);
       mlRefreshPreview();
+    }
+
+    // ════════════════════════════════════════════════
+    // PLANTILLAS LAB — editables, con segmento sugerido
+    // ════════════════════════════════════════════════
+    const ML_TEMPLATES = {
+      bd_graduate: {
+        segment: 'bd_completed',
+        header: 'Club Black Diamond',
+        subject: '🏆 {{first_name}}, completaste 6 meses en Black Diamond',
+        body:
+          'Hola {{first_name}},\n\n' +
+          'Lo lograste. Sos parte del grupo exclusivo que completó los 6 meses del programa Black Diamond, recibiendo {{product}} puntualmente cada mes sin preocuparte por nada.\n\n' +
+          'Eso, para nosotros, vale oro.\n\n' +
+          '━━━━━━━━━━━━━━━━━━━━━━━\n' +
+          'TU REGALO POR GRADUARTE:\n' +
+          '━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+          '· 15% OFF adicional si renovás este mes\n' +
+          '· Acceso early a próximos lanzamientos limitados\n' +
+          '· Pack sorpresa en tu siguiente envío\n' +
+          '· Precio fijo asegurado por 6 meses más\n\n' +
+          'Entrá acá para renovar tu membresía:\n' +
+          '{{portal_link}}\n\n' +
+          'Gracias por la confianza, {{first_name}}.\n\n' +
+          '— Equipo LAB NUTRITION\n' +
+          'Lima, Perú'
+      },
+      winback: {
+        segment: 'cancelled',
+        header: 'Volver al Club',
+        subject: '{{first_name}}, te extrañamos en Black Diamond',
+        body:
+          'Hola {{first_name}},\n\n' +
+          'Notamos que ya no estás con nosotros en el Club Black Diamond. Si fue por precio, por un problema con un envío, o simplemente porque cambió tu rutina — queremos saberlo.\n\n' +
+          'Respondé este correo con lo que haya pasado. Te leemos.\n\n' +
+          '━━━━━━━━━━━━━━━━━━━━━━━\n' +
+          'PARA QUE VUELVAS:\n' +
+          '━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+          '· 10% OFF adicional en tu primera renovación\n' +
+          '· Envío GRATIS el primer mes\n' +
+          '· Precio fijo todo el programa, sin sorpresas\n' +
+          '· Podés pausar o cambiar producto sin penalidad\n\n' +
+          'Activá tu nueva suscripción con el mismo email ({{email}}):\n' +
+          'https://nutritionlabcluster.com/products\n\n' +
+          'Te esperamos, {{first_name}}.\n\n' +
+          '— Equipo LAB NUTRITION\n' +
+          'Lima, Perú'
+      },
+      progress: {
+        segment: 'bd_progress',
+        header: 'Tu próximo envío',
+        subject: '{{first_name}}, tu {{product}} llega el {{next_charge}}',
+        body:
+          'Hola {{first_name}},\n\n' +
+          'Todo listo: tu próximo envío de {{product}} sale el {{next_charge}}. No tenés que hacer nada, se cobra S/{{final_price}} automáticamente con tu tarjeta guardada.\n\n' +
+          '━━━━━━━━━━━━━━━━━━━━━━━\n' +
+          'TUS VENTAJAS BLACK DIAMOND:\n' +
+          '━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+          '· Precio fijo todos los meses, aunque suba en tienda\n' +
+          '· Envío prioritario y sin costo\n' +
+          '· Soporte directo por WhatsApp\n' +
+          '· Pausa o cambio de producto gratis antes del día 3\n' +
+          '· Cancelación libre después del mes 6\n\n' +
+          '¿Querés cambiar algo para este envío? Entrá acá:\n' +
+          '{{portal_link}}\n\n' +
+          'Gracias por ser parte del Club.\n\n' +
+          '— Equipo LAB NUTRITION\n' +
+          'Lima, Perú'
+      },
+      welcome_new: {
+        segment: 'new_30d',
+        header: '¡Bienvenido!',
+        subject: '{{first_name}}, bienvenido al Club Black Diamond',
+        body:
+          'Hola {{first_name}},\n\n' +
+          'Acabás de sumarte al programa Black Diamond con {{product}}. Te damos la bienvenida al club más exclusivo de LAB NUTRITION.\n\n' +
+          '━━━━━━━━━━━━━━━━━━━━━━━\n' +
+          'LO QUE VIENE:\n' +
+          '━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+          '1. Tu primer envío ya está en camino\n' +
+          '2. Los próximos salen el {{next_charge}} automáticamente\n' +
+          '3. Pagás S/{{final_price}} fijo todo el programa\n' +
+          '4. Podés gestionar todo en tu portal personal\n\n' +
+          '━━━━━━━━━━━━━━━━━━━━━━━\n' +
+          'TIPS PARA SACARLE EL JUGO:\n' +
+          '━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+          '· Tomá {{product}} a la misma hora cada día para mejores resultados\n' +
+          '· Combinalo con una buena hidratación y descanso\n' +
+          '· Si tenés dudas, WhatsApp directo con un asesor\n\n' +
+          'Tu portal está acá:\n' +
+          '{{portal_link}}\n\n' +
+          '— Equipo LAB NUTRITION\n' +
+          'Lima, Perú'
+      },
+      upsell: {
+        segment: 'active',
+        header: 'Potenciá tu rutina',
+        subject: '{{first_name}}, llevá tu {{product}} al siguiente nivel',
+        body:
+          'Hola {{first_name}},\n\n' +
+          'Ya sos parte del programa Black Diamond con {{product}} — gracias por la confianza.\n\n' +
+          'Hoy queremos contarte algo que puede multiplicar tus resultados: los productos que mejor combinan con el tuyo.\n\n' +
+          '━━━━━━━━━━━━━━━━━━━━━━━\n' +
+          'RECOMENDACIONES EXCLUSIVAS:\n' +
+          '━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+          '· Whey Protein Isolate — pre o post entrenamiento\n' +
+          '· BCAA + Glutamina — recuperación muscular\n' +
+          '· Multivitamínico Black — energía y enfoque diario\n\n' +
+          'Como miembro Black Diamond, tenés 10% OFF extra en tu próxima compra usando tu email ({{email}}) en la tienda:\n' +
+          'https://nutritionlabcluster.com/products\n\n' +
+          'Cualquier consulta, respondé este correo.\n\n' +
+          '— Equipo LAB NUTRITION\n' +
+          'Lima, Perú'
+      }
+    };
+
+    function mlApplyTemplate(tplId) {
+      if (!tplId) return;
+      const tpl = ML_TEMPLATES[tplId];
+      if (!tpl) return;
+
+      document.getElementById('ml-header').value = tpl.header;
+      document.getElementById('ml-subject').value = tpl.subject;
+      document.getElementById('ml-body').value = tpl.body;
+
+      // Segmento sugerido automáticamente (ej: bd_graduate → bd_completed)
+      const segSel = document.getElementById('ml-segment');
+      if (tpl.segment && segSel && segSel.value !== tpl.segment) {
+        segSel.value = tpl.segment;
+        if (typeof mlRefreshAudience === 'function') mlRefreshAudience();
+      }
+
+      mlRefreshPreview();
+
+      // Aviso visual no-bloqueante (fade-out)
+      const sel = document.getElementById('ml-template');
+      const notice = document.getElementById('ml-template-notice');
+      if (notice) {
+        notice.textContent = '✓ Plantilla cargada — editá libremente';
+        notice.style.opacity = '1';
+        notice.style.color = '#10b981';
+        setTimeout(() => { notice.style.opacity = '0.6'; notice.style.color = '#999'; notice.textContent = 'Cargás la plantilla y editás libre. Tus cambios quedan en el editor.'; }, 2800);
+      }
     }
 
     function mlRefreshPreview() {
