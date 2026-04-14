@@ -1201,9 +1201,12 @@
 
         <!-- PRODUCTO DE LA SEMANA + CUPÓN -->
         <div class="card">
-          <div class="card-head"><span class="card-title">Producto de la semana + Cupón</span></div>
+          <div class="card-head">
+            <span class="card-title">Producto de la semana + Cupón</span>
+            <button class="btn btn-g btn-sm" onclick="openProductPicker()">Elegir de tu tienda</button>
+          </div>
           <div style="padding:20px">
-            <div class="info-box">Destaca un producto con descuento exclusivo para suscriptores. Se muestra en el portal.</div>
+            <div class="info-box">Busca un producto real de Shopify o edita manualmente. Se muestra destacado en el portal.</div>
             <div class="frow">
               <div class="fg"><label class="fl">Nombre del producto</label><input class="fi" id="pw-name" placeholder="Ej: Whey Protein Isolate"></div>
               <div class="fg"><label class="fl">URL de imagen</label><input class="fi" id="pw-image" placeholder="https://..."></div>
@@ -1277,6 +1280,36 @@
           </div>
         </div>
 
+        <!-- WHATSAPP DE LA TIENDA -->
+        <div class="card">
+          <div class="card-head"><span class="card-title">WhatsApp de la tienda</span></div>
+          <div style="padding:20px">
+            <div class="info-box">Este número recibirá los mensajes del botón flotante del portal. Formato internacional sin + (ej. 51987654321).</div>
+            <div class="frow">
+              <div class="fg"><label class="fl">Número WhatsApp</label><input class="fi" id="pc-wa-number" placeholder="51987654321"></div>
+              <div class="fg"><label class="fl">Texto del botón</label><input class="fi" id="pc-wa-btn-text" placeholder="Soporte por WhatsApp"></div>
+            </div>
+            <div class="fg"><label class="fl">Mensaje prellenado</label><input class="fi" id="pc-wa-message" placeholder="Hola, soy suscriptor de LAB y necesito ayuda."></div>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px"><input type="checkbox" id="pc-wa-floating" checked> Mostrar como botón flotante (esquina inferior derecha)</label>
+          </div>
+        </div>
+
+        <!-- CTA NO-MIEMBRO (Black Diamond) -->
+        <div class="card">
+          <div class="card-head"><span class="card-title">CTA para no-suscriptores (Black Diamond)</span></div>
+          <div style="padding:20px">
+            <div class="info-box">Si el visitante NO es miembro activo, se mostrará este banner invitándolo a convertirse en Black Diamond.</div>
+            <div class="frow">
+              <div class="fg"><label class="fl">Título</label><input class="fi" id="pc-bd-title" placeholder="Conviértete en cliente Black Diamond"></div>
+              <div class="fg"><label class="fl">Subtítulo</label><input class="fi" id="pc-bd-subtitle" placeholder="40% y 50% OFF permanente · envío prioritario · regalos exclusivos"></div>
+            </div>
+            <div class="frow">
+              <div class="fg"><label class="fl">Texto del botón</label><input class="fi" id="pc-bd-btn-text" placeholder="Quiero ser Black Diamond"></div>
+              <div class="fg"><label class="fl">Link (a producto con widget)</label><input class="fi" id="pc-bd-btn-url" placeholder="https://labnutrition.com/products/..."></div>
+            </div>
+          </div>
+        </div>
+
         <!-- HTML PERSONALIZADO -->
         <div class="card">
           <div class="card-head"><span class="card-title">HTML personalizado (modo marketing libre)</span></div>
@@ -1291,7 +1324,7 @@
         <div style="flex:1 1 360px;min-width:320px;position:sticky;top:20px;align-self:flex-start">
           <div class="card">
             <div class="card-head" style="background:#0f0f0f;color:#fff">
-              <span class="card-title" style="color:#fff">👁 Preview en vivo</span>
+              <span class="card-title" style="color:#fff">Preview en vivo</span>
               <div style="display:flex;gap:6px">
                 <button class="btn btn-sm" onclick="refreshPortalPreview()" style="background:#fff;color:#000">Recargar</button>
                 <button class="btn btn-sm" onclick="window.open('/portal','_blank')" style="background:transparent;color:#fff;border:1px solid #444">↗ Nueva pestaña</button>
@@ -2546,6 +2579,51 @@
       }
     }
 
+    // ──── PRODUCT PICKER (Cotetava-style) ────
+    let _pickerProducts = [];
+    async function openProductPicker() {
+      let modal = document.getElementById('product-picker-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'product-picker-modal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+        modal.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:720px;width:100%;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)"><div style="padding:18px 22px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center"><div style="font-size:15px;font-weight:700">Elegir producto de tu tienda</div><button onclick="document.getElementById(\'product-picker-modal\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#666">×</button></div><div style="padding:14px 22px;border-bottom:1px solid #e5e7eb"><input id="picker-search" placeholder="Buscar por nombre..." style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:10px 14px;font-size:13px;outline:none;font-family:inherit" oninput="renderPickerList()"></div><div id="picker-list" style="flex:1;overflow-y:auto;padding:10px 14px"><div style="text-align:center;padding:40px;color:#888">Cargando productos...</div></div></div>';
+        document.body.appendChild(modal);
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+      }
+      if (!_pickerProducts.length) {
+        try { _pickerProducts = await api('/api/products'); } catch (e) { _pickerProducts = []; }
+      }
+      renderPickerList();
+    }
+    function renderPickerList() {
+      const q = (document.getElementById('picker-search')?.value || '').toLowerCase();
+      const list = _pickerProducts.filter(p => !q || (p.title || '').toLowerCase().includes(q));
+      const el = document.getElementById('picker-list');
+      if (!el) return;
+      if (!list.length) { el.innerHTML = '<div style="text-align:center;padding:40px;color:#888">Sin resultados</div>'; return; }
+      el.innerHTML = list.slice(0, 80).map(p => {
+        const price = p.price || p.variants?.[0]?.price || '0';
+        const img = p.image || '';
+        const handle = p.handle || String(p.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        const url = 'https://labnutrition.com/products/' + handle;
+        const payload = encodeURIComponent(JSON.stringify({ id: p.shopify_id, title: p.title, image: img, price, url }));
+        return '<div onclick="selectPickerProduct(decodeURIComponent(\'' + payload + '\'))" style="display:flex;gap:12px;padding:10px;border-radius:8px;cursor:pointer;align-items:center;border:1px solid transparent" onmouseover="this.style.background=\'#f9fafb\';this.style.borderColor=\'#e5e7eb\'" onmouseout="this.style.background=\'\';this.style.borderColor=\'transparent\'">'
+          + (img ? '<img src="' + img + '" style="width:54px;height:54px;border-radius:8px;object-fit:cover;background:#f3f4f6">' : '<div style="width:54px;height:54px;border-radius:8px;background:#f3f4f6"></div>')
+          + '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + p.title + '</div><div style="font-size:11px;color:#888">S/ ' + price + ' · ID ' + p.shopify_id + '</div></div>'
+          + '<div style="color:#D4502A;font-size:12px;font-weight:700">Elegir →</div></div>';
+      }).join('');
+    }
+    function selectPickerProduct(json) {
+      const p = typeof json === 'string' ? JSON.parse(json) : json;
+      document.getElementById('pw-name').value = p.title || '';
+      document.getElementById('pw-image').value = p.image || '';
+      document.getElementById('pw-price').value = p.price || '';
+      document.getElementById('pw-url').value = p.url || '';
+      document.getElementById('product-picker-modal')?.remove();
+      toast('✅ Producto cargado — ajusta precio suscriptor y cupón');
+    }
+
     async function loadPortalConfig() {
       try {
         const d = await api('/api/portal-config').catch(() => ({}));
@@ -2572,6 +2650,14 @@
         if (d.banner_url !== undefined) document.getElementById('pc-banner-url').value = d.banner_url || '';
         if (d.banner_image !== undefined) document.getElementById('pc-banner-image').value = d.banner_image || '';
         if (d.custom_html !== undefined) document.getElementById('pc-custom-html').value = d.custom_html || '';
+        if (d.whatsapp_number !== undefined) document.getElementById('pc-wa-number').value = d.whatsapp_number || '';
+        if (d.whatsapp_btn_text !== undefined) document.getElementById('pc-wa-btn-text').value = d.whatsapp_btn_text || '';
+        if (d.whatsapp_message !== undefined) document.getElementById('pc-wa-message').value = d.whatsapp_message || '';
+        if (d.whatsapp_floating !== undefined) document.getElementById('pc-wa-floating').checked = d.whatsapp_floating !== false;
+        if (d.bd_title !== undefined) document.getElementById('pc-bd-title').value = d.bd_title || '';
+        if (d.bd_subtitle !== undefined) document.getElementById('pc-bd-subtitle').value = d.bd_subtitle || '';
+        if (d.bd_btn_text !== undefined) document.getElementById('pc-bd-btn-text').value = d.bd_btn_text || '';
+        if (d.bd_btn_url !== undefined) document.getElementById('pc-bd-btn-url').value = d.bd_btn_url || '';
         renderBenefits();
         renderEvents();
         renderCTAs();
@@ -2604,6 +2690,14 @@
           events_title: document.getElementById('pc-events-title').value,
           product_section_title: document.getElementById('pc-product-title').value,
           product_button_text: document.getElementById('pc-product-btn').value,
+          whatsapp_number: document.getElementById('pc-wa-number').value.replace(/\D/g, ''),
+          whatsapp_btn_text: document.getElementById('pc-wa-btn-text').value,
+          whatsapp_message: document.getElementById('pc-wa-message').value,
+          whatsapp_floating: document.getElementById('pc-wa-floating').checked,
+          bd_title: document.getElementById('pc-bd-title').value,
+          bd_subtitle: document.getElementById('pc-bd-subtitle').value,
+          bd_btn_text: document.getElementById('pc-bd-btn-text').value,
+          bd_btn_url: document.getElementById('pc-bd-btn-url').value,
           banner_text: document.getElementById('pc-banner-text').value,
           banner_url: document.getElementById('pc-banner-url').value,
           banner_image: document.getElementById('pc-banner-image').value,

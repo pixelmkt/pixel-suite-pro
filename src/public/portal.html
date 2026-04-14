@@ -3,105 +3,129 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Mi Membresía — Portal del Suscriptor</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+  <title>Mi Membresía — LAB NUTRITION</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
-    :root { --pri: #D4502A; --pri2: #B3401F; --grn: #2E7D49; --bg: #0f0f0f; --card: #1a1a1a; --card2: #232323; --txt: #f0f0f0; --mut: #888; --bdr: #333; --r: 14px; }
+    :root {
+      --lab-red: #E30613;
+      --lab-red-dark: #B00510;
+      --lab-black: #0A0A0A;
+      --lab-white: #FFFFFF;
+      --lab-gray: #F5F5F5;
+      --lab-border: #E5E5E5;
+      --lab-muted: #666666;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Inter',-apple-system,sans-serif; background: var(--bg); color: var(--txt); min-height: 100vh; }
+    body { font-family: 'Inter', -apple-system, sans-serif; background: var(--lab-white); color: var(--lab-black); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+    a { color: inherit; text-decoration: none; }
 
     /* HERO */
-    .hero { padding: 60px 24px 40px; text-align: center; background: linear-gradient(135deg, rgba(212,80,42,.15) 0%, rgba(46,125,73,.1) 100%); border-bottom: 1px solid var(--bdr); position: relative; overflow: hidden; }
-    .hero::before { content:''; position:absolute; top:-50%; left:-50%; width:200%; height:200%; background:radial-gradient(circle at 30% 40%, rgba(212,80,42,.08) 0%, transparent 50%); animation: heroGlow 8s ease-in-out infinite alternate; }
-    @keyframes heroGlow { to { transform: translate(10%,5%) scale(1.1); } }
-    .hero-logo { width: 64px; height: 64px; border-radius: 16px; object-fit: contain; margin: 0 auto 16px; display: block; position: relative; }
-    .hero-title { font-family: 'Playfair Display',serif; font-size: clamp(28px,5vw,42px); font-weight: 900; letter-spacing: -.5px; position: relative; }
-    .hero-sub { font-size: 15px; color: var(--mut); margin-top: 8px; position: relative; }
-    .hero-badge { display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, var(--pri), var(--pri2)); color: #fff; padding: 8px 18px; border-radius: 24px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top: 20px; position: relative; }
-    .hero-badge::before { content:''; width:8px; height:8px; border-radius:50%; background:#4ade80; animation: pulse 2s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .hero { padding: 48px 24px 32px; text-align: center; border-bottom: 1px solid var(--lab-border); background: var(--lab-white); }
+    .hero-logo { width: 72px; height: 72px; object-fit: contain; margin: 0 auto 18px; display: block; }
+    .hero-title { font-size: clamp(26px, 4vw, 36px); font-weight: 900; letter-spacing: -.5px; color: var(--lab-red); text-transform: uppercase; }
+    .hero-sub { font-size: 14px; color: var(--lab-muted); margin-top: 8px; font-weight: 500; }
+    .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: var(--lab-black); color: var(--lab-white); padding: 7px 16px; border-radius: 100px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 16px; }
+    .hero-badge.inactive { background: transparent; color: var(--lab-red); border: 1.5px solid var(--lab-red); }
+    .hero-badge::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+    .hero-badge.inactive::before { background: var(--lab-red); }
 
-    .container { max-width: 800px; margin: 0 auto; padding: 32px 20px 60px; }
+    .container { max-width: 820px; margin: 0 auto; padding: 32px 20px 80px; }
 
-    /* CARDS */
-    .section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: var(--mut); margin: 0 0 14px 2px; }
-    .card { background: var(--card); border: 1px solid var(--bdr); border-radius: var(--r); overflow: hidden; margin-bottom: 24px; transition: border-color .2s; }
-    .card:hover { border-color: #444; }
+    /* SECTION */
+    .section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2.5px; color: var(--lab-red); margin: 0 0 14px 2px; }
+    .card { background: var(--lab-white); border: 1px solid var(--lab-border); border-radius: 12px; overflow: hidden; margin-bottom: 22px; }
     .card-inner { padding: 24px; }
 
+    /* BANNER PROMO */
+    .promo-banner { display: block; border-radius: 12px; overflow: hidden; margin-bottom: 24px; border: 2px solid var(--lab-black); background: var(--lab-black); color: var(--lab-white); transition: transform .15s; }
+    .promo-banner:hover { transform: translateY(-2px); }
+    .promo-banner img { width: 100%; display: block; max-height: 240px; object-fit: cover; }
+    .promo-banner-txt { padding: 16px 22px; font-weight: 700; font-size: 15px; text-align: center; letter-spacing: .3px; }
+
+    /* BLACK DIAMOND CTA (no-member) */
+    .bd-cta { background: linear-gradient(135deg, var(--lab-black) 0%, #1a1a1a 100%); color: var(--lab-white); border-radius: 14px; padding: 36px 28px; text-align: center; margin-bottom: 26px; position: relative; overflow: hidden; border: 1px solid var(--lab-black); }
+    .bd-cta::before { content: ''; position: absolute; top: -40%; right: -10%; width: 300px; height: 300px; background: radial-gradient(circle, rgba(227,6,19,.25) 0%, transparent 60%); }
+    .bd-cta-eyebrow { font-size: 10px; font-weight: 800; letter-spacing: 4px; color: var(--lab-red); margin-bottom: 12px; position: relative; text-transform: uppercase; }
+    .bd-cta-eyebrow::before, .bd-cta-eyebrow::after { content: '—'; margin: 0 10px; color: var(--lab-red); opacity: .6; }
+    .bd-cta-title { font-size: clamp(22px, 3.5vw, 30px); font-weight: 900; text-transform: uppercase; letter-spacing: -.3px; margin-bottom: 10px; position: relative; }
+    .bd-cta-sub { font-size: 14px; color: #ccc; max-width: 520px; margin: 0 auto 22px; position: relative; line-height: 1.5; }
+    .bd-cta-btn { display: inline-block; background: var(--lab-red); color: var(--lab-white); padding: 14px 34px; border-radius: 8px; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; transition: .15s; position: relative; }
+    .bd-cta-btn:hover { background: var(--lab-red-dark); transform: translateY(-1px); }
+
     /* BENEFITS */
-    .benefits-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+    .benefits-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
     .benefits-grid.layout-list { grid-template-columns: 1fr; }
-    .benefit { background: var(--card2); border-radius: 12px; padding: 20px 16px; text-align: center; border: 1px solid var(--bdr); transition: .2s; }
-    .benefit:hover { border-color: var(--pri); transform: translateY(-2px); }
+    .benefit { background: var(--lab-gray); border-radius: 10px; padding: 20px 16px; text-align: center; border: 1px solid var(--lab-border); transition: .2s; }
+    .benefit:hover { border-color: var(--lab-red); }
     .layout-list .benefit { display: flex; text-align: left; align-items: center; gap: 16px; padding: 16px 20px; }
     .layout-list .benefit-icon { font-size: 28px; margin-bottom: 0; flex-shrink: 0; }
     .layout-list .benefit-title { margin-bottom: 2px; }
-    .benefit-icon { font-size: 32px; margin-bottom: 10px; }
-    .benefit-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
-    .benefit-desc { font-size: 11px; color: var(--mut); line-height: 1.4; }
+    .benefit-num { font-family: 'Menlo', monospace; font-size: 10px; font-weight: 700; color: var(--lab-red); letter-spacing: 2px; margin-bottom: 14px; }
+    .layout-list .benefit-num { margin-bottom: 0; margin-right: 4px; flex-shrink: 0; width: 30px; }
+    .benefit-title { font-size: 13px; font-weight: 800; margin-bottom: 4px; color: var(--lab-black); }
+    .benefit-desc { font-size: 11px; color: var(--lab-muted); line-height: 1.4; }
 
     /* PRODUCT OF THE WEEK */
     .potw { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
-    .potw-img { width: 180px; height: 180px; border-radius: 12px; object-fit: cover; border: 2px solid var(--bdr); flex-shrink: 0; }
+    .potw-img { width: 180px; height: 180px; border-radius: 10px; object-fit: cover; border: 1px solid var(--lab-border); flex-shrink: 0; background: var(--lab-gray); }
     .potw-info { flex: 1; min-width: 200px; }
-    .potw-badge { display: inline-block; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; padding: 4px 12px; border-radius: 20px; margin-bottom: 12px; }
-    .potw-name { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
-    .potw-desc { font-size: 13px; color: var(--mut); margin-bottom: 14px; }
+    .potw-badge { display: inline-block; background: var(--lab-red); color: var(--lab-white); font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; padding: 5px 12px; border-radius: 4px; margin-bottom: 12px; }
+    .potw-name { font-size: 20px; font-weight: 800; margin-bottom: 6px; color: var(--lab-black); }
+    .potw-desc { font-size: 13px; color: var(--lab-muted); margin-bottom: 14px; line-height: 1.5; }
     .potw-prices { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
-    .potw-price-new { font-size: 28px; font-weight: 900; color: var(--grn); }
-    .potw-price-old { font-size: 16px; color: var(--mut); text-decoration: line-through; }
-    .potw-coupon { display: inline-flex; align-items: center; gap: 8px; background: var(--card2); border: 2px dashed var(--pri); border-radius: 10px; padding: 10px 18px; }
-    .potw-coupon-code { font-family: monospace; font-size: 18px; font-weight: 900; color: var(--pri); letter-spacing: 2px; }
-    .potw-coupon-label { font-size: 11px; color: var(--mut); }
-    .potw-btn { display: inline-block; background: var(--pri); color: #fff; padding: 12px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; text-decoration: none; margin-top: 14px; transition: .15s; }
-    .potw-btn:hover { background: var(--pri2); transform: translateY(-1px); }
+    .potw-price-new { font-size: 26px; font-weight: 900; color: var(--lab-red); }
+    .potw-price-old { font-size: 15px; color: var(--lab-muted); text-decoration: line-through; }
+    .potw-coupon { display: inline-flex; align-items: center; gap: 8px; background: var(--lab-white); border: 2px dashed var(--lab-red); border-radius: 8px; padding: 10px 16px; }
+    .potw-coupon-code { font-family: 'Menlo', monospace; font-size: 16px; font-weight: 900; color: var(--lab-red); letter-spacing: 2px; }
+    .potw-coupon-label { font-size: 10px; color: var(--lab-muted); text-transform: uppercase; letter-spacing: 1px; }
+    .potw-btn { display: inline-block; background: var(--lab-black); color: var(--lab-white); padding: 12px 28px; border-radius: 8px; font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 14px; transition: .15s; }
+    .potw-btn:hover { background: var(--lab-red); }
 
     /* EVENTS TIMELINE */
-    .timeline { position: relative; padding-left: 28px; }
-    .timeline::before { content: ''; position: absolute; left: 8px; top: 8px; bottom: 8px; width: 2px; background: linear-gradient(to bottom, var(--pri), var(--grn)); border-radius: 2px; }
-    .event { position: relative; margin-bottom: 20px; padding: 16px 20px; background: var(--card2); border-radius: 12px; border: 1px solid var(--bdr); }
-    .event::before { content: ''; position: absolute; left: -24px; top: 20px; width: 12px; height: 12px; border-radius: 50%; background: var(--pri); border: 2px solid var(--bg); }
-    .event-badge { font-size: 20px; margin-bottom: 6px; }
-    .event-title { font-size: 14px; font-weight: 700; }
-    .event-date { font-size: 11px; color: var(--pri); font-weight: 600; margin-top: 3px; }
-    .event-desc { font-size: 12px; color: var(--mut); margin-top: 6px; line-height: 1.5; }
+    .timeline { position: relative; padding-left: 26px; }
+    .timeline::before { content: ''; position: absolute; left: 7px; top: 6px; bottom: 6px; width: 2px; background: var(--lab-red); border-radius: 2px; }
+    .event { position: relative; margin-bottom: 16px; padding: 14px 18px; background: var(--lab-gray); border-radius: 10px; border: 1px solid var(--lab-border); }
+    .event::before { content: ''; position: absolute; left: -23px; top: 20px; width: 10px; height: 10px; border-radius: 50%; background: var(--lab-red); border: 2px solid var(--lab-white); }
+    .event-title { font-size: 14px; font-weight: 800; color: var(--lab-black); letter-spacing: .2px; }
+    .event-date { font-size: 11px; color: var(--lab-red); font-weight: 700; margin-top: 3px; text-transform: uppercase; letter-spacing: 1px; }
+    .event-desc { font-size: 12px; color: var(--lab-muted); margin-top: 6px; line-height: 1.5; }
 
-    /* STATUS */
-    .status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
-    .status-item { background: var(--card2); border-radius: 10px; padding: 16px; text-align: center; border: 1px solid var(--bdr); }
-    .status-val { font-size: 20px; font-weight: 900; }
-    .status-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--mut); margin-top: 4px; }
+    /* CTA BUTTONS */
+    .cta-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .cta-btn { display: inline-block; padding: 12px 26px; border-radius: 8px; font-weight: 700; font-size: 13px; text-decoration: none; transition: .15s; letter-spacing: .3px; }
+    .cta-btn.primary { background: var(--lab-red); color: var(--lab-white); }
+    .cta-btn.primary:hover { background: var(--lab-red-dark); }
+    .cta-btn.secondary { background: var(--lab-white); color: var(--lab-black); border: 1.5px solid var(--lab-black); }
+    .cta-btn.secondary:hover { background: var(--lab-black); color: var(--lab-white); }
+
+    /* WHATSAPP FLOATING */
+    .wa-float { position: fixed; bottom: 24px; right: 24px; background: #25D366; color: #fff; padding: 14px 22px 14px 18px; border-radius: 100px; font-weight: 700; font-size: 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 10px; box-shadow: 0 10px 30px rgba(37,211,102,.35); z-index: 100; transition: .2s; }
+    .wa-float:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 14px 36px rgba(37,211,102,.45); }
+    .wa-inline { display: inline-flex; align-items: center; gap: 10px; background: #25D366; color: #fff; padding: 13px 26px; border-radius: 10px; font-weight: 700; font-size: 13px; text-decoration: none; transition: .15s; }
+    .wa-inline:hover { background: #1eb555; }
 
     /* FOOTER */
-    .footer { text-align: center; padding: 40px 20px; border-top: 1px solid var(--bdr); font-size: 11px; color: #555; }
+    .footer { text-align: center; padding: 32px 20px; border-top: 1px solid var(--lab-border); font-size: 11px; color: var(--lab-muted); letter-spacing: .3px; }
+    .footer strong { color: var(--lab-red); font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
 
     /* LOADING */
-    .loading { text-align: center; padding: 60px 20px; color: var(--mut); }
-    .loading-spinner { width: 32px; height: 32px; border: 3px solid var(--bdr); border-top-color: var(--pri); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 16px; }
+    .loading { text-align: center; padding: 60px 20px; color: var(--lab-muted); }
+    .loading-spinner { width: 30px; height: 30px; border: 3px solid var(--lab-border); border-top-color: var(--lab-red); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 14px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* NO SUB */
-    .no-sub { text-align: center; padding: 40px; background: var(--card2); border-radius: var(--r); border: 1px solid var(--bdr); }
-    .no-sub-icon { font-size: 48px; margin-bottom: 16px; }
-    .no-sub-title { font-size: 18px; font-weight: 800; margin-bottom: 8px; }
-    .no-sub-desc { font-size: 13px; color: var(--mut); max-width: 360px; margin: 0 auto; }
-
     @media (max-width: 600px) {
-      .hero { padding: 40px 16px 28px; }
-      .container { padding: 20px 14px 40px; }
+      .hero { padding: 36px 16px 24px; }
+      .container { padding: 20px 14px 100px; }
       .potw { flex-direction: column; }
       .potw-img { width: 100%; height: auto; aspect-ratio: 1; }
       .benefits-grid { grid-template-columns: 1fr 1fr; }
+      .wa-float { bottom: 16px; right: 16px; padding: 12px 18px 12px 14px; font-size: 13px; }
     }
   </style>
 </head>
 <body>
   <div id="app">
-    <div class="loading" id="loading-state">
-      <div class="loading-spinner"></div>
-      <div>Cargando tu membresía...</div>
-    </div>
+    <div class="loading"><div class="loading-spinner"></div><div>Cargando tu membresía...</div></div>
   </div>
 
   <script>
@@ -116,114 +140,135 @@
           fetch(BACKEND + '/api/settings').then(r => r.json()).catch(() => ({}))
         ]);
 
-        if (settings.brand_color) document.documentElement.style.setProperty('--pri', settings.brand_color);
-        if (settings.brand_color2) document.documentElement.style.setProperty('--grn', settings.brand_color2);
-        const brandName = settings.brand_name || 'Tu Membresía Premium';
-        const brandSlogan = settings.brand_slogan || 'Beneficios exclusivos para suscriptores';
+        // ── Detect if visitor is active member ──
+        let isActiveMember = false;
+        if (email) {
+          try {
+            const subs = await fetch(BACKEND + '/api/subscriptions/customer/' + encodeURIComponent(email)).then(r => r.json()).catch(() => []);
+            isActiveMember = Array.isArray(subs) && subs.some(s => s.status === 'active' || s.status === 'paused');
+          } catch (e) {}
+        }
+
+        const brandName = settings.brand_name || config.page_title || 'Club Black Diamond';
+        const brandSlogan = config.page_subtitle || settings.brand_slogan || 'Beneficios exclusivos para miembros activos';
         const brandLogo = settings.brand_logo || '';
 
-        const benefits = config.benefits || [
-          { icon: '🚚', title: 'Envío prioritario', description: 'Recibe tus productos antes que nadie' },
-          { icon: '💰', title: 'Descuento exclusivo', description: 'Hasta 40% de descuento permanente' },
-          { icon: '🎯', title: 'Acceso anticipado', description: 'Sé el primero en probar lanzamientos' },
-          { icon: '🎁', title: 'Regalos sorpresa', description: 'Muestras gratis en cada envío' }
-        ];
-        const events = config.events || [];
-        const pw = config.product_of_week || null;
+        document.title = brandName + ' — LAB NUTRITION';
 
-        document.title = brandName + ' — Portal del Suscriptor';
+        let html = '<div class="hero">';
+        if (brandLogo) html += '<img src="' + brandLogo + '" alt="Logo" class="hero-logo">';
+        html += '<div class="hero-title">' + brandName + '</div>';
+        html += '<div class="hero-sub">' + brandSlogan + '</div>';
+        html += '<div class="hero-badge' + (isActiveMember ? '' : ' inactive') + '">' + (isActiveMember ? 'Miembro activo' : 'No miembro') + '</div>';
+        html += '</div><div class="container">';
 
-        let html = `
-          <div class="hero">
-            ${brandLogo ? `<img src="${brandLogo}" alt="Logo" class="hero-logo">` : ''}
-            <div class="hero-title">${brandName}</div>
-            <div class="hero-sub">${brandSlogan}</div>
-            <div class="hero-badge">Miembro activo</div>
-          </div>
-          <div class="container">
-        `;
+        // ── BLACK DIAMOND CTA (si NO es miembro) ──
+        if (!isActiveMember) {
+          const bdTitle = config.bd_title || 'Conviértete en cliente Black Diamond';
+          const bdSub = config.bd_subtitle || 'Hasta 50% OFF permanente · envío prioritario · regalos exclusivos · acceso a lanzamientos';
+          const bdBtnText = config.bd_btn_text || 'Quiero ser Black Diamond';
+          const bdBtnUrl = config.bd_btn_url || 'https://labnutrition.com/collections/all';
+          html += '<div class="bd-cta">'
+            + '<div class="bd-cta-eyebrow">Club Black Diamond</div>'
+            + '<div class="bd-cta-title">' + bdTitle + '</div>'
+            + '<div class="bd-cta-sub">' + bdSub + '</div>'
+            + '<a href="' + bdBtnUrl + '" class="bd-cta-btn" target="_blank" rel="noopener">' + bdBtnText + '</a>'
+            + '</div>';
+        }
 
-        // BANNER PROMOCIONAL (arriba de todo, bajo hero)
+        // ── BANNER PROMO ──
         if (config.banner_text || config.banner_image) {
-          const bUrl = config.banner_url || '';
+          const bUrl = config.banner_url || '#';
           const bImg = config.banner_image || '';
           const bTxt = config.banner_text || '';
-          html += `<a ${bUrl ? `href="${bUrl}" target="_blank" rel="noopener"` : ''} style="display:block;margin-bottom:24px;border-radius:${12}px;overflow:hidden;text-decoration:none;color:inherit;background:linear-gradient(135deg,var(--pri),var(--pri2));border:1px solid var(--bdr)">`;
-          if (bImg) html += `<img src="${bImg}" alt="" style="width:100%;display:block;max-height:220px;object-fit:cover">`;
-          if (bTxt) html += `<div style="padding:16px 20px;color:#fff;font-weight:700;font-size:15px;text-align:center">${bTxt}</div>`;
-          html += `</a>`;
+          html += '<a href="' + bUrl + '" target="_blank" rel="noopener" class="promo-banner">';
+          if (bImg) html += '<img src="' + bImg + '" alt="">';
+          if (bTxt) html += '<div class="promo-banner-txt">' + bTxt + '</div>';
+          html += '</a>';
         }
 
-        // BENEFITS
+        // ── BENEFITS ──
+        const benefits = config.benefits || [
+          { title: 'Envío prioritario', description: 'Recibe tus productos antes que nadie' },
+          { title: 'Descuento permanente', description: 'Hasta 50% OFF como suscriptor' },
+          { title: 'Acceso anticipado', description: 'Primero en probar lanzamientos' },
+          { title: 'Regalos exclusivos', description: 'Muestras gratis en cada envío' }
+        ];
         const layout = config.benefits_layout || 'grid';
         if (benefits.length) {
-          html += `<div class="section-title">Tus Beneficios</div><div class="card"><div class="card-inner"><div class="benefits-grid ${layout === 'list' ? 'layout-list' : ''}">`;
-          html += benefits.map(b => `
-            <div class="benefit">
-              <div class="benefit-icon">${b.icon}</div>
-              <div class="benefit-title">${b.title}</div>
-              <div class="benefit-desc">${b.description}</div>
-            </div>
-          `).join('');
-          html += `</div></div></div>`;
+          html += '<div class="section-title">' + (config.benefits_title || 'Beneficios') + '</div><div class="card"><div class="card-inner"><div class="benefits-grid ' + (layout === 'list' ? 'layout-list' : '') + '">';
+          html += benefits.map((b, i) => '<div class="benefit"><div class="benefit-num">' + String(i + 1).padStart(2, '0') + '</div><div class="benefit-title">' + b.title + '</div><div class="benefit-desc">' + (b.description || '') + '</div></div>').join('');
+          html += '</div></div></div>';
         }
 
-        // PRODUCT OF THE WEEK
+        // ── PRODUCT OF THE WEEK ──
+        const pw = config.product_of_week;
         if (pw && pw.name) {
-          html += `<div class="section-title">⭐ Producto de la Semana</div><div class="card"><div class="card-inner"><div class="potw">`;
-          if (pw.image) html += `<img src="${pw.image}" alt="${pw.name}" class="potw-img">`;
-          html += `<div class="potw-info">
-            <div class="potw-badge">Exclusivo suscriptores</div>
-            <div class="potw-name">${pw.name}</div>
-            ${pw.description ? `<div class="potw-desc">${pw.description}</div>` : ''}
-            <div class="potw-prices">
-              <span class="potw-price-new">S/ ${pw.sub_price || pw.price}</span>
-              ${pw.price && pw.sub_price ? `<span class="potw-price-old">S/ ${pw.price}</span>` : ''}
-            </div>
-            ${pw.coupon ? `<div class="potw-coupon"><div><div class="potw-coupon-code">${pw.coupon}</div><div class="potw-coupon-label">Código exclusivo</div></div></div>` : ''}
-            ${pw.url ? `<a href="${pw.url}" class="potw-btn" target="_blank">Comprar ahora →</a>` : ''}
-          </div></div></div></div>`;
+          html += '<div class="section-title">' + (config.product_section_title || 'Producto de la semana') + '</div><div class="card"><div class="card-inner"><div class="potw">';
+          if (pw.image) html += '<img src="' + pw.image + '" alt="' + pw.name + '" class="potw-img">';
+          html += '<div class="potw-info">'
+            + '<div class="potw-badge">Exclusivo suscriptores</div>'
+            + '<div class="potw-name">' + pw.name + '</div>'
+            + (pw.description ? '<div class="potw-desc">' + pw.description + '</div>' : '')
+            + '<div class="potw-prices"><span class="potw-price-new">S/ ' + (pw.sub_price || pw.price) + '</span>'
+            + (pw.price && pw.sub_price ? '<span class="potw-price-old">S/ ' + pw.price + '</span>' : '') + '</div>'
+            + (pw.coupon ? '<div class="potw-coupon"><div><div class="potw-coupon-code">' + pw.coupon + '</div><div class="potw-coupon-label">Código exclusivo</div></div></div>' : '')
+            + (pw.url ? '<div><a href="' + pw.url + '" class="potw-btn" target="_blank">' + (config.product_button_text || 'Comprar ahora') + '</a></div>' : '')
+            + '</div></div></div></div>';
         }
 
-        // EVENTS
+        // ── EVENTS ──
+        const events = config.events || [];
         if (events.length) {
-          html += `<div class="section-title">📅 Próximos Eventos y Promos</div><div class="card"><div class="card-inner"><div class="timeline">`;
-          html += events.map(ev => `
-            <div class="event">
-              <div class="event-badge">${ev.badge || '🔥'}</div>
-              <div class="event-title">${ev.title}</div>
-              ${ev.date ? `<div class="event-date">${new Date(ev.date).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' })}</div>` : ''}
-              ${ev.description ? `<div class="event-desc">${ev.description}</div>` : ''}
-            </div>
-          `).join('');
-          html += `</div></div></div>`;
+          html += '<div class="section-title">' + (config.events_title || 'Próximos eventos') + '</div><div class="card"><div class="card-inner"><div class="timeline">';
+          html += events.map(ev => '<div class="event">'
+            + '<div class="event-title">' + ev.title + '</div>'
+            + (ev.date ? '<div class="event-date">' + new Date(ev.date).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' }) + '</div>' : '')
+            + (ev.description ? '<div class="event-desc">' + ev.description + '</div>' : '')
+            + '</div>').join('');
+          html += '</div></div></div>';
         }
 
-        // WhatsApp support button
-        const whatsappNumber = settings.whatsapp_number || '51936105037';
-        const whatsappMsg = encodeURIComponent('Hola, soy suscriptor y necesito ayuda con mi membresía.');
-        html += `
-          <div style="text-align:center;margin:20px 0 0">
-            <a href="https://wa.me/${whatsappNumber}?text=${whatsappMsg}" target="_blank" rel="noopener"
-               style="display:inline-flex;align-items:center;gap:10px;background:#25D366;color:#fff;padding:14px 28px;border-radius:12px;font-weight:700;font-size:14px;text-decoration:none;transition:.15s">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.126.553 4.12 1.52 5.856L.057 23.988l6.271-1.443A11.93 11.93 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.82c-1.98 0-3.82-.578-5.37-1.573l-.385-.23-3.726.857.892-3.633-.252-.4A9.78 9.78 0 012.18 12c0-5.422 4.398-9.82 9.82-9.82 5.422 0 9.82 4.398 9.82 9.82 0 5.422-4.398 9.82-9.82 9.82z"/></svg>
-              Soporte por WhatsApp
-            </a>
-          </div>`;
+        // ── CTAs ──
+        const ctas = config.cta_buttons || [];
+        if (ctas.length) {
+          html += '<div class="card"><div class="card-inner"><div class="cta-row">';
+          html += ctas.map(c => '<a href="' + (c.url || '#') + '" class="cta-btn ' + (c.style === 'secondary' ? 'secondary' : 'primary') + '" target="_blank">' + c.text + '</a>').join('');
+          html += '</div></div></div>';
+        }
 
-        // CUSTOM HTML (modo marketing libre)
+        // ── CUSTOM HTML ──
         if (config.custom_html) {
-          html += `<div class="card"><div class="card-inner">${config.custom_html}</div></div>`;
+          html += '<div class="card"><div class="card-inner">' + config.custom_html + '</div></div>';
         }
 
-        html += `</div><div class="footer">${brandName} · Portal del Suscriptor<br>Powered by Suscriptions MP</div>`;
-        document.getElementById('app').innerHTML = html;
+        // ── WHATSAPP (inline link si NO flotante) ──
+        const waNumber = (config.whatsapp_number || settings.whatsapp_number || '51936105037').replace(/\D/g, '');
+        const waMsg = encodeURIComponent(config.whatsapp_message || 'Hola, soy suscriptor de LAB NUTRITION y necesito ayuda.');
+        const waText = config.whatsapp_btn_text || 'Soporte por WhatsApp';
+        const waFloat = config.whatsapp_floating !== false;
+        const waUrl = 'https://wa.me/' + waNumber + '?text=' + waMsg;
 
+        if (!waFloat && waNumber) {
+          html += '<div style="text-align:center;margin-top:14px"><a href="' + waUrl + '" target="_blank" rel="noopener" class="wa-inline">'
+            + '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.126.553 4.12 1.52 5.856L.057 23.988l6.271-1.443A11.93 11.93 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.82c-1.98 0-3.82-.578-5.37-1.573l-.385-.23-3.726.857.892-3.633-.252-.4A9.78 9.78 0 012.18 12c0-5.422 4.398-9.82 9.82-9.82 5.422 0 9.82 4.398 9.82 9.82 0 5.422-4.398 9.82-9.82 9.82z"/></svg>'
+            + waText + '</a></div>';
+        }
+
+        html += '</div><div class="footer"><strong>LAB NUTRITION</strong> · Club Black Diamond<br>Portal del suscriptor · IGV incluido</div>';
+
+        // ── WHATSAPP FLOATING ──
+        if (waFloat && waNumber) {
+          html += '<a href="' + waUrl + '" target="_blank" rel="noopener" class="wa-float">'
+            + '<svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.126.553 4.12 1.52 5.856L.057 23.988l6.271-1.443A11.93 11.93 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.82c-1.98 0-3.82-.578-5.37-1.573l-.385-.23-3.726.857.892-3.633-.252-.4A9.78 9.78 0 012.18 12c0-5.422 4.398-9.82 9.82-9.82 5.422 0 9.82 4.398 9.82 9.82 0 5.422-4.398 9.82-9.82 9.82z"/></svg>'
+            + waText + '</a>';
+        }
+
+        document.getElementById('app').innerHTML = html;
       } catch (e) {
-        document.getElementById('app').innerHTML = `<div class="container"><div class="no-sub"><div class="no-sub-icon">⚠️</div><div class="no-sub-title">Error al cargar</div><div class="no-sub-desc">${e.message}</div></div></div>`;
+        document.getElementById('app').innerHTML = '<div class="container"><div class="card"><div class="card-inner" style="text-align:center;padding:40px"><div style="font-size:40px;margin-bottom:10px">⚠️</div><div style="font-weight:700;margin-bottom:6px">Error al cargar</div><div style="font-size:13px;color:#666">' + e.message + '</div></div></div></div>';
       }
     }
-
     load();
   </script>
 </body>
