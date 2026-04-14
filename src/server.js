@@ -1999,7 +1999,14 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         { name: 'payment_method', value: 'mercadopago_suscripcion' },
         { name: 'payment_transaction_amount', value: String((finalPrice + 10).toFixed(2)) },
         { name: 'additional_info_shipping_full_address', value: addr.address1 || '' },
-        { name: 'additional_info_billing_full_address', value: addr.address1 || '' }
+        { name: 'additional_info_billing_full_address', value: addr.address1 || '' },
+        // Shipping courier code (02 = Urbaner) — Navasoft lee estos campos
+        { name: 'shipping_code', value: '02' },
+        { name: 'shipping_method_code', value: '02' },
+        { name: 'courier_id', value: '02' },
+        { name: 'courier', value: 'Urbaner' },
+        { name: 'ClusterCart-shipping_code', value: '02' },
+        { name: 'ClusterCart-courier', value: 'Urbaner' }
     ].filter(a => a.value);
 
     const orderBody = {
@@ -2016,7 +2023,11 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             tags: 'suscripcion',
             note_attributes: noteAttrs,
             shipping_address: shippingAddr || undefined,
-            billing_address: shippingAddr ? { ...shippingAddr, company: sub.dni || '' } : undefined
+            billing_address: shippingAddr ? { ...shippingAddr, company: sub.dni || '' } : undefined,
+            metafields: [
+                { namespace: 'shipping', key: 'courier_code', value: '02', type: 'single_line_text_field' },
+                { namespace: 'shipping', key: 'courier_name', value: 'Urbaner', type: 'single_line_text_field' }
+            ]
         }
     };
 
