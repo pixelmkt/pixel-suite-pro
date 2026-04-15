@@ -1465,13 +1465,15 @@ app.get('/api/products/:id/config', async (req, res) => {
         const oldFmt = (typeof settings[id] === 'object' && settings[id]?.plans) ? settings[id] : null;
         const cfg = newFmt[id] || oldFmt || {};
 
-        // 🎁 Enrich planes con info de regalo aplicable (sin tocar la estructura base)
+        // Enrich planes con info de regalo aplicable (sin tocar la estructura base)
         // Para cada plan (matcheado por freq+perm), buscamos en plans_config si hay gifts
         // y si aplican a este product_id. Devolvemos un resumen legible para el widget.
+        // Incluye product_handle para que el widget pueda linkear al producto del regalo.
         try {
             const plansCfg = Array.isArray(settings.plans_config) ? settings.plans_config : [];
             if (cfg.plans && typeof cfg.plans === 'object' && plansCfg.length) {
-                Object.keys(cfg.plans).forEach((key) => {
+                const planKeys = Object.keys(cfg.plans);
+                for (const key of planKeys) {
                     const p = cfg.plans[key] || {};
                     const freq = Number(p.frequency || p.freq_months);
                     const perm = Number(p.permanence || p.permanence_months);
@@ -1486,19 +1488,27 @@ app.get('/api/products/:id/config', async (req, res) => {
                         const appliesToThisProduct = mode === 'all_products' || ids.includes(String(id));
                         const items = Array.isArray(match.gifts.items) ? match.gifts.items : [];
                         if (appliesToThisProduct && items.length) {
-                            cfg.plans[key].gifts = {
-                                enabled: true,
-                                // Resumen legible para chip del widget — no exponemos IDs internos
-                                summary: items.map(it => ({
+                            // Lookup handles (usa handle guardado o lo resuelve via Shopify con cache 1h)
+                            const summary = await Promise.all(items.map(async (it) => {
+                                let handle = it.product_handle || '';
+                                if (!handle && it.product_id) {
+                                    handle = await getProductHandle(it.product_id).catch(() => '') || '';
+                                }
+                                return {
                                     title: it.product_title || '',
                                     variant_title: it.variant_title || '',
                                     quantity: Math.max(1, parseInt(it.quantity, 10) || 1),
-                                    image: it.image || null
-                                })).filter(it => it.title)
+                                    image: it.image || null,
+                                    product_handle: handle
+                                };
+                            }));
+                            cfg.plans[key].gifts = {
+                                enabled: true,
+                                summary: summary.filter(it => it.title)
                             };
                         }
                     }
-                });
+                }
             }
         } catch (e) { console.warn('[PRODUCT CFG GIFTS]', e.message); /* fallo silencioso */ }
 
@@ -2893,6 +2903,35 @@ function assertSubShippable(sub) {
         return { ok: false, missing };
     }
     return { ok: true };
+}
+
+/* ── Helper: resuelve handle de producto Shopify por product_id (cache 1h).
+   Usado por el enricher de regalos para generar URLs /products/{handle}.
+   Si falla, devuelve null y el widget renderiza sin link — no bloquea. ── */
+const _handleCache = new Map(); // product_id → { handle, at }
+async function getProductHandle(productId) {
+    if (!productId) return null;
+    const key = String(productId);
+    const cached = _handleCache.get(key);
+    const now = Date.now();
+    if (cached && (now - cached.at) < 3600000) return cached.handle;
+    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+    const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+    if (!token) return null;
+    try {
+        const r = await fetch(`https://${shop}/admin/api/2026-01/products/${encodeURIComponent(key)}.json?fields=id,handle`, {
+            headers: { 'X-Shopify-Access-Token': token }
+        });
+        if (!r.ok) { _handleCache.set(key, { handle: null, at: now }); return null; }
+        const data = await r.json();
+        const handle = data?.product?.handle || null;
+        _handleCache.set(key, { handle, at: now });
+        return handle;
+    } catch (e) {
+        console.warn('[HANDLE CACHE] error', key, e.message);
+        _handleCache.set(key, { handle: null, at: now });
+        return null;
+    }
 }
 
 /* ── Helper: obtener primary_location_id de la tienda (cache 1h).

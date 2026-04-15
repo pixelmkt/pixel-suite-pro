@@ -2708,7 +2708,8 @@
             const stockColor = p.total_stock > 0 ? 'var(--grn)' : 'var(--amber)';
             const safeTitle = (p.title || '').replace(/"/g, '&quot;').replace(/'/g, "\\'");
             const safeImg = (p.image || '').replace(/'/g, "\\'");
-            return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--bdr);cursor:pointer;background:#fff" onclick="openVariantPicker(\'' + p.shopify_id + '\',\'' + safeTitle + '\',\'' + safeImg + '\')" onmouseover="this.style.background=\'#f9fafb\'" onmouseout="this.style.background=\'#fff\'">' +
+            const safeHandle = (p.handle || '').replace(/'/g, "\\'");
+            return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--bdr);cursor:pointer;background:#fff" onclick="openVariantPicker(\'' + p.shopify_id + '\',\'' + safeTitle + '\',\'' + safeImg + '\',\'' + safeHandle + '\')" onmouseover="this.style.background=\'#f9fafb\'" onmouseout="this.style.background=\'#fff\'">' +
               '<img src="' + (p.image || '') + '" style="width:36px;height:36px;border-radius:4px;object-fit:cover;background:#f3f4f6" onerror="this.style.visibility=\'hidden\'">' +
               '<div style="flex:1;min-width:0">' +
               '  <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (p.title || '') + '</div>' +
@@ -2723,12 +2724,14 @@
       }, 350);
     }
 
-    async function openVariantPicker(productId, productTitle, productImage) {
+    async function openVariantPicker(productId, productTitle, productImage, productHandle) {
       if (_giftsSelected.length >= 3) { toast('Máx 3 regalos por plan', 'err'); return; }
       try {
         const data = await api('/api/products/' + encodeURIComponent(productId) + '/variants');
         const variants = (data && data.variants) || [];
         if (!variants.length) { toast('Este producto no tiene variantes', 'err'); return; }
+        // Si no vino handle en el argumento (callers viejos), usar el que devuelve el endpoint variants
+        const handle = productHandle || (data && data.handle) || '';
         let chosen;
         if (variants.length === 1) {
           chosen = variants[0];
@@ -2745,6 +2748,7 @@
         _giftsSelected.push({
           product_id: String(productId),
           product_title: productTitle,
+          product_handle: handle,
           variant_id: String(chosen.id),
           variant_title: chosen.title,
           variant_sku: chosen.sku || '',
@@ -2816,6 +2820,7 @@
       _giftsSelected = g.items.map(it => ({
         product_id: String(it.product_id || ''),
         product_title: it.product_title || '',
+        product_handle: it.product_handle || '',
         variant_id: String(it.variant_id || ''),
         variant_title: it.variant_title || '',
         variant_sku: it.variant_sku || '',
@@ -2859,6 +2864,7 @@
         items: _giftsSelected.map(g => ({
           product_id: String(g.product_id),
           product_title: g.product_title,
+          product_handle: g.product_handle || '',
           variant_id: String(g.variant_id),
           variant_title: g.variant_title,
           variant_sku: g.variant_sku || '',
