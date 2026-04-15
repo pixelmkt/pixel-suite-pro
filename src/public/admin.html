@@ -1058,7 +1058,7 @@
     <!-- MODAL NUEVO PLAN -->
     <div id="plan-modal"
       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:800;align-items:center;justify-content:center">
-      <div style="background:#fff;border-radius:12px;width:460px;padding:28px;position:relative">
+      <div style="background:#fff;border-radius:12px;width:560px;max-width:92vw;max-height:92vh;overflow-y:auto;padding:28px;position:relative">
         <div style="font-size:15px;font-weight:800;text-transform:uppercase;margin-bottom:20px" id="plan-modal-title">
           Nuevo Plan</div>
         <div class="frow">
@@ -1084,7 +1084,37 @@
             <input type="text" class="fi" id="plan-desc" placeholder="Ej: Plan estrella">
           </div>
         </div>
-        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+
+        <!-- REGALO EN PRIMER PEDIDO -->
+        <div style="border-top:1.5px dashed var(--bdr);margin-top:18px;padding-top:16px">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:700;font-size:13px;user-select:none">
+            <input type="checkbox" id="plan-gifts-enabled" style="width:16px;height:16px;cursor:pointer" onchange="toggleGiftsBlock()">
+            <span>🎁 Regalo en primer pedido</span>
+          </label>
+          <div id="plan-gifts-block" style="display:none;margin-top:14px">
+            <div class="fin" style="margin-bottom:10px;line-height:1.4">
+              Se agrega automáticamente el/los productos elegidos (precio S/0, sin descontar stock) al
+              <strong>primer pedido</strong> de cada suscripción. Los pedidos siguientes NO llevan regalo. Máximo 3 regalos.
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:10px">
+              <input type="text" class="fi" id="plan-gifts-search" placeholder="Buscar producto por título... (ej: shaker)" style="flex:1" oninput="searchGiftProducts()">
+            </div>
+            <div id="plan-gifts-results" style="max-height:180px;overflow:auto;border:1px solid var(--bdr);border-radius:8px;margin-bottom:12px;display:none;background:#fff"></div>
+            <div style="font-size:11px;font-weight:700;color:var(--mut);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">
+              Regalos seleccionados (<span id="plan-gifts-count">0</span>/3)
+            </div>
+            <div id="plan-gifts-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;min-height:44px"></div>
+            <label class="fl" style="margin-bottom:6px;display:block">Aplicar regalos a</label>
+            <select class="fsl" id="plan-gifts-applies-to" onchange="toggleGiftsAppliesInput()" style="margin-bottom:4px">
+              <option value="all_products">Todos los productos del plan</option>
+              <option value="specific_products">Solo productos específicos (IDs Shopify)</option>
+            </select>
+            <input type="text" class="fi" id="plan-gifts-applies-ids" placeholder="IDs Shopify separados por coma (ej: 15637409988689,15579809087569)" style="display:none;margin-top:6px">
+            <div class="fin" id="plan-gifts-applies-hint" style="margin-top:4px">Se aplicará a cualquier producto suscrito con este plan.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
           <button class="btn btn-g" onclick="closePlanModal()">Cancelar</button>
           <button class="btn btn-r" onclick="savePlan()">💾 Guardar plan</button>
         </div>
@@ -2091,6 +2121,192 @@
     let _plans = [], _editingPlanId = null;
     const FREQ_LABELS = { '1': 'Mensual (1 mes)', '2': 'Bimestral (2 meses)', '3': 'Trimestral (3 meses)', '6': 'Semestral (6 meses)' };
 
+    // ──── REGALOS EN PLAN (primer pedido) ────
+    let _giftsSelected = []; // [{product_id, product_title, variant_id, variant_title, variant_sku, quantity, image, inventory_quantity}]
+    let _giftsSearchTimer = null;
+
+    function toggleGiftsBlock() {
+      const enabled = document.getElementById('plan-gifts-enabled').checked;
+      document.getElementById('plan-gifts-block').style.display = enabled ? 'block' : 'none';
+    }
+
+    function toggleGiftsAppliesInput() {
+      const mode = document.getElementById('plan-gifts-applies-to').value;
+      const input = document.getElementById('plan-gifts-applies-ids');
+      const hint = document.getElementById('plan-gifts-applies-hint');
+      if (mode === 'specific_products') {
+        input.style.display = 'block';
+        hint.textContent = 'Los regalos solo se aplicarán a suscripciones de estos productos.';
+      } else {
+        input.style.display = 'none';
+        hint.textContent = 'Se aplicará a cualquier producto suscrito con este plan.';
+      }
+    }
+
+    function searchGiftProducts() {
+      clearTimeout(_giftsSearchTimer);
+      _giftsSearchTimer = setTimeout(async () => {
+        const q = document.getElementById('plan-gifts-search').value.trim();
+        const box = document.getElementById('plan-gifts-results');
+        if (q.length < 2) { box.style.display = 'none'; return; }
+        box.innerHTML = '<div style="padding:12px;color:var(--mut);font-size:12px">Buscando...</div>';
+        box.style.display = 'block';
+        try {
+          const data = await api('/api/products/search?q=' + encodeURIComponent(q) + '&limit=15');
+          const products = (data && data.products) || [];
+          if (!products.length) {
+            box.innerHTML = '<div style="padding:12px;color:var(--mut);font-size:12px">Sin resultados para "' + q + '"</div>';
+            return;
+          }
+          box.innerHTML = products.map(p => {
+            const stockColor = p.total_stock > 0 ? 'var(--grn)' : 'var(--amber)';
+            const safeTitle = (p.title || '').replace(/"/g, '&quot;').replace(/'/g, "\\'");
+            const safeImg = (p.image || '').replace(/'/g, "\\'");
+            return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--bdr);cursor:pointer;background:#fff" onclick="openVariantPicker(\'' + p.shopify_id + '\',\'' + safeTitle + '\',\'' + safeImg + '\')" onmouseover="this.style.background=\'#f9fafb\'" onmouseout="this.style.background=\'#fff\'">' +
+              '<img src="' + (p.image || '') + '" style="width:36px;height:36px;border-radius:4px;object-fit:cover;background:#f3f4f6" onerror="this.style.visibility=\'hidden\'">' +
+              '<div style="flex:1;min-width:0">' +
+              '  <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (p.title || '') + '</div>' +
+              '  <div style="font-size:10px;color:var(--mut)">' + (p.variant_count || 0) + ' variante(s) · <span style="color:' + stockColor + ';font-weight:700">Stock: ' + (p.total_stock || 0) + '</span></div>' +
+              '</div>' +
+              '<button type="button" class="btn btn-sm btn-r" style="padding:4px 10px;font-size:11px">+</button>' +
+              '</div>';
+          }).join('');
+        } catch (e) {
+          box.innerHTML = '<div style="padding:12px;color:var(--amber);font-size:12px">Error: ' + e.message + '</div>';
+        }
+      }, 350);
+    }
+
+    async function openVariantPicker(productId, productTitle, productImage) {
+      if (_giftsSelected.length >= 3) { toast('Máx 3 regalos por plan', 'err'); return; }
+      try {
+        const data = await api('/api/products/' + encodeURIComponent(productId) + '/variants');
+        const variants = (data && data.variants) || [];
+        if (!variants.length) { toast('Este producto no tiene variantes', 'err'); return; }
+        let chosen;
+        if (variants.length === 1) {
+          chosen = variants[0];
+        } else {
+          const lines = variants.map((v, i) => (i + 1) + '. ' + v.title + ' — stock ' + v.inventory_quantity + (v.sku ? ' (SKU ' + v.sku + ')' : ''));
+          const sel = prompt('Variante para "' + productTitle + '":\n\n' + lines.join('\n') + '\n\nIngresa el número:');
+          const idx = parseInt(sel, 10) - 1;
+          if (isNaN(idx) || idx < 0 || idx >= variants.length) return;
+          chosen = variants[idx];
+        }
+        if (_giftsSelected.find(g => String(g.variant_id) === String(chosen.id))) {
+          toast('Esa variante ya está en la lista', 'err'); return;
+        }
+        _giftsSelected.push({
+          product_id: String(productId),
+          product_title: productTitle,
+          variant_id: String(chosen.id),
+          variant_title: chosen.title,
+          variant_sku: chosen.sku || '',
+          quantity: 1,
+          image: productImage || null,
+          inventory_quantity: chosen.inventory_quantity || 0
+        });
+        renderGiftsList();
+        document.getElementById('plan-gifts-search').value = '';
+        document.getElementById('plan-gifts-results').style.display = 'none';
+      } catch (e) { toast('Error: ' + e.message, 'err'); }
+    }
+
+    function removeGift(i) {
+      _giftsSelected.splice(i, 1);
+      renderGiftsList();
+    }
+
+    function updateGiftQty(i, val) {
+      const q = Math.max(1, Math.min(3, parseInt(val, 10) || 1));
+      if (_giftsSelected[i]) _giftsSelected[i].quantity = q;
+    }
+
+    function renderGiftsList() {
+      document.getElementById('plan-gifts-count').textContent = _giftsSelected.length;
+      const box = document.getElementById('plan-gifts-list');
+      if (!_giftsSelected.length) {
+        box.innerHTML = '<div style="padding:10px;color:var(--mut);font-size:11px;text-align:center;border:1px dashed var(--bdr);border-radius:6px">Ningún regalo agregado aún</div>';
+        return;
+      }
+      box.innerHTML = _giftsSelected.map((g, i) => {
+        const stockWarn = (g.inventory_quantity || 0) <= 0 ? '<span style="color:var(--amber);font-weight:700"> · Sin stock (se venderá igual)</span>' : '';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff5f5;border-radius:6px;border:1px solid #fecaca">' +
+          '<img src="' + (g.image || '') + '" style="width:32px;height:32px;border-radius:4px;object-fit:cover;background:#f3f4f6" onerror="this.style.visibility=\'hidden\'">' +
+          '<div style="flex:1;min-width:0;font-size:11px">' +
+          '  <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + g.product_title + '</div>' +
+          '  <div style="color:var(--mut)">' + g.variant_title + (g.variant_sku ? ' · SKU ' + g.variant_sku : '') + stockWarn + '</div>' +
+          '</div>' +
+          '<label style="font-size:10px;color:var(--mut);display:flex;align-items:center;gap:4px">Qty <input type="number" min="1" max="3" value="' + g.quantity + '" onchange="updateGiftQty(' + i + ', this.value)" style="width:44px;padding:3px 5px;border:1px solid var(--bdr);border-radius:4px"></label>' +
+          '<button type="button" class="btn btn-sm" style="background:#fee2e2;color:#991b1b;padding:4px 8px;font-size:11px" onclick="removeGift(' + i + ')">×</button>' +
+          '</div>';
+      }).join('');
+    }
+
+    function resetGiftsUI() {
+      _giftsSelected = [];
+      document.getElementById('plan-gifts-enabled').checked = false;
+      document.getElementById('plan-gifts-block').style.display = 'none';
+      document.getElementById('plan-gifts-search').value = '';
+      document.getElementById('plan-gifts-results').style.display = 'none';
+      document.getElementById('plan-gifts-results').innerHTML = '';
+      document.getElementById('plan-gifts-applies-to').value = 'all_products';
+      document.getElementById('plan-gifts-applies-ids').value = '';
+      document.getElementById('plan-gifts-applies-ids').style.display = 'none';
+      document.getElementById('plan-gifts-applies-hint').textContent = 'Se aplicará a cualquier producto suscrito con este plan.';
+      renderGiftsList();
+    }
+
+    function loadGiftsUI(plan) {
+      resetGiftsUI();
+      const g = plan && plan.gifts;
+      if (!g || !g.enabled || !Array.isArray(g.items) || !g.items.length) return;
+      document.getElementById('plan-gifts-enabled').checked = true;
+      document.getElementById('plan-gifts-block').style.display = 'block';
+      _giftsSelected = g.items.map(it => ({
+        product_id: String(it.product_id || ''),
+        product_title: it.product_title || '',
+        variant_id: String(it.variant_id || ''),
+        variant_title: it.variant_title || '',
+        variant_sku: it.variant_sku || '',
+        quantity: Math.max(1, Math.min(3, parseInt(it.quantity, 10) || 1)),
+        image: it.image || null,
+        inventory_quantity: it.inventory_quantity || 0
+      }));
+      const appliesTo = (g.applies_to && g.applies_to.mode) || 'all_products';
+      document.getElementById('plan-gifts-applies-to').value = appliesTo;
+      if (appliesTo === 'specific_products') {
+        const ids = (g.applies_to.product_ids || []).join(',');
+        document.getElementById('plan-gifts-applies-ids').value = ids;
+        document.getElementById('plan-gifts-applies-ids').style.display = 'block';
+        document.getElementById('plan-gifts-applies-hint').textContent = 'Los regalos solo se aplicarán a suscripciones de estos productos.';
+      }
+      renderGiftsList();
+    }
+
+    function collectGiftsFromUI() {
+      const enabled = document.getElementById('plan-gifts-enabled').checked;
+      if (!enabled) return { enabled: false, items: [], applies_to: { mode: 'all_products', product_ids: [] } };
+      const mode = document.getElementById('plan-gifts-applies-to').value;
+      const idsRaw = document.getElementById('plan-gifts-applies-ids').value || '';
+      const product_ids = mode === 'specific_products'
+        ? idsRaw.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+      return {
+        enabled: true,
+        items: _giftsSelected.map(g => ({
+          product_id: String(g.product_id),
+          product_title: g.product_title,
+          variant_id: String(g.variant_id),
+          variant_title: g.variant_title,
+          variant_sku: g.variant_sku || '',
+          quantity: Math.max(1, Math.min(3, parseInt(g.quantity, 10) || 1)),
+          image: g.image || null
+        })),
+        applies_to: { mode, product_ids }
+      };
+    }
+
     async function loadPlans() {
       document.getElementById('plans-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--mut)">Cargando...</td></tr>';
       try {
@@ -2113,8 +2329,12 @@
         const disc = p.discount !== undefined ? p.discount : (p.discount_pct || 0);
         const freqLabel = freq ? (FREQ_LABELS[String(freq)] || freq + ' meses') : (p.name || '—');
         const permLabel = perm ? perm + ' meses' : '—';
+        const giftsCount = (p.gifts && p.gifts.enabled && Array.isArray(p.gifts.items)) ? p.gifts.items.length : 0;
+        const giftBadge = giftsCount > 0
+          ? `<span style="display:inline-block;margin-left:6px;padding:2px 7px;background:#fff5f5;color:#991b1b;border:1px solid #fecaca;border-radius:999px;font-size:10px;font-weight:700" title="Regalo en primer pedido">🎁 ${giftsCount}</span>`
+          : '';
         return `<tr>
-        <td><strong>${freqLabel}</strong></td>
+        <td><strong>${freqLabel}</strong>${giftBadge}</td>
         <td>${permLabel}</td>
         <td><span style="font-size:15px;font-weight:800;color:${disc > 0 ? 'var(--grn)' : 'var(--mut)'}">${disc}%</span></td>
         <td style="color:var(--mut);font-size:12px">${p.description || p.desc || '—'}</td>
@@ -2134,6 +2354,7 @@
       document.getElementById('plan-perm').value = '3';
       document.getElementById('plan-disc').value = '10';
       document.getElementById('plan-desc').value = '';
+      resetGiftsUI();
       document.getElementById('plan-modal').style.display = 'flex';
     }
 
@@ -2145,19 +2366,27 @@
       document.getElementById('plan-perm').value = p.permanence;
       document.getElementById('plan-disc').value = p.discount || 0;
       document.getElementById('plan-desc').value = p.description || '';
+      loadGiftsUI(p);
       document.getElementById('plan-modal').style.display = 'flex';
     }
 
     function closePlanModal() { document.getElementById('plan-modal').style.display = 'none'; _editingPlanId = null; }
 
     async function savePlan() {
+      const gifts = collectGiftsFromUI();
+      // Validación: si activaste regalos pero no agregaste ninguno, avisar
+      if (gifts.enabled && !gifts.items.length) {
+        toast('Activaste regalos pero no agregaste ninguno. Agrega al menos 1 o desactiva la opción.', 'err');
+        return;
+      }
       const plan = {
         id: _editingPlanId !== null ? _plans[_editingPlanId].id : Date.now().toString(),
         frequency: parseInt(document.getElementById('plan-freq').value),
         permanence: parseInt(document.getElementById('plan-perm').value),
         discount: parseInt(document.getElementById('plan-disc').value) || 0,
         description: document.getElementById('plan-desc').value,
-        active: true
+        active: true,
+        gifts: gifts
       };
       if (_editingPlanId !== null) _plans[_editingPlanId] = plan;
       else _plans.push(plan);
