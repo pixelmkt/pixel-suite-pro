@@ -1131,8 +1131,9 @@ app.post('/api/products/:id/config', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/** GET /api/products/search?q=X&limit=20 — Busca productos Shopify por título.
+/** GET /api/products/search?q=X&limit=20 — Busca productos Shopify por título (substring real).
  *  Usado por el selector de regalos en la UI admin. Read-only, no modifica nada.
+ *  Usa GraphQL Admin API porque soporta substring search (REST solo prefix).
  *  Devuelve thumbnail + título + cantidad de variantes + stock total del producto. */
 app.get('/api/products/search', async (req, res) => {
     try {
@@ -1141,37 +1142,62 @@ app.get('/api/products/search', async (req, res) => {
         if (!token) return res.json({ products: [], error: 'No Shopify token' });
         const q = String(req.query.q || '').trim();
         const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
-        // Shopify REST products.json soporta ?title= como filtro parcial
-        const params = new URLSearchParams({
-            limit: String(limit),
-            fields: 'id,title,handle,status,images,variants,vendor'
+        // GraphQL query: title:*q* matchea substring; sin q devuelve todos ordenados por más recientes
+        const searchQuery = q ? `title:*${q.replace(/[*\\"]/g, '')}*` : '';
+        const gql = `
+            query searchProducts($first: Int!, $q: String) {
+                products(first: $first, query: $q, sortKey: UPDATED_AT, reverse: true) {
+                    edges {
+                        node {
+                            id
+                            title
+                            handle
+                            vendor
+                            status
+                            featuredImage { url }
+                            totalInventory
+                            variants(first: 3) {
+                                edges {
+                                    node { id title sku price inventoryQuantity }
+                                }
+                            }
+                            variantsCount: variants(first: 250) { edges { node { id } } }
+                        }
+                    }
+                }
+            }`;
+        const r = await fetch(`https://${shop}/admin/api/2026-01/graphql.json`, {
+            method: 'POST',
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: gql, variables: { first: limit, q: searchQuery } })
         });
-        if (q) params.set('title', q);
-        const url = `https://${shop}/admin/api/2026-01/products.json?${params.toString()}`;
-        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
         if (!r.ok) {
             const txt = await r.text().catch(() => '');
             return res.status(502).json({ products: [], error: `Shopify ${r.status}: ${txt.slice(0, 200)}` });
         }
         const data = await r.json();
-        const products = (data.products || []).map(p => {
-            const variants = Array.isArray(p.variants) ? p.variants : [];
-            const totalStock = variants.reduce((sum, v) => sum + (Number.isFinite(v.inventory_quantity) ? v.inventory_quantity : 0), 0);
+        if (data.errors) {
+            return res.status(502).json({ products: [], error: `GraphQL: ${JSON.stringify(data.errors).slice(0, 200)}` });
+        }
+        const edges = data?.data?.products?.edges || [];
+        const products = edges.map(({ node: p }) => {
+            const numericId = String(p.id || '').split('/').pop();
+            const variantEdges = p.variants?.edges || [];
             return {
-                shopify_id: String(p.id),
+                shopify_id: numericId,
                 title: p.title,
                 handle: p.handle,
                 vendor: p.vendor,
-                status: p.status,
-                image: p.images?.[0]?.src || null,
-                variant_count: variants.length,
-                total_stock: totalStock,
-                variants: variants.slice(0, 3).map(v => ({
-                    id: String(v.id),
+                status: (p.status || '').toLowerCase(),
+                image: p.featuredImage?.url || null,
+                variant_count: p.variantsCount?.edges?.length || variantEdges.length,
+                total_stock: Number.isFinite(p.totalInventory) ? p.totalInventory : 0,
+                variants: variantEdges.map(({ node: v }) => ({
+                    id: String(v.id || '').split('/').pop(),
                     title: v.title,
                     sku: v.sku || '',
                     price: v.price,
-                    inventory_quantity: v.inventory_quantity
+                    inventory_quantity: Number.isFinite(v.inventoryQuantity) ? v.inventoryQuantity : 0
                 }))
             };
         });
