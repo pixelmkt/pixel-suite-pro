@@ -897,6 +897,58 @@ app.get('/api/admin/orders/diagnose', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/** GET /api/admin/orders/:id/raw — devuelve line_items con precio (para validar regalo a 0.00). */
+app.get('/api/admin/orders/:id/raw', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'No Shopify token' });
+        const r = await fetch(`https://${shop}/admin/api/2026-01/orders/${req.params.id}.json`, {
+            headers: { 'X-Shopify-Access-Token': token }
+        });
+        if (!r.ok) return res.status(r.status).json({ error: await r.text() });
+        const data = await r.json();
+        const o = data.order || {};
+        res.json({
+            id: o.id,
+            name: o.name,
+            total_price: o.total_price,
+            financial_status: o.financial_status,
+            tags: o.tags,
+            line_items: (o.line_items || []).map(li => ({
+                id: li.id,
+                variant_id: li.variant_id,
+                title: li.title,
+                variant_title: li.variant_title,
+                sku: li.sku,
+                quantity: li.quantity,
+                price: li.price,
+                taxable: li.taxable,
+                properties: li.properties || []
+            })),
+            gift_included_attr: (o.note_attributes || []).find(a => a.name === 'gift_included')?.value || null
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/** POST /api/admin/orders/:id/cancel — cancela orden en Shopify (para tests). */
+app.post('/api/admin/orders/:id/cancel', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'No Shopify token' });
+        const reason = (req.body && req.body.reason) || 'other';
+        const r = await fetch(`https://${shop}/admin/api/2026-01/orders/${req.params.id}/cancel.json`, {
+            method: 'POST',
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason, email: false, restock: true })
+        });
+        if (!r.ok) return res.status(r.status).json({ error: await r.text() });
+        const data = await r.json();
+        res.json({ success: true, order: { id: data.order?.id, name: data.order?.name, cancelled_at: data.order?.cancelled_at, cancel_reason: data.order?.cancel_reason } });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /** GET /api/admin/shopify/locations — READ-ONLY: lista todas las locations de Shopify
  *  Para que el usuario identifique cuál es la de Navasoft y la configure en env var.
  */
