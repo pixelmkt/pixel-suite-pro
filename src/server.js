@@ -843,6 +843,150 @@ app.get('/api/admin/orders/diagnose', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/** GET /api/admin/subs-incomplete — lista suscripciones a las que les falta DNI o dirección.
+ *  Se usan para que el admin recupere los datos del cliente antes de la siguiente carga MP.
+ *  Solo lectura. No modifica nada. */
+app.get('/api/admin/subs-incomplete', async (req, res) => {
+    try {
+        const all = await db.getSubscriptions().catch(() => []);
+        const items = all
+            .map(s => {
+                const check = assertSubShippable(s);
+                if (check.ok) return null;
+                const dni = String(s.dni || '').trim();
+                const addr = s.shipping_address || {};
+                return {
+                    id: s.id,
+                    customer_email: s.customer_email,
+                    customer_name: s.customer_name || null,
+                    customer_phone: s.customer_phone || null,
+                    status: s.status,
+                    product_title: s.product_title,
+                    mp_preapproval_id: s.mp_preapproval_id,
+                    frequency_months: s.frequency_months,
+                    permanence_months: s.permanence_months,
+                    cycles_completed: s.cycles_completed || 0,
+                    next_charge_at: s.next_charge_at || null,
+                    created_at: s.created_at || null,
+                    missing: check.missing,
+                    current: {
+                        dni: dni || null,
+                        tipo_documento: s.tipo_documento || null,
+                        shipping_address1: addr.address1 || null,
+                        shipping_city: addr.city || null,
+                        shipping_province: addr.province || null,
+                        shipping_phone: addr.phone || null
+                    }
+                };
+            })
+            .filter(Boolean)
+            .sort((a, b) => (a.status === 'active' ? -1 : 1) - (b.status === 'active' ? -1 : 1));
+        res.json({ total: items.length, items });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/** PUT /api/admin/subscriptions/:id/patch-data — completa datos faltantes de una suscripción.
+ *  Admin manda {dni, tipo_documento, shipping_address: {address1, city, province, province_code, zip, phone, name}, customer_phone}.
+ *  Solo actualiza los campos provistos. No cancela, no cobra, no genera pedidos. */
+app.put('/api/admin/subscriptions/:id/patch-data', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Not found' });
+        const body = req.body || {};
+        const patch = {};
+
+        // DNI — validar formato antes de guardar
+        if (body.dni !== undefined) {
+            const dni = String(body.dni || '').trim();
+            if (dni && (dni.length < 8 || dni.length > 15 || !/^\d+$/.test(dni))) {
+                return res.status(400).json({ error: 'DNI debe tener entre 8 y 15 dígitos numéricos' });
+            }
+            patch.dni = dni;
+        }
+        if (body.tipo_documento !== undefined) {
+            const td = String(body.tipo_documento || '01');
+            if (!['01', '06', '07', '00'].includes(td)) {
+                return res.status(400).json({ error: 'tipo_documento inválido (01=DNI, 06=RUC, 07=Pasaporte, 00=Otros)' });
+            }
+            patch.tipo_documento = td;
+        }
+        if (body.customer_phone !== undefined) patch.customer_phone = String(body.customer_phone || '').trim();
+        if (body.customer_name !== undefined) patch.customer_name = String(body.customer_name || '').trim();
+
+        // Shipping address — merge parcial (mantiene los valores existentes no provistos)
+        if (body.shipping_address && typeof body.shipping_address === 'object') {
+            const cur = sub.shipping_address || {};
+            const ship = body.shipping_address;
+            patch.shipping_address = {
+                ...cur,
+                ...(ship.name !== undefined ? { name: String(ship.name || '').trim() } : {}),
+                ...(ship.address1 !== undefined ? { address1: String(ship.address1 || '').trim() } : {}),
+                ...(ship.address2 !== undefined ? { address2: String(ship.address2 || '').trim() } : {}),
+                ...(ship.city !== undefined ? { city: String(ship.city || '').trim() } : {}),
+                ...(ship.province !== undefined ? { province: String(ship.province || '').trim() } : {}),
+                ...(ship.province_code !== undefined ? { province_code: String(ship.province_code || '').trim() } : {}),
+                ...(ship.zip !== undefined ? { zip: String(ship.zip || '').trim() } : {}),
+                ...(ship.country !== undefined ? { country: String(ship.country || 'Peru').trim() } : { country: cur.country || 'Peru' }),
+                ...(ship.phone !== undefined ? { phone: String(ship.phone || '').trim() } : {})
+            };
+        }
+
+        if (Object.keys(patch).length === 0) {
+            return res.status(400).json({ error: 'No hay campos para actualizar. Envía al menos dni, tipo_documento, customer_phone, customer_name o shipping_address.' });
+        }
+
+        await db.updateSubscription(sub.id, patch);
+        // Log del cambio para auditoría
+        if (db.createEvent) {
+            await db.createEvent({
+                subscription_id: sub.id,
+                event_type: 'sub_data_patched',
+                metadata: JSON.stringify({ patched_keys: Object.keys(patch), by: 'admin', at: new Date().toISOString() })
+            }).catch(() => {});
+        }
+        const updated = await db.getSubscription(sub.id).catch(() => sub);
+        const check = assertSubShippable(updated);
+        res.json({
+            success: true,
+            updated: updated,
+            shippable: check.ok,
+            still_missing: check.ok ? [] : check.missing
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/** POST /api/admin/subscriptions/:id/retry-order — reintenta createShopifyOrderFromSub
+ *  Útil cuando completaste datos vía patch-data y querés generar el pedido Shopify del último cobro MP.
+ *  Body opcional: { mp_payment_id } — si no se provee, usa el último pago MP de la sub. */
+app.post('/api/admin/subscriptions/:id/retry-order', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Not found' });
+        const check = assertSubShippable(sub);
+        if (!check.ok) {
+            return res.status(400).json({ error: 'La suscripción aún tiene datos incompletos', missing: check.missing, hint: 'Usá PUT /api/admin/subscriptions/:id/patch-data primero' });
+        }
+        let mpPaymentId = (req.body && req.body.mp_payment_id) || null;
+        if (!mpPaymentId && sub.mp_preapproval_id && mp.listPreapprovalPayments) {
+            try {
+                const payments = await mp.listPreapprovalPayments(sub.mp_preapproval_id, 10);
+                const approved = (payments || []).find(p => p.status === 'approved' || p.status === 'authorized');
+                mpPaymentId = approved?.payment_id || approved?.id || null;
+            } catch (e) { console.warn('[RETRY] MP lookup failed:', e.message); }
+        }
+        const order = await createShopifyOrderFromSub(sub, mpPaymentId);
+        if (!order) return res.status(502).json({ error: 'createShopifyOrderFromSub retornó null — revisá logs' });
+        if (db.createEvent) {
+            await db.createEvent({
+                subscription_id: sub.id,
+                event_type: 'order_retry_success',
+                metadata: JSON.stringify({ order_number: order.order_number, mp_payment_id: mpPaymentId, by: 'admin', at: new Date().toISOString() })
+            }).catch(() => {});
+        }
+        res.json({ success: true, order: { id: order.id, order_number: order.order_number, name: order.name, financial_status: order.financial_status, total_price: order.total_price } });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ── PLANS — stored inside the proven settings metafield as 'plans_config' sub-key ── */
 // FIX 2026-03-23: New separate metafields fail silently in API 2026-01 (owner_resource bug).
 // Solution: store plans/products/configs as sub-keys of the EXISTING settings metafield.
@@ -2212,11 +2356,48 @@ async function getCustomerAddress(email, token, shop) {
     }
 }
 
+/* ── Helper: valida que la sub tenga datos mínimos para despacho + SUNAT ──
+   DNI 8-15 dígitos (o RUC 11) + dirección de envío completa.
+   Si falta algo NO crea orden Shopify (cobro MP ya entró, plata segura),
+   loguea evento para visibilidad admin y retorna null.
+   Los 5 callers de createShopifyOrderFromSub ya manejan null sin romper flujo. */
+function assertSubShippable(sub) {
+    const missing = [];
+    const dni = String(sub.dni || '').trim();
+    const addr = sub.shipping_address || {};
+    if (dni.length < 8 || dni.length > 15) missing.push('dni');
+    if (!addr.address1 || !String(addr.address1).trim()) missing.push('shipping_address1');
+    if (!addr.city || !String(addr.city).trim()) missing.push('shipping_city');
+    if (!addr.province || !String(addr.province).trim()) missing.push('shipping_province');
+    if (missing.length > 0) {
+        console.warn(`[GUARD] Sub ${sub.customer_email || sub.id} bloqueada — falta: ${missing.join(', ')}`);
+        try {
+            if (db && db.createEvent && sub.id && !String(sub.id).startsWith('orphan_')) {
+                db.createEvent({
+                    subscription_id: sub.id,
+                    event_type: 'order_blocked_missing_data',
+                    metadata: JSON.stringify({ missing, email: sub.customer_email, at: new Date().toISOString() })
+                }).catch(() => {});
+            }
+        } catch {}
+        return { ok: false, missing };
+    }
+    return { ok: true };
+}
+
 /* ── Helper: Crear orden en Shopify desde una suscripción ── */
 async function createShopifyOrderFromSub(sub, mpPaymentId) {
     const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
     const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
     if (!token) { console.error('[ORDER] No SHOPIFY_ACCESS_TOKEN — cannot create order'); return null; }
+
+    // ✅ GUARD DNI/shipping — bloquea orden si faltan datos mínimos (cobro MP ya entró).
+    // Los 5 callers manejan null sin romper el flujo de ventas.
+    const shipCheck = assertSubShippable(sub);
+    if (!shipCheck.ok) {
+        console.error(`[ORDER] ❌ NO se crea orden Shopify para ${sub.customer_email || sub.id}: falta ${shipCheck.missing.join(', ')}. Cobro MP ${mpPaymentId || '?'} guardado. Completá datos y usá /api/admin/subscriptions/:id/retry-order para reintentar.`);
+        return null;
+    }
 
     // Si falta variant_id, intentar resolverlo buscando por título de producto
     let variantId = sub.variant_id;
