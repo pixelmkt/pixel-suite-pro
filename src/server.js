@@ -201,9 +201,7 @@ async function resolveGiftsForNewSub(frequencyMonths, permanenceMonths, productI
         const appliesMode = plan.gifts.applies_to?.mode || 'all_products';
         if (appliesMode === 'specific_products') {
             const ids = (plan.gifts.applies_to?.product_ids || []).map(String);
-            // Si ids está vacío pero el modo dice 'specific_products' → config UI incompleta,
-            // interpretamos como "aplica a todos" (mejor mostrar el regalo que no mostrarlo).
-            if (ids.length > 0 && !ids.includes(String(productId))) return null;
+            if (!ids.includes(String(productId))) return null;
         }
         return items.map(it => ({
             product_id: String(it.product_id || ''),
@@ -1011,7 +1009,9 @@ app.get('/api/admin/orders/audit-subscriptions', async (req, res) => {
         const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
         if (!token) return res.status(500).json({ error: 'No Shopify token' });
         const limit = Math.min(parseInt(req.query.limit) || 50, 250);
-        const navasoftId = process.env.SHOPIFY_LOCATION_ID || null;
+        const envLocId = process.env.SHOPIFY_LOCATION_ID || null;
+        const autoLocId = await getPrimaryLocationId().catch(() => null);
+        const navasoftId = envLocId || (autoLocId ? String(autoLocId) : null);
 
         // Buscar órdenes con tag 'suscripcion' en últimas 500 (filtro cliente porque Shopify no filtra por tag en REST list)
         const url = `https://${shop}/admin/api/2026-01/orders.json?status=any&limit=250&fields=id,order_number,name,created_at,tags,location_id,source_name,email,note_attributes,line_items,financial_status,total_price`;
@@ -1064,20 +1064,22 @@ app.get('/api/admin/orders/audit-subscriptions', async (req, res) => {
                 total_subscription_orders: subsOrders.length,
                 with_location_id: withLocation.length,
                 without_location_id: withoutLocation.length,
-                configured_navasoft_location_id: navasoftId,
-                orders_in_navasoft: inNavasoft.length,
-                orders_outside_navasoft: outsideNavasoft.length,
-                navasoft_coverage_pct: navasoftId && subsOrders.length
+                env_location_id: envLocId,
+                auto_primary_location_id: autoLocId,
+                expected_location_id: navasoftId,
+                orders_in_expected: inNavasoft.length,
+                orders_outside_expected: outsideNavasoft.length,
+                coverage_pct: navasoftId && subsOrders.length
                     ? Math.round((inNavasoft.length / subsOrders.length) * 100)
                     : null
             },
             location_id_distribution: locationIdCounts,
             samples,
             verdict: !navasoftId
-                ? '⚠ CRÍTICO: SHOPIFY_LOCATION_ID no está configurado en Railway. Las órdenes pueden caer a cualquier location default.'
+                ? '⚠ No se pudo descubrir primary_location_id (shop.json). Revisar token/scope.'
                 : (inNavasoft.length === subsOrders.length
-                    ? '✅ Todas las órdenes de suscripción revisadas tienen la location de Navasoft.'
-                    : `⚠ ${outsideNavasoft.length} de ${subsOrders.length} órdenes NO están en la location de Navasoft. Revisa samples.`)
+                    ? '✅ Todas las órdenes de suscripción revisadas tienen la location esperada.'
+                    : `⚠ ${outsideNavasoft.length} de ${subsOrders.length} órdenes viejas están sin location. Nuevas subs ya usarán ${navasoftId} (${envLocId ? 'env var' : 'auto default'}).`)
         });
     } catch (e) { console.error('[AUDIT]', e); res.status(500).json({ error: e.message }); }
 });
@@ -1481,8 +1483,7 @@ app.get('/api/products/:id/config', async (req, res) => {
                     if (match && match.gifts && match.gifts.enabled) {
                         const mode = match.gifts.applies_to?.mode || 'all_products';
                         const ids = (match.gifts.applies_to?.product_ids || []).map(String);
-                        // Si mode=specific_products pero ids está vacío → se asume aplicable a todos.
-                        const appliesToThisProduct = mode === 'all_products' || ids.length === 0 || ids.includes(String(id));
+                        const appliesToThisProduct = mode === 'all_products' || ids.includes(String(id));
                         const items = Array.isArray(match.gifts.items) ? match.gifts.items : [];
                         if (appliesToThisProduct && items.length) {
                             cfg.plans[key].gifts = {
