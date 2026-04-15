@@ -3011,6 +3011,25 @@ async function _filterMailingAudience(segment) {
         const cutoff = Date.now() - 30 * 86400000;
         list = list.filter(s => s.created_at && new Date(s.created_at).getTime() >= cutoff);
     }
+    // Pagos incompletos: checkout iniciado (pending_payment) que nunca se activó
+    // Con >= 2h sin activarse (evita cruzar con gente que aún está autorizando).
+    else if (segment === 'payment_incomplete') {
+        const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+        list = list.filter(s => s.status === 'pending_payment' && s.created_at && new Date(s.created_at).getTime() <= cutoff);
+    }
+    // Pagos pendientes (últimas 2h, todavía podrían completarse)
+    else if (segment === 'payment_pending') {
+        const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+        list = list.filter(s => s.status === 'pending_payment' && (!s.created_at || new Date(s.created_at).getTime() > cutoff));
+    }
+    // Todos los "intentaron pagar" (pending_payment + payment_failed, cualquier antigüedad)
+    else if (segment === 'any_attempt') {
+        list = list.filter(s => s.status === 'pending_payment' || s.status === 'payment_failed');
+    }
+    // Todos los suscriptores registrados (cualquier estado)
+    else if (segment === 'all_subs') {
+        list = list.filter(s => s.customer_email);
+    }
     // dedupe by email
     const unique = Object.values(list.reduce((acc, s) => { if (s.customer_email) acc[s.customer_email.toLowerCase()] = s; return acc; }, {}));
     return unique;
@@ -3118,6 +3137,250 @@ app.post('/api/mailing/send', async (req, res) => {
         }
         res.json({ success: true, segment, total: audience.length, sent, failed, errors });
     } catch (e) { console.error('[MAILING]', e); res.status(500).json({ error: e.message }); }
+});
+
+/* ═══════════════════════════════════════════════
+   AUTOMATIONS — editor de plantillas transaccionales
+   Metafield lab_app/automations en Shopify (persistente)
+   Notifications.js aplica override si existe; si no, usa hardcoded.
+═══════════════════════════════════════════════ */
+const AUTOMATION_DEFAULTS = {
+    welcome: {
+        name: 'Bienvenida',
+        description: 'Se env\u00eda apenas el cliente activa su suscripci\u00f3n',
+        trigger: 'Suscripci\u00f3n activada',
+        subject: '\u25c6 Bienvenido al Club Black Diamond \u2014 LAB NUTRITION',
+        header_title: 'Bienvenido al Club Black Diamond',
+        body: '<h2>Bienvenido al Club Black Diamond</h2>\n<p>Hola <strong>{{first_name}}</strong>,</p>\n<p>Tu suscripci\u00f3n a <strong>{{product}}</strong> ha sido activada. Cada mes recibir\u00e1s tu producto con <strong>{{discount_pct}}% OFF</strong> exclusivo.</p>\n<div class="detail-box">\n<div class="detail-row"><span class="detail-label">Producto</span><span class="detail-value">{{product}}</span></div>\n<div class="detail-row"><span class="detail-label">Precio mensual</span><span class="detail-value">{{final_price}}</span></div>\n<div class="detail-row"><span class="detail-label">Env\u00edo</span><span class="detail-value">{{shipping}}</span></div>\n<div class="detail-row total-row"><span class="detail-label">Cobro mensual</span><span class="detail-value">{{total}}</span></div>\n</div>\n<div class="success-box"><strong>Pr\u00f3ximo env\u00edo:</strong> {{next_charge}}</div>\n<p class="muted" style="text-align:center">Bienvenido al club. \u2014 Equipo LAB NUTRITION</p>',
+        enabled: true
+    },
+    charge_reminder: {
+        name: 'Recordatorio 3 d\u00edas antes',
+        description: 'Aviso previo al cobro recurrente',
+        trigger: '3 d\u00edas antes del cobro',
+        subject: 'Tu pedido LAB NUTRITION se procesa en 3 d\u00edas',
+        header_title: 'Tu pedido est\u00e1 por llegar',
+        body: '<h2>Tu pedido se procesa en 3 d\u00edas</h2>\n<p>Hola <strong>{{first_name}}</strong>,</p>\n<p>En <strong>3 d\u00edas</strong> se procesar\u00e1 tu cobro mensual y despacharemos tu <strong>{{product}}</strong>.</p>\n<div class="detail-box">\n<div class="detail-row"><span class="detail-label">Producto</span><span class="detail-value">{{product}}</span></div>\n<div class="detail-row"><span class="detail-label">Precio</span><span class="detail-value">{{final_price}}</span></div>\n<div class="detail-row total-row"><span class="detail-label">Total a cobrar</span><span class="detail-value">{{total}}</span></div>\n</div>\n<div class="alert-box"><strong>Fecha de cobro:</strong> {{next_charge}}</div>\n<p class="muted">Si necesitas cambiar tu direcci\u00f3n, cont\u00e1ctanos antes de la fecha de cobro.</p>',
+        enabled: true
+    },
+    cancel_lock_warning: {
+        name: 'Aviso 7 d\u00edas antes',
+        description: 'Aviso temprano del pr\u00f3ximo cobro',
+        trigger: '7 d\u00edas antes del cobro',
+        subject: 'Aviso: tu cobro LAB NUTRITION es en 7 d\u00edas',
+        header_title: 'Aviso de cobro',
+        body: '<h2>Pr\u00f3ximo cobro en 7 d\u00edas</h2>\n<p>Hola <strong>{{first_name}}</strong>,</p>\n<p>Tu pr\u00f3ximo cobro de suscripci\u00f3n ser\u00e1 en <strong>7 d\u00edas</strong>.</p>\n<div class="detail-box">\n<div class="detail-row"><span class="detail-label">Producto</span><span class="detail-value">{{product}}</span></div>\n<div class="detail-row"><span class="detail-label">Fecha de cobro</span><span class="detail-value">{{next_charge}}</span></div>\n<div class="detail-row total-row"><span class="detail-label">Monto</span><span class="detail-value">{{total}}</span></div>\n</div>\n<p class="muted">Si tienes alguna consulta, escr\u00edbenos a contacto@labnutrition.pe</p>',
+        enabled: true
+    },
+    charge_success: {
+        name: 'Cobro exitoso',
+        description: 'Confirmaci\u00f3n cuando el cargo recurrente pas\u00f3',
+        trigger: 'Pago recurrente aprobado por MP',
+        subject: '\u25c6 Pago procesado \u2014 LAB NUTRITION',
+        header_title: 'Pago confirmado',
+        body: '<h2>Pago procesado</h2>\n<p>Hola <strong>{{first_name}}</strong>,</p>\n<p>Tu cobro mensual fue procesado correctamente. Tu pedido ya est\u00e1 en camino.</p>\n<div class="detail-box">\n<div class="detail-row"><span class="detail-label">Orden</span><span class="detail-value">{{order_name}}</span></div>\n<div class="detail-row"><span class="detail-label">Producto</span><span class="detail-value">{{product}}</span></div>\n<div class="detail-row total-row"><span class="detail-label">Total cobrado</span><span class="detail-value">{{total}}</span></div>\n</div>\n<div class="success-box"><strong>Progreso:</strong> Ciclo {{cycles_completed}} de {{cycles_required}}</div>\n<p class="muted">Recibir\u00e1s un email de confirmaci\u00f3n cuando tu pedido sea despachado.</p>',
+        enabled: true
+    },
+    charge_failed: {
+        name: 'Cobro fallido',
+        description: 'Alerta de fallo de cargo \u2014 acci\u00f3n requerida',
+        trigger: 'MP rechaza pago recurrente',
+        subject: 'Acci\u00f3n requerida: problema con tu pago \u2014 LAB NUTRITION',
+        header_title: 'Acci\u00f3n requerida',
+        body: '<h2>Problema con tu pago</h2>\n<p>Hola <strong>{{first_name}}</strong>,</p>\n<p>No pudimos procesar el pago de tu suscripci\u00f3n a <strong>{{product}}</strong>.</p>\n<div class="error-box"><strong>Acci\u00f3n requerida:</strong> Actualiza tu m\u00e9todo de pago para que podamos procesar tu pedido. Si no se actualiza en 48 horas, tu suscripci\u00f3n podr\u00eda pausarse.</div>\n<div class="detail-box"><div class="detail-row"><span class="detail-label">Monto pendiente</span><span class="detail-value">{{total}}</span></div></div>\n<p>Cont\u00e1ctanos por WhatsApp o email para resolver este problema.</p>',
+        enabled: true
+    },
+    renewal_invite: {
+        name: 'Permanencia completada',
+        description: 'Felicitaci\u00f3n cuando termina el compromiso',
+        trigger: 'Ciclo final completado',
+        subject: '\u25c6 Permanencia completada \u2014 LAB NUTRITION',
+        header_title: 'Felicitaciones',
+        body: '<h2>Permanencia completada</h2>\n<p>Hola <strong>{{first_name}}</strong>,</p>\n<p>Has completado tus <strong>{{permanence_months}} meses</strong> de suscripci\u00f3n a <strong>{{product}}</strong>.</p>\n<div class="success-box"><strong>Tu compromiso fue cumplido.</strong> Ahora puedes cancelar sin restricciones, o continuar con tu descuento exclusivo.</div>\n<p>Si no haces nada, tu suscripci\u00f3n contin\u00faa activa con el mismo descuento.</p>\n<p class="muted" style="text-align:center">Gracias por tu confianza. \u2014 Equipo LAB NUTRITION</p>',
+        enabled: true
+    },
+    cancellation_confirmation: {
+        name: 'Cancelaci\u00f3n confirmada',
+        description: 'Acuse de recibo cuando el cliente cancela',
+        trigger: 'Cliente cancela desde portal',
+        subject: 'Suscripci\u00f3n cancelada \u2014 LAB NUTRITION',
+        header_title: 'Hasta pronto',
+        body: '<h2>Suscripci\u00f3n cancelada</h2>\n<p>Hola <strong>{{first_name}}</strong>,</p>\n<p>Confirmamos que tu suscripci\u00f3n a <strong>{{product}}</strong> ha sido cancelada.</p>\n<div class="detail-box">\n<div class="detail-row"><span class="detail-label">Ciclos completados</span><span class="detail-value">{{cycles_completed}} de {{cycles_required}}</span></div>\n</div>\n<p>No se realizar\u00e1n m\u00e1s cobros. Si deseas volver a suscribirte, visita nuestra tienda.</p>\n<p class="muted" style="text-align:center">Gracias por haber sido parte del Club. \u2014 Equipo LAB NUTRITION</p>',
+        enabled: true
+    }
+};
+
+/** GET /api/automations → devuelve defaults + overrides + merged (por template) */
+app.get('/api/automations', async (req, res) => {
+    try {
+        const overrides = await readFromShopify('lab_app', 'automations') || {};
+        const merged = {};
+        for (const key of Object.keys(AUTOMATION_DEFAULTS)) {
+            const def = AUTOMATION_DEFAULTS[key];
+            const ov = overrides[key] || {};
+            merged[key] = {
+                key,
+                name: def.name,
+                description: def.description,
+                trigger: def.trigger,
+                subject: ov.subject != null ? ov.subject : def.subject,
+                header_title: ov.header_title != null ? ov.header_title : def.header_title,
+                body: ov.body != null ? ov.body : def.body,
+                enabled: ov.enabled !== false,
+                is_customized: !!(ov.subject || ov.body || ov.header_title || ov.enabled === false)
+            };
+        }
+        res.json({ templates: merged, vars: ['first_name','name','email','product','final_price','shipping','total','next_charge','cycles_completed','cycles_required','permanence_months','discount_pct','portal_link','order_name'] });
+    } catch (e) { console.error('[AUTOMATIONS GET]', e); res.status(500).json({ error: e.message }); }
+});
+
+/** PUT /api/automations → guarda overrides (un subset o todos) y refresca cache */
+app.put('/api/automations', async (req, res) => {
+    try {
+        const body = req.body || {};
+        const incoming = body.templates || body;
+        if (!incoming || typeof incoming !== 'object') return res.status(400).json({ error: 'body inv\u00e1lido' });
+        const current = await readFromShopify('lab_app', 'automations') || {};
+        const merged = { ...current };
+        for (const key of Object.keys(incoming)) {
+            if (!AUTOMATION_DEFAULTS[key]) continue; // ignora claves desconocidas
+            const t = incoming[key] || {};
+            // Solo guardamos campos con override explícito (no el trigger/name que son fijos)
+            const entry = {};
+            if (typeof t.subject === 'string') entry.subject = t.subject;
+            if (typeof t.header_title === 'string') entry.header_title = t.header_title;
+            if (typeof t.body === 'string') entry.body = t.body;
+            if (typeof t.enabled === 'boolean') entry.enabled = t.enabled;
+            if (Object.keys(entry).length) merged[key] = entry;
+        }
+        const saved = await saveToShopify(merged, 'lab_app', 'automations');
+        if (notifications && notifications.invalidateAutomationsCache) notifications.invalidateAutomationsCache();
+        res.json({ success: !!saved, storage: saved ? 'shopify_metafields' : 'failed', saved_keys: Object.keys(merged) });
+    } catch (e) { console.error('[AUTOMATIONS PUT]', e); res.status(500).json({ error: e.message }); }
+});
+
+/** POST /api/automations/test → envía email de test con mock sub */
+app.post('/api/automations/test', async (req, res) => {
+    try {
+        const { key, to, subject_override, body_override, header_title } = req.body || {};
+        if (!key || !to) return res.status(400).json({ error: 'key y to son requeridos' });
+        if (!AUTOMATION_DEFAULTS[key]) return res.status(400).json({ error: 'template no existe: ' + key });
+
+        const overrides = await readFromShopify('lab_app', 'automations') || {};
+        const def = AUTOMATION_DEFAULTS[key];
+        const ov = overrides[key] || {};
+        const subject = subject_override != null ? subject_override : (ov.subject != null ? ov.subject : def.subject);
+        const header = header_title != null ? header_title : (ov.header_title != null ? ov.header_title : def.header_title);
+        const bodyRaw = body_override != null ? body_override : (ov.body != null ? ov.body : def.body);
+
+        const mockSub = {
+            customer_name: 'Test Usuario',
+            customer_email: to,
+            product_title: 'CREATINE MICRONIZED BLACK LIMITED EDITION',
+            frequency_months: 1, permanence_months: 6,
+            discount_pct: 50, base_price: 179, final_price: 90,
+            cycles_completed: 2, cycles_required: 6,
+            next_charge_at: new Date(Date.now() + 3 * 86400000).toISOString(),
+            shipping_address: { address1: 'Augusto Tamayo 180', city: 'San Isidro', province: 'Lima' }
+        };
+        const rSubject = notifications.renderVars(subject, mockSub, { order_name: '#8442' });
+        const rBody = notifications.renderVars(bodyRaw || '', mockSub, { order_name: '#8442' });
+        const bodyHTML = /<[a-z][\s\S]*>/i.test(rBody) ? rBody : rBody.replace(/\n/g, '<br>');
+        const html = notifications.__baseHTML(bodyHTML, { headerTitle: header || 'Club Black Diamond' });
+        await notifications.sendEmail(to, '[TEST] ' + rSubject, html);
+        res.json({ success: true, to, via: process.env.RESEND_API_KEY ? 'resend' : 'smtp' });
+    } catch (e) { console.error('[AUTOMATIONS TEST]', e); res.status(500).json({ error: e.message }); }
+});
+
+/** GET /api/automations/preview?key=welcome&subject=...&body=... (HTML puro) */
+app.get('/api/automations/preview', async (req, res) => {
+    try {
+        const { key = 'welcome', subject = '', body = '', header_title = '' } = req.query || {};
+        const def = AUTOMATION_DEFAULTS[key] || AUTOMATION_DEFAULTS.welcome;
+        const mockSub = {
+            customer_name: 'Jorge Luis Torres Morales',
+            customer_email: 'ejemplo@labnutrition.pe',
+            product_title: 'CREATINE MICRONIZED BLACK LIMITED EDITION',
+            frequency_months: 1, permanence_months: 6,
+            discount_pct: 50, base_price: 179, final_price: 90,
+            cycles_completed: 2, cycles_required: 6,
+            next_charge_at: new Date(Date.now() + 3 * 86400000).toISOString()
+        };
+        const subj = notifications.renderVars(subject || def.subject, mockSub, { order_name: '#8442' });
+        const bodyRaw = notifications.renderVars(body || def.body, mockSub, { order_name: '#8442' });
+        const bodyHTML = /<[a-z][\s\S]*>/i.test(bodyRaw) ? bodyRaw : bodyRaw.replace(/\n/g, '<br>');
+        const html = notifications.__baseHTML(bodyHTML, { headerTitle: header_title || def.header_title });
+        res.json({ subject: subj, html });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ═══════════════════════════════════════════════
+   MARKETING HELPERS — productos con planes activos
+═══════════════════════════════════════════════ */
+app.get('/api/marketing/products-with-plans', async (req, res) => {
+    try {
+        const raw = await readFromShopify().catch(() => ({}));
+        const settings = (raw && raw.settings) ? raw.settings : (raw || {});
+        const plans = Array.isArray(settings.plans) ? settings.plans : [];
+        const activePlans = plans.filter(p => p && p.active !== false);
+        // Set de productos aplicables mencionados en los planes (si hay filtro por producto)
+        const byProduct = {};
+        for (const plan of activePlans) {
+            const applies = plan.applies_to || {};
+            const mode = applies.mode || 'all';
+            const prods = Array.isArray(applies.products) ? applies.products :
+                (Array.isArray(applies.product_ids) ? applies.product_ids.map(id => ({ id: String(id), title: 'Producto ' + id, image: '' })) : []);
+            if (mode === 'all' || !prods.length) {
+                byProduct['__all__'] = byProduct['__all__'] || { id: 'all', title: 'Todos los productos', image: '', plans: [] };
+                byProduct['__all__'].plans.push({ id: plan.id || plan.key, name: plan.name || (plan.frequency_months + 'm x ' + plan.permanence_months + 'm'), discount_pct: plan.discount_pct, frequency_months: plan.frequency_months, permanence_months: plan.permanence_months });
+            } else {
+                for (const p of prods) {
+                    const pid = String(p.id || p);
+                    byProduct[pid] = byProduct[pid] || { id: pid, title: p.title || ('Producto ' + pid), image: p.image || '', plans: [] };
+                    byProduct[pid].plans.push({ id: plan.id || plan.key, name: plan.name || (plan.frequency_months + 'm x ' + plan.permanence_months + 'm'), discount_pct: plan.discount_pct, frequency_months: plan.frequency_months, permanence_months: plan.permanence_months });
+                }
+            }
+        }
+        const products = Object.values(byProduct);
+        res.json({ products, total_plans: activePlans.length });
+    } catch (e) { console.error('[MKT PRODUCTS]', e); res.status(500).json({ error: e.message }); }
+});
+
+/** GET /api/marketing/design-blocks → bloques HTML pre-hechos listos para insertar */
+app.get('/api/marketing/design-blocks', async (req, res) => {
+    const blocks = [
+        {
+            key: 'cta_button',
+            name: 'Bot\u00f3n CTA rojo',
+            html: '<div style="text-align:center;margin:24px 0"><a href="https://labnutrition.pe" style="display:inline-block;background:#E30613;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:800;font-size:14px;letter-spacing:.5px">VER EN LA TIENDA \u2192</a></div>'
+        },
+        {
+            key: 'discount_badge',
+            name: 'Badge de descuento',
+            html: '<div style="text-align:center;margin:16px 0"><span style="display:inline-block;background:#0A0A0A;color:#E30613;padding:8px 18px;border-radius:100px;font-weight:900;font-size:12px;letter-spacing:2px;border:2px solid #E30613">\u2666 BLACK DIAMOND \u2022 {{discount_pct}}% OFF</span></div>'
+        },
+        {
+            key: 'product_card',
+            name: 'Tarjeta de producto',
+            html: '<div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:12px;padding:20px;margin:16px 0;display:flex;gap:16px;align-items:center">\n<div style="flex:1"><div style="font-size:10px;color:#E30613;font-weight:800;letter-spacing:1.5px;margin-bottom:6px">PRODUCTO</div><div style="font-size:16px;font-weight:800;color:#0A0A0A;margin-bottom:8px">{{product}}</div><div style="color:#E30613;font-size:20px;font-weight:900">{{final_price}} <span style="font-size:11px;color:#888;font-weight:600">+ env\u00edo</span></div></div></div>'
+        },
+        {
+            key: 'divider',
+            name: 'Separador elegante',
+            html: '<div style="text-align:center;margin:24px 0"><div style="height:1px;background:#eee;position:relative"><span style="background:#fff;color:#E30613;padding:0 16px;position:relative;top:-10px;font-size:12px;font-weight:800">\u2666</span></div></div>'
+        },
+        {
+            key: 'highlight_box',
+            name: 'Caja destacada (alerta)',
+            html: '<div style="background:#fff8e6;border-left:4px solid #E30613;padding:16px 20px;margin:16px 0;border-radius:6px"><strong style="color:#0A0A0A">Atenci\u00f3n:</strong> <span style="color:#555">Tu mensaje aqu\u00ed.</span></div>'
+        },
+        {
+            key: 'footer_social',
+            name: 'Footer con redes',
+            html: '<div style="text-align:center;padding:20px 0;border-top:1px solid #eee;margin-top:24px"><div style="font-size:11px;color:#888;margin-bottom:8px">S\u00edguenos en redes:</div><a href="https://www.instagram.com/labnutritionoficial" style="color:#E30613;text-decoration:none;font-weight:700;margin:0 8px">Instagram</a> \u00b7 <a href="https://web.facebook.com/labnutritionoficial" style="color:#E30613;text-decoration:none;font-weight:700;margin:0 8px">Facebook</a> \u00b7 <a href="https://labnutrition.pe" style="color:#E30613;text-decoration:none;font-weight:700;margin:0 8px">labnutrition.pe</a></div>'
+        }
+    ];
+    res.json({ blocks });
 });
 
 /* ── Export subscribers as CSV ── */

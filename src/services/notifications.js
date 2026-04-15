@@ -120,6 +120,86 @@ async function sendEmail(to, subject, html) {
     return transporter.sendMail({ from: FROM, to, subject, html });
 }
 
+/* ═══════════════════════════════════════════════
+   AUTOMATIONS — overrides editables desde admin
+   (lee metafield lab_app/automations, cachea 60s)
+═══════════════════════════════════════════════ */
+let _cachedAutomations = null;
+let _cachedAutomationsAt = 0;
+
+async function _readAutomationsMF() {
+    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+    const token = process.env.SHOPIFY_ACCESS_TOKEN;
+    if (!token) return {};
+    try {
+        const r = await fetch(
+            `https://${shop}/admin/api/2026-01/metafields.json?metafield[owner_resource]=shop&metafield[namespace]=lab_app&metafield[key]=automations`,
+            { headers: { 'X-Shopify-Access-Token': token } }
+        );
+        if (!r.ok) return {};
+        const data = await r.json();
+        const mf = data.metafields?.[0];
+        if (mf?.value) { try { return JSON.parse(mf.value) || {}; } catch { return {}; } }
+    } catch { /* ignore */ }
+    return {};
+}
+
+async function loadAutomations(force) {
+    if (!force && _cachedAutomations && (Date.now() - _cachedAutomationsAt) < 60000) return _cachedAutomations;
+    _cachedAutomations = await _readAutomationsMF();
+    _cachedAutomationsAt = Date.now();
+    return _cachedAutomations;
+}
+
+function invalidateAutomationsCache() {
+    _cachedAutomations = null;
+    _cachedAutomationsAt = 0;
+}
+
+function renderVars(str, sub, extras) {
+    if (!str) return '';
+    const firstN = ((sub && (sub.customer_name || sub.customer_email)) || '').split(' ')[0] || '';
+    const fp = sub && sub.final_price ? parseFloat(sub.final_price) : 0;
+    const totalN = fp ? (fp + 10).toFixed(2) : '';
+    const vars = {
+        first_name: firstN,
+        name: (sub && sub.customer_name) || firstN,
+        email: (sub && sub.customer_email) || '',
+        product: (sub && sub.product_title) || '',
+        final_price: fp ? 'S/ ' + fp.toFixed(2) : '',
+        shipping: 'S/ 10.00',
+        total: totalN ? 'S/ ' + totalN : '',
+        next_charge: (sub && sub.next_charge_at) ? formatDate(sub.next_charge_at) : 'Pr\u00f3ximamente',
+        cycles_completed: String((sub && sub.cycles_completed) || 0),
+        cycles_required: String((sub && sub.cycles_required) || 0),
+        permanence_months: String((sub && sub.permanence_months) || 0),
+        discount_pct: String(Math.round((sub && sub.discount_pct) || 0)),
+        portal_link: 'https://labnutrition.pe/pages/mi-suscripcion?email=' + encodeURIComponent((sub && sub.customer_email) || ''),
+        ...(extras || {})
+    };
+    return String(str).replace(/\{\{\s*(\w+)\s*\}\}/g, function (_, k) { return vars[k] !== undefined ? vars[k] : ''; });
+}
+
+/**
+ * Si existe override para `name`, lo renderiza y devuelve { subject, html }.
+ * Si no, devuelve null (y el caller usa su hardcoded). Si está explícitamente
+ * deshabilitado por el admin, devuelve 'DISABLED' para NO enviar.
+ */
+async function resolveOverride(name, sub, defaultHeaderTitle, extras) {
+    const all = await loadAutomations();
+    const tpl = all && all[name];
+    if (!tpl) return null;
+    if (tpl.enabled === false) return 'DISABLED';
+    const subject = tpl.subject ? renderVars(tpl.subject, sub, extras) : null;
+    const bodyRaw = tpl.body ? renderVars(tpl.body, sub, extras) : null;
+    if (!subject && !bodyRaw) return null;
+    const header = tpl.header_title || defaultHeaderTitle;
+    // Si body incluye HTML crudo, respetarlo. Si es texto plano, convertir saltos.
+    const bodyHtml = bodyRaw ? (/<[a-z][\s\S]*>/i.test(bodyRaw) ? bodyRaw : bodyRaw.replace(/\n/g, '<br>')) : null;
+    const html = bodyHtml ? baseHTML(bodyHtml, { headerTitle: header }) : null;
+    return { subject, html };
+}
+
 function formatDate(d) {
     if (!d) return 'Pr\u00f3ximamente';
     return new Date(d).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -139,6 +219,9 @@ function firstName(sub) {
 
 // N1: Bienvenida — "Bienvenido al Club Black Diamond"
 async function sendWelcome(sub) {
+    const ov = await resolveOverride('welcome', sub, 'Bienvenido al Club Black Diamond');
+    if (ov === 'DISABLED') return;
+    if (ov && ov.html) return sendEmail(sub.customer_email, ov.subject || '\u25c6 Bienvenido al Club Black Diamond \u2014 LAB NUTRITION', ov.html);
     const html = baseHTML(`
     <h2>Bienvenido al Club Black Diamond</h2>
     <p>Hola <strong>${firstName(sub)}</strong>,</p>
@@ -163,6 +246,9 @@ async function sendWelcome(sub) {
 
 // N2: Recordatorio 3 días antes
 async function sendChargeReminder(sub) {
+    const ov = await resolveOverride('charge_reminder', sub, 'Tu pedido est\u00e1 por llegar');
+    if (ov === 'DISABLED') return;
+    if (ov && ov.html) return sendEmail(sub.customer_email, ov.subject || 'Tu pedido LAB NUTRITION se procesa en 3 d\u00edas', ov.html);
     const addr = sub.shipping_address || {};
     const html = baseHTML(`
     <h2>Tu pedido se procesa en 3 d&iacute;as</h2>
@@ -191,6 +277,9 @@ async function sendChargeReminder(sub) {
 
 // N3: Aviso 7 días
 async function sendCancelLockWarning(sub) {
+    const ov = await resolveOverride('cancel_lock_warning', sub, 'Aviso de cobro');
+    if (ov === 'DISABLED') return;
+    if (ov && ov.html) return sendEmail(sub.customer_email, ov.subject || 'Aviso: tu cobro LAB NUTRITION es en 7 d\u00edas', ov.html);
     const html = baseHTML(`
     <h2>Pr&oacute;ximo cobro en 7 d&iacute;as</h2>
     <p>Hola <strong>${firstName(sub)}</strong>,</p>
@@ -207,6 +296,9 @@ async function sendCancelLockWarning(sub) {
 
 // N4: Cobro exitoso
 async function sendChargeSuccess(sub, orderName) {
+    const ov = await resolveOverride('charge_success', sub, 'Pago confirmado', { order_name: orderName || '#---' });
+    if (ov === 'DISABLED') return;
+    if (ov && ov.html) return sendEmail(sub.customer_email, ov.subject || '\u25c6 Pago procesado \u2014 LAB NUTRITION', ov.html);
     const cycleMsg = sub.cycles_completed >= sub.cycles_required
         ? 'Completaste tu permanencia. Puedes renovar o cancelar cuando desees.'
         : 'Ciclo ' + sub.cycles_completed + ' de ' + sub.cycles_required;
@@ -232,6 +324,9 @@ async function sendChargeSuccess(sub, orderName) {
 
 // N5: Cobro fallido
 async function sendChargeFailed(sub) {
+    const ov = await resolveOverride('charge_failed', sub, 'Acci\u00f3n requerida');
+    if (ov === 'DISABLED') return;
+    if (ov && ov.html) return sendEmail(sub.customer_email, ov.subject || 'Acci\u00f3n requerida: problema con tu pago \u2014 LAB NUTRITION', ov.html);
     const html = baseHTML(`
     <h2>Problema con tu pago</h2>
     <p>Hola <strong>${firstName(sub)}</strong>,</p>
@@ -250,6 +345,9 @@ async function sendChargeFailed(sub) {
 
 // N6: Permanencia completada
 async function sendRenewalInvite(sub) {
+    const ov = await resolveOverride('renewal_invite', sub, 'Felicitaciones');
+    if (ov === 'DISABLED') return;
+    if (ov && ov.html) return sendEmail(sub.customer_email, ov.subject || '\u25c6 Permanencia completada \u2014 LAB NUTRITION', ov.html);
     const html = baseHTML(`
     <h2>Permanencia completada</h2>
     <p>Hola <strong>${firstName(sub)}</strong>,</p>
@@ -271,6 +369,9 @@ async function sendRenewalInvite(sub) {
 
 // N7: Cancelación confirmada
 async function sendCancellationConfirmation(sub) {
+    const ov = await resolveOverride('cancellation_confirmation', sub, 'Hasta pronto');
+    if (ov === 'DISABLED') return;
+    if (ov && ov.html) return sendEmail(sub.customer_email, ov.subject || 'Suscripci\u00f3n cancelada \u2014 LAB NUTRITION', ov.html);
     const html = baseHTML(`
     <h2>Suscripci&oacute;n cancelada</h2>
     <p>Hola <strong>${firstName(sub)}</strong>,</p>
@@ -408,5 +509,11 @@ module.exports = {
     sendTestEmail,
     // expuestos para server.js (mailing bulk + preview builder)
     sendViaResend,
-    __baseHTML: baseHTML
+    sendEmail,
+    __baseHTML: baseHTML,
+    // automations — overrides editables
+    loadAutomations,
+    invalidateAutomationsCache,
+    renderVars,
+    resolveOverride
 };

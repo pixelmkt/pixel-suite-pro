@@ -827,7 +827,8 @@
       </svg>Productos</div>
     <div class="sb-section">Herramientas</div>
     <div class="nav-item" onclick="nav('customers')" id="n-customers"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Clientes (Nuevo)</div>
-    <div class="nav-item" onclick="nav('remarketing')" id="n-remarketing"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>Remarketing</div>
+    <div class="nav-item" onclick="nav('remarketing')" id="n-remarketing"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>Marketing</div>
+    <div class="nav-item" onclick="nav('automations')" id="n-automations"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>Automatizaciones</div>
     <div class="sb-section">Ajustes</div>
     <div class="nav-item" onclick="nav('widget')" id="n-widget"><svg width="14" height="14" viewBox="0 0 24 24"
         fill="none" stroke="currentColor" stroke-width="2">
@@ -927,13 +928,25 @@
               <div class="card-head"><span class="card-title">1. Elige tu audiencia</span></div>
               <div style="padding:18px;display:flex;flex-direction:column;gap:12px">
                 <select id="ml-segment" onchange="mlRefreshAudience()" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:10px 12px;font-size:13px;font-family:inherit;outline:none;background:#fff">
-                  <option value="active">Activos (con cobro recurrente)</option>
-                  <option value="paused">Pausados</option>
-                  <option value="cancelled">Cancelados</option>
-                  <option value="failed">Cobro fallido</option>
-                  <option value="bd_completed">Black Diamond completados (permanencia cumplida)</option>
-                  <option value="bd_progress">Black Diamond en progreso</option>
-                  <option value="new_30d">Nuevos últimos 30 días</option>
+                  <optgroup label="💎 Suscriptores activos">
+                    <option value="active">Activos (con cobro recurrente)</option>
+                    <option value="bd_progress">Black Diamond en progreso</option>
+                    <option value="bd_completed">Black Diamond completados (permanencia cumplida)</option>
+                    <option value="new_30d">Nuevos últimos 30 días</option>
+                  </optgroup>
+                  <optgroup label="⚠️ Recuperables (no completaron pago)">
+                    <option value="payment_incomplete">Pagos incompletos (abandonaron checkout hace +2h)</option>
+                    <option value="payment_pending">Pagos pendientes (checkout reciente, últimas 2h)</option>
+                    <option value="failed">Cobro fallido (rechazo de tarjeta)</option>
+                    <option value="any_attempt">Todos los que intentaron pagar (incompletos + fallidos)</option>
+                  </optgroup>
+                  <optgroup label="🔄 Inactivos">
+                    <option value="paused">Pausados</option>
+                    <option value="cancelled">Cancelados</option>
+                  </optgroup>
+                  <optgroup label="📊 Todos">
+                    <option value="all_subs">Todos los suscriptores registrados</option>
+                  </optgroup>
                 </select>
                 <div id="ml-audience" style="padding:12px 14px;background:#0A0A0A;color:#fff;border-radius:8px;font-size:13px;font-weight:600">Calculando audiencia…</div>
                 <div id="ml-audience-sample" style="font-size:11px;color:var(--mut);line-height:1.6"></div>
@@ -979,6 +992,25 @@
                     <button type="button" onclick="mlInsertVar('portal_link')" class="btn btn-sm" style="background:#f3f4f6;border:1px solid var(--bdr);padding:4px 10px;font-size:11px;cursor:pointer;font-family:monospace;border-radius:5px">{{portal_link}}</button>
                   </div>
                 </div>
+
+                <div style="border-top:1px dashed var(--bdr);padding-top:12px;margin-top:4px">
+                  <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">🎨 Bloques de diseño (clic para insertar)</label>
+                  <div id="ml-blocks" style="display:flex;flex-wrap:wrap;gap:6px">
+                    <button type="button" onclick="mlLoadBlocks()" class="btn btn-sm" style="background:#0A0A0A;color:#fff;border:none;padding:6px 12px;font-size:11px;cursor:pointer;border-radius:5px">Cargar bloques</button>
+                  </div>
+                </div>
+
+                <div style="border-top:1px dashed var(--bdr);padding-top:12px;margin-top:4px">
+                  <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">🛒 Insertar producto con plan</label>
+                  <div style="display:flex;gap:6px">
+                    <select id="ml-product-picker" style="flex:1;border:1.5px solid var(--bdr);border-radius:7px;padding:7px 10px;font-size:12px;background:#fff">
+                      <option value="">— Elige producto —</option>
+                    </select>
+                    <button type="button" onclick="mlInsertProductCard()" class="btn btn-sm" style="background:#E30613;color:#fff;border:none;padding:6px 14px;font-size:11px;cursor:pointer;border-radius:5px;white-space:nowrap">Insertar</button>
+                    <button type="button" onclick="mlLoadProducts()" class="btn btn-sm" style="background:#f3f4f6;border:1px solid var(--bdr);padding:6px 10px;font-size:11px;cursor:pointer;border-radius:5px">↻</button>
+                  </div>
+                  <div id="ml-product-hint" style="font-size:10px;color:var(--mut);margin-top:4px">Pulsa ↻ para cargar productos con planes activos</div>
+                </div>
               </div>
             </div>
 
@@ -1006,6 +1038,84 @@
                 <iframe id="ml-preview" style="width:100%;height:720px;border:none;background:#f5f5f5" srcdoc="<div style='padding:40px;text-align:center;color:#888;font-family:system-ui'>Escribe asunto y cuerpo para ver el preview…</div>"></iframe>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AUTOMATIZACIONES -->
+    <div id="p-automations" class="panel">
+      <div class="ph">
+        <div>
+          <div class="pt">Automatizaciones</div>
+          <div class="ps">Emails transaccionales del ciclo de suscripci&oacute;n \u2014 edita asunto, cuerpo y header por cada disparador</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="loadAutomations()" style="background:#f3f4f6;border:1px solid var(--bdr)">\u21bb Recargar</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="info-box" style="margin-bottom:14px">\u26a1 Estos emails se disparan autom&aacute;ticamente por el ciclo de suscripci&oacute;n (bienvenida, recordatorios, cobros, cancelaci&oacute;n). Si no customizas, se usan los textos de f&aacute;brica. Variables disponibles: <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px">{{first_name}}</code> <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px">{{product}}</code> <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px">{{final_price}}</code> <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px">{{total}}</code> <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px">{{next_charge}}</code> <code style="background:#fff;padding:2px 6px;border-radius:4px;font-size:11px">{{portal_link}}</code> y m&aacute;s.</div>
+        <div id="au-list" style="display:flex;flex-direction:column;gap:10px">
+          <div style="padding:40px;text-align:center;color:var(--mut)">Cargando plantillas\u2026</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL EDITOR AUTOMATIZACI\u00d3N -->
+    <div id="au-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;padding:20px">
+      <div style="background:#fff;border-radius:14px;max-width:1100px;width:100%;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+        <div style="padding:18px 24px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;background:#0A0A0A;color:#fff">
+          <div>
+            <div style="font-size:10px;color:#E30613;font-weight:800;letter-spacing:2px">AUTOMATIZACI\u00d3N</div>
+            <div id="au-modal-title" style="font-size:18px;font-weight:800;margin-top:4px">\u2014</div>
+            <div id="au-modal-trigger" style="font-size:11px;color:#999;margin-top:4px">\u2014</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;color:#fff">
+              <input type="checkbox" id="au-enabled" style="margin:0"> Activo
+            </label>
+            <button onclick="closeAuModal()" style="background:transparent;border:1px solid #555;color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer">Cerrar</button>
+          </div>
+        </div>
+        <div style="flex:1;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:0">
+          <!-- EDITOR -->
+          <div style="padding:20px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;gap:12px">
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Header (t\u00edtulo rojo)</label>
+              <input id="au-header" type="text" placeholder="Bienvenido al Club" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;margin-top:5px;outline:none;box-sizing:border-box" oninput="auRefreshPreview()">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Asunto del email</label>
+              <input id="au-subject" type="text" placeholder="\u25c6 Bienvenido \u2014 LAB NUTRITION" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;margin-top:5px;outline:none;box-sizing:border-box" oninput="auRefreshPreview()">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Cuerpo HTML (editable)</label>
+              <textarea id="au-body" rows="15" placeholder="HTML o texto plano con {{variables}}" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:10px 12px;font-size:12px;margin-top:5px;outline:none;resize:vertical;box-sizing:border-box;font-family:ui-monospace,Consolas,monospace;line-height:1.5" oninput="auRefreshPreview()"></textarea>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">Variables (clic para insertar)</label>
+              <div style="display:flex;flex-wrap:wrap;gap:6px" id="au-vars">
+                <!-- se llena en JS -->
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;padding-top:12px;border-top:1px solid #eee">
+              <button onclick="auResetDefaults()" class="btn btn-sm" style="background:#f3f4f6;border:1px solid var(--bdr);flex:1">\u21b6 Restaurar f\u00e1brica</button>
+              <button onclick="auSaveTemplate()" class="btn btn-r btn-sm" style="flex:1">\uf0c7 Guardar</button>
+            </div>
+            <div style="display:flex;gap:8px">
+              <input id="au-test-email" type="email" placeholder="email para prueba" style="flex:1;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;outline:none;box-sizing:border-box">
+              <button onclick="auSendTest()" class="btn btn-sm" style="background:#0A0A0A;color:#fff;border:none;white-space:nowrap;padding:9px 14px">Enviar prueba</button>
+            </div>
+            <div id="au-result" style="display:none;padding:8px 12px;border-radius:7px;font-size:12px"></div>
+          </div>
+          <!-- PREVIEW -->
+          <div style="background:#f5f5f5;padding:0;display:flex;flex-direction:column">
+            <div style="padding:8px 16px;background:#fff;border-bottom:1px solid var(--bdr);font-size:11px;color:var(--mut);display:flex;justify-content:space-between;align-items:center">
+              <span><strong style="color:#222">Asunto:</strong> <span id="au-preview-subject">\u2014</span></span>
+              <span style="font-size:10px">Datos mock</span>
+            </div>
+            <iframe id="au-preview" style="flex:1;width:100%;border:none;background:#f5f5f5;min-height:500px"></iframe>
           </div>
         </div>
       </div>
@@ -1808,6 +1918,7 @@
       if (id === 'widget') loadWidgetConfig();
       if (id === 'customers') loadCustomers();
       if (id === 'remarketing') loadRemarketing();
+      if (id === 'automations') loadAutomations();
     }
 
     // \u2500\u2500\u2500\u2500 CLIENTES \u2500\u2500\u2500\u2500
@@ -1896,6 +2007,9 @@
       // Entry point para el tab — carga audiencia inicial + preview
       await mlRefreshAudience();
       mlRefreshPreview();
+      // Pre-cargar bloques de diseño y productos (silencioso — no bloquea UI si fallan)
+      try { await mlLoadBlocks(); } catch {}
+      try { await mlLoadProducts(); } catch {}
     }
 
     async function mlRefreshAudience() {
@@ -2132,6 +2246,253 @@
         toast('Error: ' + e.message, 'err');
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Enviar campaña real'; }
+      }
+    }
+
+    // ──── MARKETING EXTENSIONES (bloques diseño + productos) ────
+    let _mlBlocks = [], _mlProducts = [];
+
+    async function mlLoadBlocks() {
+      try {
+        const d = await api('/api/marketing/design-blocks');
+        _mlBlocks = d.blocks || [];
+        const wrap = document.getElementById('ml-blocks');
+        wrap.innerHTML = _mlBlocks.map((b, i) =>
+          '<button type="button" onclick="mlInsertBlock(' + i + ')" class="btn btn-sm" style="background:linear-gradient(135deg,#0A0A0A,#1a1a1a);color:#E30613;border:1px solid #333;padding:6px 12px;font-size:11px;cursor:pointer;border-radius:5px;font-weight:700">🎨 ' + b.name + '</button>'
+        ).join('');
+      } catch (e) { toast('Error cargando bloques: ' + e.message, 'err'); }
+    }
+
+    function mlInsertBlock(idx) {
+      const b = _mlBlocks[idx];
+      if (!b) return;
+      const ta = document.getElementById('ml-body');
+      const pos = ta.selectionStart || ta.value.length;
+      const before = ta.value.slice(0, pos), after = ta.value.slice(pos);
+      ta.value = before + '\n' + b.html + '\n' + after;
+      ta.focus();
+      mlRefreshPreview();
+    }
+
+    async function mlLoadProducts() {
+      const hint = document.getElementById('ml-product-hint');
+      hint.textContent = 'Cargando productos…';
+      try {
+        const d = await api('/api/marketing/products-with-plans');
+        _mlProducts = d.products || [];
+        const sel = document.getElementById('ml-product-picker');
+        sel.innerHTML = '<option value="">— Elige producto —</option>' + _mlProducts.map((p, i) =>
+          '<option value="' + i + '">' + p.title + ' (' + (p.plans?.length || 0) + ' planes)</option>'
+        ).join('');
+        hint.textContent = _mlProducts.length + ' productos con planes cargados';
+      } catch (e) { hint.textContent = 'Error: ' + e.message; }
+    }
+
+    function mlInsertProductCard() {
+      const sel = document.getElementById('ml-product-picker');
+      const idx = parseInt(sel.value);
+      if (isNaN(idx)) { toast('Elige un producto primero', 'err'); return; }
+      const p = _mlProducts[idx];
+      if (!p) return;
+      const bestPlan = (p.plans || []).sort((a, b) => (b.discount_pct || 0) - (a.discount_pct || 0))[0];
+      const disc = bestPlan ? Math.round(bestPlan.discount_pct || 0) : 30;
+      const freq = bestPlan ? (bestPlan.frequency_months === 1 ? 'mensual' : 'cada ' + bestPlan.frequency_months + ' meses') : 'mensual';
+      const perm = bestPlan ? bestPlan.permanence_months : 6;
+      const html = '<div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:12px;padding:18px;margin:16px 0">\n' +
+        (p.image ? '<img src="' + p.image + '" alt="' + p.title + '" style="width:100%;max-width:160px;height:auto;border-radius:8px;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto">\n' : '') +
+        '<div style="font-size:10px;color:#E30613;font-weight:800;letter-spacing:1.5px;margin-bottom:6px;text-align:center">⚡ SUSCRIPCIÓN BLACK DIAMOND</div>\n' +
+        '<div style="font-size:16px;font-weight:800;color:#0A0A0A;margin-bottom:8px;text-align:center">' + p.title + '</div>\n' +
+        '<div style="text-align:center;margin:10px 0"><span style="display:inline-block;background:#0A0A0A;color:#E30613;padding:6px 14px;border-radius:100px;font-weight:900;font-size:12px;letter-spacing:2px">' + disc + '% OFF ' + freq.toUpperCase() + '</span></div>\n' +
+        '<div style="text-align:center;color:#666;font-size:12px;margin-top:8px">Permanencia: ' + perm + ' meses · Envío gratis incluido</div>\n' +
+        '<div style="text-align:center;margin-top:14px"><a href="https://labnutrition.pe" style="display:inline-block;background:#E30613;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:800;font-size:13px">SUSCRIBIRME →</a></div>\n' +
+        '</div>';
+      const ta = document.getElementById('ml-body');
+      const pos = ta.selectionStart || ta.value.length;
+      const before = ta.value.slice(0, pos), after = ta.value.slice(pos);
+      ta.value = before + '\n' + html + '\n' + after;
+      ta.focus();
+      mlRefreshPreview();
+    }
+
+    // ──── AUTOMATIZACIONES (emails transaccionales editables) ────
+    let _auTemplates = {}, _auVars = [], _auCurrentKey = null, _auPreviewTimer = null, _auDefaults = {};
+
+    async function loadAutomations() {
+      const list = document.getElementById('au-list');
+      if (list) list.innerHTML = '<div style="padding:40px;text-align:center;color:var(--mut)">Cargando plantillas…</div>';
+      try {
+        const d = await api('/api/automations');
+        _auTemplates = d.templates || {};
+        _auVars = d.vars || [];
+        renderAuList();
+      } catch (e) {
+        if (list) list.innerHTML = '<div style="padding:20px;color:#b91c1c">Error: ' + e.message + '</div>';
+      }
+    }
+
+    function renderAuList() {
+      const list = document.getElementById('au-list');
+      if (!list) return;
+      const keys = Object.keys(_auTemplates);
+      if (!keys.length) { list.innerHTML = '<div style="padding:20px;color:var(--mut)">Sin plantillas.</div>'; return; }
+      list.innerHTML = keys.map(k => {
+        const t = _auTemplates[k];
+        const dot = t.enabled === false ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#9ca3af;margin-right:8px" title="Desactivado"></span>' : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;margin-right:8px" title="Activo"></span>';
+        const cust = t.is_customized ? '<span style="background:#0A0A0A;color:#E30613;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:800;letter-spacing:1px;margin-left:8px">CUSTOM</span>' : '';
+        return '<div class="card" style="padding:0;cursor:pointer;transition:transform .15s" onclick="openAuEditor(\'' + k + '\')" onmouseenter="this.style.transform=\'translateX(4px)\'" onmouseleave="this.style.transform=\'translateX(0)\'">\
+          <div style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:14px">\
+            <div style="flex:1;min-width:0">\
+              <div style="font-weight:800;font-size:14px;color:#0A0A0A;display:flex;align-items:center">' + dot + (t.name || k) + cust + '</div>\
+              <div style="font-size:11px;color:var(--mut);margin-top:3px">' + (t.description || '') + '</div>\
+              <div style="font-size:10px;color:#9d2a23;font-weight:700;margin-top:6px;letter-spacing:.5px;text-transform:uppercase">⚡ ' + (t.trigger || '—') + '</div>\
+            </div>\
+            <div style="font-size:11px;color:var(--mut);white-space:nowrap">Editar →</div>\
+          </div>\
+        </div>';
+      }).join('');
+    }
+
+    function openAuEditor(key) {
+      const t = _auTemplates[key];
+      if (!t) return;
+      _auCurrentKey = key;
+      document.getElementById('au-modal-title').textContent = t.name || key;
+      document.getElementById('au-modal-trigger').textContent = 'Disparador: ' + (t.trigger || '—');
+      document.getElementById('au-enabled').checked = t.enabled !== false;
+      document.getElementById('au-header').value = t.header_title || '';
+      document.getElementById('au-subject').value = t.subject || '';
+      document.getElementById('au-body').value = t.body || '';
+      // vars chips
+      const varsEl = document.getElementById('au-vars');
+      varsEl.innerHTML = _auVars.map(v =>
+        '<button type="button" onclick="auInsertVar(\'' + v + '\')" style="background:#f3f4f6;border:1px solid var(--bdr);padding:4px 10px;font-size:11px;cursor:pointer;font-family:monospace;border-radius:5px">{{' + v + '}}</button>'
+      ).join('');
+      document.getElementById('au-modal').style.display = 'flex';
+      auRefreshPreview();
+    }
+
+    function closeAuModal() {
+      document.getElementById('au-modal').style.display = 'none';
+      _auCurrentKey = null;
+    }
+
+    function auInsertVar(name) {
+      const ta = document.getElementById('au-body');
+      const pos = ta.selectionStart || 0;
+      const before = ta.value.slice(0, pos), after = ta.value.slice(pos);
+      const ins = '{{' + name + '}}';
+      ta.value = before + ins + after;
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = pos + ins.length;
+      auRefreshPreview();
+    }
+
+    async function auRefreshPreview() {
+      clearTimeout(_auPreviewTimer);
+      _auPreviewTimer = setTimeout(async () => {
+        if (!_auCurrentKey) return;
+        const subject = document.getElementById('au-subject').value;
+        const body = document.getElementById('au-body').value;
+        const header = document.getElementById('au-header').value;
+        try {
+          const q = new URLSearchParams({ key: _auCurrentKey, subject, body, header_title: header });
+          const r = await api('/api/automations/preview?' + q.toString());
+          document.getElementById('au-preview-subject').textContent = r.subject || '—';
+          document.getElementById('au-preview').srcdoc = r.html || '';
+        } catch (e) { /* ignore */ }
+      }, 400);
+    }
+
+    async function auSaveTemplate() {
+      if (!_auCurrentKey) return;
+      const payload = { templates: {} };
+      payload.templates[_auCurrentKey] = {
+        subject: document.getElementById('au-subject').value,
+        header_title: document.getElementById('au-header').value,
+        body: document.getElementById('au-body').value,
+        enabled: document.getElementById('au-enabled').checked
+      };
+      const result = document.getElementById('au-result');
+      result.style.display = 'block';
+      result.style.background = '#fef3c7';
+      result.style.border = '1px solid #fcd34d';
+      result.style.color = '#92400e';
+      result.textContent = 'Guardando…';
+      try {
+        const r = await api('/api/automations', { method: 'PUT', body: payload });
+        if (r.success) {
+          result.style.background = '#d1fae5';
+          result.style.border = '1px solid #6ee7b7';
+          result.style.color = '#065f46';
+          result.textContent = '✓ Guardado en Shopify metafields · tomará efecto en 60s o al siguiente disparo';
+          toast('Plantilla guardada');
+          await loadAutomations();
+        } else {
+          throw new Error('No se pudo guardar (' + (r.storage || 'unknown') + ')');
+        }
+      } catch (e) {
+        result.style.background = '#fee2e2';
+        result.style.border = '1px solid #fca5a5';
+        result.style.color = '#991b1b';
+        result.textContent = 'Error: ' + e.message;
+      }
+    }
+
+    async function auResetDefaults() {
+      if (!_auCurrentKey) return;
+      if (!confirm('¿Restaurar a la plantilla de fábrica? Perderás tus cambios guardados para esta automatización.')) return;
+      // Borrar el override en el server mandando strings vacíos (el server ignora null)
+      // → enviamos un PUT con campos vacíos para forzar fallback a defaults.
+      // Truco: enviamos el objeto vacío (el server seguirá viendo el default).
+      // Aquí, como el server guarda solo lo que viene, hacemos un "merge" — si quieres
+      // sobreescribir hay que volver a los defaults del default del server.
+      try {
+        const d = await api('/api/automations');
+        const def = d.templates[_auCurrentKey];
+        if (!def) { toast('No se pudo cargar default', 'err'); return; }
+        // Guardamos los defaults tal cual como "customizados" (queda como no-diff)
+        document.getElementById('au-subject').value = def.subject || '';
+        document.getElementById('au-header').value = def.header_title || '';
+        document.getElementById('au-body').value = def.body || '';
+        document.getElementById('au-enabled').checked = true;
+        await auSaveTemplate();
+      } catch (e) { toast('Error: ' + e.message, 'err'); }
+    }
+
+    async function auSendTest() {
+      if (!_auCurrentKey) return;
+      const to = document.getElementById('au-test-email').value.trim();
+      if (!to) { toast('Ingresa un email de prueba', 'err'); return; }
+      const result = document.getElementById('au-result');
+      result.style.display = 'block';
+      result.style.background = '#fef3c7';
+      result.style.border = '1px solid #fcd34d';
+      result.style.color = '#92400e';
+      result.textContent = 'Enviando prueba…';
+      try {
+        const r = await api('/api/automations/test', {
+          method: 'POST',
+          body: {
+            key: _auCurrentKey,
+            to,
+            subject_override: document.getElementById('au-subject').value,
+            header_title: document.getElementById('au-header').value,
+            body_override: document.getElementById('au-body').value
+          }
+        });
+        if (r.success) {
+          result.style.background = '#d1fae5';
+          result.style.border = '1px solid #6ee7b7';
+          result.style.color = '#065f46';
+          result.textContent = '✓ Enviado a ' + r.to + ' vía ' + r.via;
+        } else {
+          throw new Error(r.error || 'Error desconocido');
+        }
+      } catch (e) {
+        result.style.background = '#fee2e2';
+        result.style.border = '1px solid #fca5a5';
+        result.style.color = '#991b1b';
+        result.textContent = 'Error: ' + e.message;
       }
     }
 
