@@ -778,6 +778,19 @@ app.get('/api/admin/orders/diagnose', async (req, res) => {
                     shipping_code: attrs['shipping_code'] || null,
                     courier_id: attrs['courier_id'] || null,
                     ClusterCart_optimized: attrs['ClusterCart-optimized'] || null,
+                    // Tienda / fulfillment location (Navasoft asigna tienda según location_id)
+                    order_location_id: order.location_id || null,
+                    order_source_name: order.source_name || null,
+                    line_item_locations: (order.line_items || []).map(li => ({
+                        variant_id: li.variant_id, sku: li.sku,
+                        fulfillable_quantity: li.fulfillable_quantity,
+                        fulfillment_service: li.fulfillment_service,
+                        origin_location: li.origin_location ? {
+                            id: li.origin_location.id,
+                            name: li.origin_location.name,
+                            city: li.origin_location.city
+                        } : null
+                    })),
                     // From billing address (SUNAT boleta)
                     billing_company_dni: order.billing_address?.company || null,
                     // Shipping address snapshot
@@ -801,7 +814,8 @@ app.get('/api/admin/orders/diagnose', async (req, res) => {
                     has_departamento: !!critical.location_departamento,
                     has_shipping_code: !!critical.shipping_code,
                     has_shipping_address: !!critical.shipping,
-                    has_billing_company_dni: !!critical.billing_company_dni
+                    has_billing_company_dni: !!critical.billing_company_dni,
+                    has_tienda_assigned: !!critical.order_location_id
                 };
                 critical._navasoft_ready = Object.values(critical._health).every(v => v === true);
                 results.push(critical);
