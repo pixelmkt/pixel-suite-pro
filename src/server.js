@@ -896,6 +896,124 @@ app.get('/api/admin/orders/diagnose', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/** GET /api/admin/shopify/locations — READ-ONLY: lista todas las locations de Shopify
+ *  Para que el usuario identifique cuál es la de Navasoft y la configure en env var.
+ */
+app.get('/api/admin/shopify/locations', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'No Shopify token' });
+        const r = await fetch(`https://${shop}/admin/api/2026-01/locations.json`, {
+            headers: { 'X-Shopify-Access-Token': token }
+        });
+        if (!r.ok) return res.status(r.status).json({ error: `Shopify ${r.status}: ${await r.text()}` });
+        const data = await r.json();
+        const configured = process.env.SHOPIFY_LOCATION_ID || null;
+        const locations = (data.locations || []).map(l => ({
+            id: l.id,
+            name: l.name,
+            address1: l.address1,
+            city: l.city,
+            province: l.province,
+            country: l.country,
+            active: l.active,
+            legacy: l.legacy,
+            is_primary: !!l.primary_based,
+            is_configured_as_navasoft: configured && String(configured) === String(l.id)
+        }));
+        res.json({
+            total: locations.length,
+            configured_env_location_id: configured,
+            locations,
+            hint: configured
+                ? 'SHOPIFY_LOCATION_ID está configurado — las nuevas órdenes deberían usar esa location si el código la aplica.'
+                : '⚠ SHOPIFY_LOCATION_ID NO configurado. Las órdenes usarán la location default de Shopify. Copia el ID de la location correcta (Navasoft) y seteala como env var en Railway.'
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/** GET /api/admin/orders/audit-subscriptions?limit=50 — READ-ONLY: audita las últimas N órdenes
+ *  con tag 'suscripcion' y reporta cuántas tienen o no location_id asignado. Calcula tasa de
+ *  órdenes correctamente ruteadas a Navasoft (si está configurada la env var).
+ */
+app.get('/api/admin/orders/audit-subscriptions', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'No Shopify token' });
+        const limit = Math.min(parseInt(req.query.limit) || 50, 250);
+        const navasoftId = process.env.SHOPIFY_LOCATION_ID || null;
+
+        // Buscar órdenes con tag 'suscripcion' en últimas 500 (filtro cliente porque Shopify no filtra por tag en REST list)
+        const url = `https://${shop}/admin/api/2026-01/orders.json?status=any&limit=250&fields=id,order_number,name,created_at,tags,location_id,source_name,email,note_attributes,line_items,financial_status,total_price`;
+        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+        if (!r.ok) return res.status(r.status).json({ error: `Shopify ${r.status}: ${await r.text()}` });
+        const data = await r.json();
+        const allOrders = data.orders || [];
+
+        const subsOrders = allOrders
+            .filter(o => (o.tags || '').toLowerCase().includes('suscripcion'))
+            .slice(0, limit);
+
+        // Stats
+        const withLocation = subsOrders.filter(o => o.location_id);
+        const withoutLocation = subsOrders.filter(o => !o.location_id);
+        const locationIdCounts = {};
+        subsOrders.forEach(o => {
+            const k = o.location_id ? String(o.location_id) : '(null)';
+            locationIdCounts[k] = (locationIdCounts[k] || 0) + 1;
+        });
+        const inNavasoft = navasoftId
+            ? subsOrders.filter(o => String(o.location_id) === String(navasoftId))
+            : [];
+        const outsideNavasoft = navasoftId
+            ? subsOrders.filter(o => !o.location_id || String(o.location_id) !== String(navasoftId))
+            : [];
+
+        // Samples para UI
+        const samples = subsOrders.slice(0, 20).map(o => {
+            const attrs = {};
+            (o.note_attributes || []).forEach(a => { attrs[a.name] = a.value; });
+            return {
+                order_number: o.order_number,
+                name: o.name,
+                created_at: o.created_at,
+                email: o.email,
+                location_id: o.location_id || null,
+                source_name: o.source_name,
+                financial_status: o.financial_status,
+                total: o.total_price,
+                in_navasoft: navasoftId ? String(o.location_id) === String(navasoftId) : null,
+                payment_method: attrs['payment_method'] || null,
+                dni: attrs['dni'] || attrs['ClusterCart-dni'] || null,
+                distrito: attrs['location_distrito'] || null
+            };
+        });
+
+        res.json({
+            summary: {
+                total_subscription_orders: subsOrders.length,
+                with_location_id: withLocation.length,
+                without_location_id: withoutLocation.length,
+                configured_navasoft_location_id: navasoftId,
+                orders_in_navasoft: inNavasoft.length,
+                orders_outside_navasoft: outsideNavasoft.length,
+                navasoft_coverage_pct: navasoftId && subsOrders.length
+                    ? Math.round((inNavasoft.length / subsOrders.length) * 100)
+                    : null
+            },
+            location_id_distribution: locationIdCounts,
+            samples,
+            verdict: !navasoftId
+                ? '⚠ CRÍTICO: SHOPIFY_LOCATION_ID no está configurado en Railway. Las órdenes pueden caer a cualquier location default.'
+                : (inNavasoft.length === subsOrders.length
+                    ? '✅ Todas las órdenes de suscripción revisadas tienen la location de Navasoft.'
+                    : `⚠ ${outsideNavasoft.length} de ${subsOrders.length} órdenes NO están en la location de Navasoft. Revisa samples.`)
+        });
+    } catch (e) { console.error('[AUDIT]', e); res.status(500).json({ error: e.message }); }
+});
+
 /** GET /api/admin/subs-incomplete — lista suscripciones a las que les falta DNI o dirección.
  *  Se usan para que el admin recupere los datos del cliente antes de la siguiente carga MP.
  *  Solo lectura. No modifica nada. */
