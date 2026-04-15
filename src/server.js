@@ -2622,6 +2622,41 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
 
     if (!variantId) console.warn(`[ORDER] ⚠️ Creating order WITHOUT variant_id for ${sub.customer_email} — using custom line item "${lineItem.title}"`);
 
+    // 🎁 REGALO EN PRIMER PEDIDO — triple validación: ciclo 0 + no entregado + hay items planificados.
+    // Falla silenciosa: si construcción falla, la orden sigue sin regalo (NO rompe la venta).
+    // Shopify REST crea orden con inventory_behaviour=bypass por defecto → no toca inventario del regalo.
+    const giftLineItems = [];
+    let shouldDeliverGifts = false;
+    try {
+        const cyclesCompleted = Number(sub.cycles_completed || 0);
+        const alreadyDelivered = sub.gifts_delivered === true;
+        const plannedGifts = Array.isArray(sub.gifts_planned) ? sub.gifts_planned : [];
+        if (cyclesCompleted === 0 && !alreadyDelivered && plannedGifts.length > 0) {
+            for (const g of plannedGifts) {
+                if (!g || !g.variant_id) continue;
+                const vid = parseInt(g.variant_id, 10);
+                if (!Number.isFinite(vid) || vid <= 0) continue;
+                const qty = Math.max(1, Math.min(3, parseInt(g.quantity, 10) || 1));
+                giftLineItems.push({
+                    variant_id: vid,
+                    quantity: qty,
+                    price: '0.00',
+                    taxable: false,
+                    properties: [
+                        { name: '_gift', value: 'true' },
+                        { name: 'Regalo incluido', value: g.product_title || 'Regalo de bienvenida' }
+                    ]
+                });
+            }
+            shouldDeliverGifts = giftLineItems.length > 0;
+            if (shouldDeliverGifts) {
+                console.log(`[ORDER] 🎁 Adding ${giftLineItems.length} gift item(s) to first order for ${sub.customer_email}`);
+            }
+        }
+    } catch (e) {
+        console.warn('[ORDER] Gift line item build error (orden sigue sin regalo):', e.message);
+    }
+
     // Build note_attributes so Navasoft picks up the order
     const addr = shippingAddr || {};
     const noteAttrs = [
@@ -2647,7 +2682,9 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         { name: 'ClusterCart-courier', value: 'Urbaner' },
         // IGV incluido en todos los precios (Ley 29571 Art. 5.4)
         { name: 'igv_incluido', value: 'true' },
-        { name: 'tax_included', value: 'true' }
+        { name: 'tax_included', value: 'true' },
+        // 🎁 Auditoría regalo: visible en admin Shopify, no afecta lógica Navasoft
+        ...(shouldDeliverGifts ? [{ name: 'gift_included', value: String(giftLineItems.length) + ' item(s)' }] : [])
     ].filter(a => a.value);
 
     const orderBody = {
@@ -2657,7 +2694,7 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             taxes_included: true,
             send_receipt: true,
             send_fulfillment_receipt: true,
-            line_items: [lineItem],
+            line_items: shouldDeliverGifts ? [lineItem, ...giftLineItems] : [lineItem],
             discount_codes: [],
             shipping_lines: [{ title: 'Envío suscripción', price: '10.00', code: '02' }],
             note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF | IGV incluido${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
@@ -2685,6 +2722,35 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
     const result = await r.json();
     const order = result.order;
     console.log(`[SHOPIFY ORDER] ✅ Orden #${order.order_number} creada para ${sub.customer_email} | ${cycleLabel}`);
+
+    // 🎁 Si se entregó el regalo en esta orden, marcar gifts_delivered=true (foto congelada)
+    // para que cobros siguientes NO repitan el regalo. Fallo silencioso: no rompe el return del order.
+    if (shouldDeliverGifts && db?.updateSubscription && sub.id && !String(sub.id).startsWith('orphan_')) {
+        try {
+            await db.updateSubscription(sub.id, {
+                gifts_delivered: true,
+                gifts_delivered_at: new Date().toISOString(),
+                gifts_delivered_order_id: String(order.id),
+                gifts_delivered_order_name: '#' + order.order_number
+            });
+            console.log(`[ORDER] 🎁 Marked gifts_delivered=true for sub ${sub.id} (order #${order.order_number})`);
+        } catch (e) {
+            console.warn('[ORDER] mark gifts_delivered error:', e.message);
+        }
+        if (db.createEvent) {
+            db.createEvent({
+                subscription_id: sub.id,
+                event_type: 'gifts_delivered',
+                metadata: JSON.stringify({
+                    order_number: order.order_number,
+                    order_id: String(order.id),
+                    gifts: sub.gifts_planned || [],
+                    mp_payment_id: mpPaymentId || null
+                })
+            }).catch(() => {});
+        }
+    }
+
     return order;
 }
 
