@@ -201,7 +201,9 @@ async function resolveGiftsForNewSub(frequencyMonths, permanenceMonths, productI
         const appliesMode = plan.gifts.applies_to?.mode || 'all_products';
         if (appliesMode === 'specific_products') {
             const ids = (plan.gifts.applies_to?.product_ids || []).map(String);
-            if (!ids.includes(String(productId))) return null;
+            // Si ids está vacío pero el modo dice 'specific_products' → config UI incompleta,
+            // interpretamos como "aplica a todos" (mejor mostrar el regalo que no mostrarlo).
+            if (ids.length > 0 && !ids.includes(String(productId))) return null;
         }
         return items.map(it => ({
             product_id: String(it.product_id || ''),
@@ -1479,7 +1481,8 @@ app.get('/api/products/:id/config', async (req, res) => {
                     if (match && match.gifts && match.gifts.enabled) {
                         const mode = match.gifts.applies_to?.mode || 'all_products';
                         const ids = (match.gifts.applies_to?.product_ids || []).map(String);
-                        const appliesToThisProduct = mode === 'all_products' || ids.includes(String(id));
+                        // Si mode=specific_products pero ids está vacío → se asume aplicable a todos.
+                        const appliesToThisProduct = mode === 'all_products' || ids.length === 0 || ids.includes(String(id));
                         const items = Array.isArray(match.gifts.items) ? match.gifts.items : [];
                         if (appliesToThisProduct && items.length) {
                             cfg.plans[key].gifts = {
@@ -2891,6 +2894,31 @@ function assertSubShippable(sub) {
     return { ok: true };
 }
 
+/* ── Helper: obtener primary_location_id de la tienda (cache 1h).
+   Shop API no requiere scope read_locations, solo el scope read_shop/orders básico. ── */
+let _primaryLocCache = { id: null, at: 0 };
+async function getPrimaryLocationId() {
+    const now = Date.now();
+    if (_primaryLocCache.id && (now - _primaryLocCache.at) < 3600000) return _primaryLocCache.id;
+    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+    const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+    if (!token) return null;
+    try {
+        const r = await fetch(`https://${shop}/admin/api/2026-01/shop.json`, {
+            headers: { 'X-Shopify-Access-Token': token }
+        });
+        if (!r.ok) { console.warn('[LOC CACHE] shop.json', r.status); return null; }
+        const data = await r.json();
+        const id = data?.shop?.primary_location_id || null;
+        if (id) {
+            _primaryLocCache = { id: parseInt(id, 10), at: now };
+            console.log('[LOC CACHE] primary_location_id =', _primaryLocCache.id, '(cached 1h)');
+            return _primaryLocCache.id;
+        }
+    } catch (e) { console.warn('[LOC CACHE] error:', e.message); }
+    return null;
+}
+
 /* ── Helper: Crear orden en Shopify desde una suscripción ── */
 async function createShopifyOrderFromSub(sub, mpPaymentId) {
     const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
@@ -3025,12 +3053,20 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         ...(shouldDeliverGifts ? [{ name: 'gift_included', value: String(giftLineItems.length) + ' item(s)' }] : [])
     ].filter(a => a.value);
 
-    // 🏬 Hub/tienda que procesará la orden. Navasoft lee location_id para enrutar fulfillment.
-    // Si SHOPIFY_LOCATION_ID no está configurada, Shopify usa la location default de la tienda
-    // (lo cual deja las subs en limbo cuando la default no coincide con el hub de despacho).
-    const hubLocationId = process.env.SHOPIFY_LOCATION_ID
+    // 🏬 Location de inventario: default automático.
+    //    Prioridad:
+    //      1. env var SHOPIFY_LOCATION_ID (override manual explícito).
+    //      2. primary_location_id de la tienda (auto-descubierto vía /admin/api/.../shop.json) — cacheado.
+    //      3. null → Shopify asigna default interno.
+    let hubLocationId = process.env.SHOPIFY_LOCATION_ID
         ? parseInt(process.env.SHOPIFY_LOCATION_ID, 10)
         : null;
+    if (!hubLocationId) {
+        try {
+            const primary = await getPrimaryLocationId().catch(() => null);
+            if (primary && Number.isFinite(primary)) hubLocationId = primary;
+        } catch (_) { /* fallback silencioso — orden sigue con null */ }
+    }
 
     const orderBody = {
         order: {
@@ -3790,6 +3826,9 @@ function getEnvDefaults() {
     return {
         shopify_shop: process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com',
         shopify_access_token: process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken || '',
+        // 🏬 Hub de despacho Navasoft — TODAS las ordenes de suscripcion caen aca, no importa
+        //    la direccion del cliente. Se setea desde el admin (Configuracion → Shopify).
+        shopify_location_id: process.env.SHOPIFY_LOCATION_ID || '',
         mp_access_token: process.env.MP_ACCESS_TOKEN || '',
         mp_public_key: process.env.MP_PUBLIC_KEY || '',
         smtp_host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -3929,6 +3968,8 @@ app.put('/api/settings', async (req, res) => {
         supabase_url: 'SUPABASE_URL',
         supabase_key: 'SUPABASE_SERVICE_KEY',
         shopify_shop: 'SHOPIFY_SHOP',
+        // 🏬 Hub Navasoft — todas las subs caen aca
+        shopify_location_id: 'SHOPIFY_LOCATION_ID',
         smtp_host: 'SMTP_HOST', smtp_port: 'SMTP_PORT',
         smtp_user: 'SMTP_USER', smtp_pass: 'SMTP_PASS', email_from: 'EMAIL_FROM',
         // Resend (HTTP API — alternativa a SMTP, necesaria en Railway)
