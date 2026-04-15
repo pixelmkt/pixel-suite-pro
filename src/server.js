@@ -1394,6 +1394,44 @@ app.get('/api/products/:id/config', async (req, res) => {
         // OLD format: settings[id] (saved by server versions before v6.0.0)
         const oldFmt = (typeof settings[id] === 'object' && settings[id]?.plans) ? settings[id] : null;
         const cfg = newFmt[id] || oldFmt || {};
+
+        // 🎁 Enrich planes con info de regalo aplicable (sin tocar la estructura base)
+        // Para cada plan (matcheado por freq+perm), buscamos en plans_config si hay gifts
+        // y si aplican a este product_id. Devolvemos un resumen legible para el widget.
+        try {
+            const plansCfg = Array.isArray(settings.plans_config) ? settings.plans_config : [];
+            if (cfg.plans && typeof cfg.plans === 'object' && plansCfg.length) {
+                Object.keys(cfg.plans).forEach((key) => {
+                    const p = cfg.plans[key] || {};
+                    const freq = Number(p.frequency || p.freq_months);
+                    const perm = Number(p.permanence || p.permanence_months);
+                    const match = plansCfg.find(pc =>
+                        pc && pc.active !== false &&
+                        Number(pc.frequency || pc.freq_months) === freq &&
+                        Number(pc.permanence || pc.permanence_months) === perm
+                    );
+                    if (match && match.gifts && match.gifts.enabled) {
+                        const mode = match.gifts.applies_to?.mode || 'all_products';
+                        const ids = (match.gifts.applies_to?.product_ids || []).map(String);
+                        const appliesToThisProduct = mode === 'all_products' || ids.includes(String(id));
+                        const items = Array.isArray(match.gifts.items) ? match.gifts.items : [];
+                        if (appliesToThisProduct && items.length) {
+                            cfg.plans[key].gifts = {
+                                enabled: true,
+                                // Resumen legible para chip del widget — no exponemos IDs internos
+                                summary: items.map(it => ({
+                                    title: it.product_title || '',
+                                    variant_title: it.variant_title || '',
+                                    quantity: Math.max(1, parseInt(it.quantity, 10) || 1),
+                                    image: it.image || null
+                                })).filter(it => it.title)
+                            };
+                        }
+                    }
+                });
+            }
+        } catch (e) { console.warn('[PRODUCT CFG GIFTS]', e.message); /* fallo silencioso */ }
+
         res.json(cfg);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
