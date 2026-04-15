@@ -102,7 +102,8 @@
       </div>
       <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:12px;color:#166534;text-align:center;line-height:1.5">
         📦 <strong>Recibes 1 Creatina Monohidratada 500g cada mes</strong><br>
-        <span style="font-size:11px;color:#15803d">Se cobra automáticamente a tu tarjeta cada mes + S/10 de envío</span>
+        <span style="font-size:11px;color:#15803d">Se cobra automáticamente a tu tarjeta cada mes + S/10 de envío</span><br>
+        <span style="font-size:10px;color:#16a34a;font-weight:600">✓ Todos los precios incluyen IGV</span>
       </div>
 
       {% if block.settings.show_benefit_box %}
@@ -158,13 +159,13 @@
         <div style="font-size:19px;font-weight:900;margin-bottom:4px" id="modal-title-{{ block.id }}">Suscripción mensual</div>
         <div style="font-size:13px;color:#666;margin-bottom:6px">{{ product.title }} — 500g</div>
         <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:11px;color:#9a3412;line-height:1.5;text-align:center">
-          <strong>Cada mes</strong> se cobra automáticamente a tu tarjeta y recibes <strong>1 unidad</strong> de {{ product.title }} 500g en tu dirección. El precio mostrado es <strong>por unidad mensual</strong> + S/10 de envío.
+          <strong>Cada mes</strong> se cobra automáticamente a tu tarjeta y recibes <strong>1 unidad</strong> de {{ product.title }} 500g en tu dirección. El precio mostrado es <strong>por unidad mensual</strong> + S/10 de envío. <strong>Todos los precios incluyen IGV.</strong>
         </div>
         <div style="background:#f8f8f8;border-radius:8px;padding:14px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.8px">Cobro mensual (1 unidad)</div>
             <div style="font-size:22px;font-weight:900;margin-top:2px" id="modal-price-{{ block.id }}"></div>
-            <div style="font-size:10px;color:#888;margin-top:2px">+ S/10.00 envío</div>
+            <div style="font-size:10px;color:#888;margin-top:2px">+ S/10.00 envío · IGV incluido</div>
           </div>
           <div style="text-align:right">
             <div id="modal-disc-{{ block.id }}" style="background:#9d2a23;color:#fff;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:800"></div>
@@ -226,7 +227,7 @@
             <span>Términos y Condiciones de Suscripción</span>
           </div>
           <div id="lab-tc-body-{{ block.id }}" style="display:none;background:#fafafa;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;font-size:11px;color:#555;line-height:1.6;max-height:200px;overflow-y:auto">
-            {% if block.settings.tc_text != blank and block.settings.tc_text != 'Ver términos completos en labnutrition.pe' %}{{ block.settings.tc_text | newline_to_br }}{% else %}<strong>T&C — SUSCRIPCIÓN LAB NUTRITION</strong><br><br><strong>1. SERVICIO:</strong> Recibes 1 unidad del producto cada mes. Cada mes se cobra automáticamente a tu tarjeta y se despacha 1 unidad a tu dirección. NO es un pago único: es un cobro mensual recurrente por 1 unidad cada vez.<br><br><strong>2. COBRO MENSUAL:</strong> El monto cobrado cada mes incluye el precio del producto con descuento + envío. Se repite automáticamente cada mes durante tu permanencia.<br><br><strong>3. PERMANENCIA:</strong> El descuento es exclusivo por tu compromiso de permanencia (3 o 6 meses). Sin permanencia no hay descuento. Al aceptar, te comprometes a mantener la suscripción activa durante todo el período elegido.<br><br><strong>4. ENVÍOS:</strong> Cada cobro exitoso genera un pedido que se despacha a tu dirección. Para cambios de dirección, solicítalo con 5 días de anticipación al próximo cobro.<br><br><strong>5. CANCELACIÓN:</strong> Puedes cancelar una vez cumplida tu permanencia. Cancelar antes implica la pérdida del descuento. Contacta por WhatsApp o email.<br><br><strong>6. PAGOS:</strong> Procesados por Mercado Pago. LAB NUTRITION no almacena datos de tu tarjeta.<br><br><strong>7. DATOS PERSONALES:</strong> Tus datos se usan solo para gestionar tu suscripción y envíos. No se comparten con terceros.<br><br><strong>CONTACTO:</strong> contacto@labnutrition.pe{% endif %}
+            {% if block.settings.tc_text != blank and block.settings.tc_text != 'Ver términos completos en labnutrition.pe' %}{{ block.settings.tc_text | newline_to_br }}{% else %}<strong>TÉRMINOS Y CONDICIONES — CLUB BLACK DIAMOND (LAB NUTRITION)</strong><br><span style="color:#999;font-size:10px">Versión 1.0 · Vigente desde abril 2026 · Ley 29571 Perú</span><br><br><strong>1. SERVICIO.</strong> Club Black Diamond es un programa de suscripción de LAB NUTRITION. Recibes 1 unidad del producto cada mes en tu domicilio. El cobro es AUTOMÁTICO y RECURRENTE cada mes mediante Mercado Pago PreApproval. No es un pago único.<br><br><strong>2. PRECIOS E IGV.</strong> Todos los precios mostrados INCLUYEN IGV (Ley 29571 Art. 5.4). El cobro mensual es: precio del producto con descuento + S/10 de envío. En Soles peruanos (PEN).<br><br><strong>3. PLANES Y DESCUENTOS.</strong><br>• <strong>Plan 3 meses (40% OFF):</strong> compromiso de permanencia mínima 3 cobros mensuales.<br>• <strong>Plan 6 meses (50% OFF):</strong> compromiso de permanencia mínima 6 cobros mensuales.<br>El descuento es EXCLUSIVO por tu compromiso de permanencia. Sin permanencia no hay descuento.<br><br><strong>4. DERECHO DE RETRACTO (Art. 58 Ley 29571).</strong> Tienes 7 días calendario desde el primer cobro para cancelar sin penalidad, SIEMPRE que el producto no haya sido abierto ni consumido. Escribe a <strong>club@labnutrition.pe</strong> dentro de los 7 días.<br><br><strong>5. CANCELACIÓN ANTICIPADA (durante permanencia).</strong> Si cancelas antes de cumplir los meses comprometidos, se aplica un reintegro del descuento ya otorgado, calculado así:<br>• Plan 40%: reintegro = (precio regular − precio suscripción) × meses entregados<br>• Plan 50%: igual fórmula<br>El reintegro NUNCA excede el descuento recibido. Se cobra vía Mercado Pago al confirmar la cancelación. Esto NO es una multa: es la devolución del beneficio otorgado por un compromiso que no se cumplió.<br><br><strong>6. CANCELACIÓN TRAS CUMPLIR PERMANENCIA.</strong> Libre y sin penalidad desde tu portal de cliente o escribiendo a club@labnutrition.pe. Efectiva antes del siguiente ciclo de cobro.<br><br><strong>7. VENTANA DE CANCELACIÓN.</strong> Por logística, la cancelación se procesa entre 30 y 15 días ANTES de cada cobro mensual. Fuera de esa ventana se aplica al siguiente ciclo.<br><br><strong>8. PAUSA.</strong> Puedes pausar hasta 2 meses consecutivos desde tu portal. La permanencia se congela durante la pausa.<br><br><strong>9. ENVÍOS.</strong> Despacho vía Urbaner (Lima) o courier correspondiente (provincias). 1-3 días hábiles desde el cobro. Cambios de dirección: solicitar mínimo 5 días antes del próximo cobro.<br><br><strong>10. STOCK.</strong> Si el producto está agotado, notificaremos y podrás: (a) esperar, (b) sustituir por equivalente, (c) cancelar ese ciclo sin penalidad.<br><br><strong>11. MODIFICACIÓN DE PRECIOS.</strong> Con aviso mínimo de 30 días. Si no aceptas el nuevo precio, puedes cancelar sin penalidad en ese plazo.<br><br><strong>12. PAGOS Y DATOS DE TARJETA.</strong> Procesados 100% por Mercado Pago. LAB NUTRITION NO almacena ni tiene acceso a tu número de tarjeta.<br><br><strong>13. DATOS PERSONALES (Ley 29733).</strong> Recopilamos: nombre, DNI, email, dirección, teléfono, historial de compra. Uso exclusivo para gestionar tu suscripción. No se comparten con terceros.<br><br><strong>14. RESOLUCIÓN DE CONTROVERSIAS.</strong> Contacto: club@labnutrition.pe · Libro de Reclamaciones en labnutrition.pe/reclamaciones · INDECOPI: consumidor.gob.pe<br><br><strong>15. JURISDICCIÓN.</strong> Ley peruana. Tribunales de Lima competentes.<br><br><span style="color:#999;font-size:10px">Al marcar la casilla de aceptación, declaras haber leído y aceptado estos términos. Se registrará la fecha, hora y versión del documento aceptado como evidencia legal.</span>{% endif %}
           </div>
           <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;cursor:pointer">
             <input type="checkbox" id="lab-tc-check-{{ block.id }}" style="margin-top:2px;accent-color:#9d2a23;width:16px;height:16px;flex-shrink:0">
@@ -454,7 +455,10 @@
       enabledPlans.forEach(function(plan, i) {
         var key = plan.key;
         var label = plan.label || ((plan.frequency === 1 ? 'Mensual' : 'Cada ' + plan.frequency + 'm') + ' · ' + plan.permanence + ' meses');
-        chipsHtml += '<button class="lab-sub__chip' + (i === 0 ? ' lab-sub__chip--active' : '') + '" data-plan-key="' + key + '">' + label + '</button>';
+        // 🎁 Badge si este plan trae regalo para este producto
+        var hasGift = plan.gifts && plan.gifts.enabled && plan.gifts.summary && plan.gifts.summary.length > 0;
+        var giftBadge = hasGift ? '<span style="display:inline-block;margin-left:6px;background:#E30613;color:#fff;font-size:9px;font-weight:900;padding:2px 6px;border-radius:10px;letter-spacing:.5px;vertical-align:middle">🎁 REGALO</span>' : '';
+        chipsHtml += '<button class="lab-sub__chip' + (i === 0 ? ' lab-sub__chip--active' : '') + '" data-plan-key="' + key + '">' + label + giftBadge + '</button>';
       });
       chipsHtml += '</div></div>';
 
@@ -466,6 +470,16 @@
         '<div class="lab-sub__prices"><span class="lab-sub__was" id="was-' + blkId + '"></span><span class="lab-sub__now" id="now-' + blkId + '"></span></div>' +
         '</div><div class="lab-sub__saving" id="saving-' + blkId + '"></div></div>';
       {% endif %}
+
+      // 🎁 Gift box (si el plan seleccionado trae regalo). Escondido por default; renderSelectedPlan lo llena.
+      chipsHtml += '<div id="gift-' + blkId + '" style="display:none;margin:10px 0;padding:12px 14px;background:linear-gradient(135deg,#fff8e1,#fff1c7);border:1.5px solid #f2c94c;border-radius:10px;position:relative;overflow:hidden">' +
+        '<div style="position:absolute;top:-8px;right:-8px;background:#E30613;color:#fff;font-size:10px;font-weight:900;padding:3px 10px;border-radius:0 0 0 8px;letter-spacing:1px">REGALO</div>' +
+        '<div style="display:flex;gap:10px;align-items:center">' +
+        '<div id="gift-img-' + blkId + '" style="width:48px;height:48px;border-radius:8px;background:#fff;flex-shrink:0;border:1px solid #e8d88c;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:22px">🎁</div>' +
+        '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:11px;font-weight:800;color:#8B6914;letter-spacing:.8px;text-transform:uppercase;margin-bottom:2px">Tu primer envío incluye</div>' +
+        '<div id="gift-title-' + blkId + '" style="font-size:13px;font-weight:700;color:#4A3100;line-height:1.3">—</div>' +
+        '</div></div></div>';
 
       // Perks
       {% if block.settings.show_perks %}
@@ -532,6 +546,31 @@
       if (wasEl) wasEl.textContent = rawDisc > 0 ? cur + ' ' + base.toFixed(2) : '';
       if (savEl) savEl.textContent = rawDisc > 0 ? 'Ahorras ' + cur + ' ' + saving + ' cada mes (1 unidad)' : '';
       if (ctaTxt) ctaTxt.textContent = 'Suscribirme — ' + displayDisc + '% OFF →';
+
+      // 🎁 Render gift box if plan has gift
+      var giftBox = document.getElementById('gift-' + blkId);
+      var giftTitle = document.getElementById('gift-title-' + blkId);
+      var giftImg = document.getElementById('gift-img-' + blkId);
+      if (giftBox && plan && plan.gifts && plan.gifts.enabled && plan.gifts.summary && plan.gifts.summary.length) {
+        var items = plan.gifts.summary;
+        // Texto: "Shaker Black Diamond" o "Shaker + Shirt" si hay varios
+        var txt = items.map(function(it) {
+          var q = it.quantity > 1 ? (it.quantity + '× ') : '';
+          var vt = it.variant_title && it.variant_title !== 'Default Title' ? ' (' + it.variant_title + ')' : '';
+          return q + it.title + vt;
+        }).join(' + ');
+        giftTitle.textContent = txt;
+        // Primer imagen si tiene
+        var img = items[0].image;
+        if (img) {
+          giftImg.innerHTML = '<img src="' + img + '" alt="regalo" style="width:100%;height:100%;object-fit:cover">';
+        } else {
+          giftImg.innerHTML = '🎁';
+        }
+        giftBox.style.display = 'block';
+      } else if (giftBox) {
+        giftBox.style.display = 'none';
+      }
     }
 
     function loadConfig() {
@@ -684,7 +723,10 @@
             frequency_months: currentFreq,
             permanence_months: currentPerm,
             free_shipping: false,
-            shipping_address: shippingAddress
+            shipping_address: shippingAddress,
+            tc_accepted: true,
+            tc_version: '1.0',
+            tc_accepted_at: new Date().toISOString()
           })
         })
         .then(function(r) { return r.json(); })
