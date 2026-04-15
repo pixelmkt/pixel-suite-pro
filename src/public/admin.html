@@ -993,24 +993,6 @@
                   </div>
                 </div>
 
-                <div style="border-top:1px dashed var(--bdr);padding-top:12px;margin-top:4px">
-                  <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">🎨 Bloques de diseño (clic para insertar)</label>
-                  <div id="ml-blocks" style="display:flex;flex-wrap:wrap;gap:6px">
-                    <button type="button" onclick="mlLoadBlocks()" class="btn btn-sm" style="background:#0A0A0A;color:#fff;border:none;padding:6px 12px;font-size:11px;cursor:pointer;border-radius:5px">Cargar bloques</button>
-                  </div>
-                </div>
-
-                <div style="border-top:1px dashed var(--bdr);padding-top:12px;margin-top:4px">
-                  <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px">🛒 Insertar producto con plan</label>
-                  <div style="display:flex;gap:6px">
-                    <select id="ml-product-picker" style="flex:1;border:1.5px solid var(--bdr);border-radius:7px;padding:7px 10px;font-size:12px;background:#fff">
-                      <option value="">— Elige producto —</option>
-                    </select>
-                    <button type="button" onclick="mlInsertProductCard()" class="btn btn-sm" style="background:#E30613;color:#fff;border:none;padding:6px 14px;font-size:11px;cursor:pointer;border-radius:5px;white-space:nowrap">Insertar</button>
-                    <button type="button" onclick="mlLoadProducts()" class="btn btn-sm" style="background:#f3f4f6;border:1px solid var(--bdr);padding:6px 10px;font-size:11px;cursor:pointer;border-radius:5px">↻</button>
-                  </div>
-                  <div id="ml-product-hint" style="font-size:10px;color:var(--mut);margin-top:4px">Pulsa ↻ para cargar productos con planes activos</div>
-                </div>
               </div>
             </div>
 
@@ -1039,6 +1021,67 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- HISTORIAL DE CAMPA&Ntilde;AS + ATRIBUCI&Oacute;N -->
+        <div class="card" style="margin-top:18px">
+          <div class="card-head" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+            <div>
+              <div class="card-title">&#128236; Historial de campa&ntilde;as</div>
+              <div style="font-size:11px;color:var(--mut);margin-top:2px">Ventas atribuidas dentro de los 14 d&iacute;as posteriores al env&iacute;o</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <select id="cmp-window" onchange="mlLoadCampaigns()" style="border:1.5px solid var(--bdr);border-radius:7px;padding:6px 10px;font-size:12px;background:#fff">
+                <option value="7">Ventana 7 d&iacute;as</option>
+                <option value="14" selected>Ventana 14 d&iacute;as</option>
+                <option value="30">Ventana 30 d&iacute;as</option>
+              </select>
+              <button onclick="mlLoadCampaigns()" class="btn btn-sm" style="background:#f3f4f6;border:1px solid var(--bdr);padding:6px 12px;font-size:11px;cursor:pointer;border-radius:5px">&#8635; Recargar</button>
+            </div>
+          </div>
+          <div style="padding:0">
+            <div id="cmp-summary" style="display:flex;gap:10px;padding:14px 18px;border-bottom:1px solid var(--bdr);flex-wrap:wrap"></div>
+            <div id="cmp-table-wrap" style="overflow-x:auto">
+              <table id="cmp-table" style="width:100%;border-collapse:collapse;font-size:12px">
+                <thead>
+                  <tr style="background:#fafafa;border-bottom:1px solid var(--bdr)">
+                    <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--mut);font-size:10px;text-transform:uppercase;letter-spacing:.8px">Fecha</th>
+                    <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--mut);font-size:10px;text-transform:uppercase;letter-spacing:.8px">Asunto</th>
+                    <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--mut);font-size:10px;text-transform:uppercase;letter-spacing:.8px">Segmento</th>
+                    <th style="padding:10px 14px;text-align:right;font-weight:700;color:var(--mut);font-size:10px;text-transform:uppercase;letter-spacing:.8px">Enviados</th>
+                    <th style="padding:10px 14px;text-align:right;font-weight:700;color:var(--mut);font-size:10px;text-transform:uppercase;letter-spacing:.8px">Conversiones</th>
+                    <th style="padding:10px 14px;text-align:right;font-weight:700;color:var(--mut);font-size:10px;text-transform:uppercase;letter-spacing:.8px">Ingresos</th>
+                    <th style="padding:10px 14px;text-align:right;font-weight:700;color:var(--mut);font-size:10px;text-transform:uppercase;letter-spacing:.8px">Tasa</th>
+                  </tr>
+                </thead>
+                <tbody id="cmp-tbody">
+                  <tr><td colspan="7" style="padding:30px;text-align:center;color:var(--mut)">Cargando&hellip;</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MODAL DETALLE DE CAMPA&Ntilde;A -->
+    <div id="cmp-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;padding:20px">
+      <div style="background:#fff;border-radius:14px;max-width:860px;width:100%;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+        <div style="padding:18px 24px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;background:#0A0A0A;color:#fff">
+          <div>
+            <div style="font-size:10px;color:#E30613;font-weight:800;letter-spacing:2px">CAMPA&Ntilde;A</div>
+            <div id="cmp-modal-subject" style="font-size:17px;font-weight:800;margin-top:4px">&mdash;</div>
+            <div id="cmp-modal-meta" style="font-size:11px;color:#999;margin-top:4px">&mdash;</div>
+          </div>
+          <button onclick="mlCloseDetail()" style="background:transparent;border:1px solid #444;color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px">Cerrar</button>
+        </div>
+        <div style="padding:18px 24px;overflow-y:auto;flex:1">
+          <div id="cmp-modal-stats" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"></div>
+          <div style="font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">&#128640; Convertidos</div>
+          <div id="cmp-modal-conversions" style="border:1px solid var(--bdr);border-radius:8px;overflow:hidden"></div>
+          <div style="font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;margin:16px 0 8px">&#128100; Audiencia completa (<span id="cmp-modal-audience-count">0</span>)</div>
+          <div id="cmp-modal-audience" style="max-height:220px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;padding:10px;font-family:monospace;font-size:11px;background:#fafafa"></div>
         </div>
       </div>
     </div>
@@ -2004,12 +2047,10 @@
     let _mlPreviewTimer = null;
 
     async function loadRemarketing() {
-      // Entry point para el tab — carga audiencia inicial + preview
+      // Entry point para el tab — carga audiencia inicial + preview + historial
       await mlRefreshAudience();
       mlRefreshPreview();
-      // Pre-cargar bloques de diseño y productos (silencioso — no bloquea UI si fallan)
-      try { await mlLoadBlocks(); } catch {}
-      try { await mlLoadProducts(); } catch {}
+      try { await mlLoadCampaigns(); } catch (e) { console.warn('[campaigns]', e); }
     }
 
     async function mlRefreshAudience() {
@@ -2249,69 +2290,121 @@
       }
     }
 
-    // ──── MARKETING EXTENSIONES (bloques diseño + productos) ────
-    let _mlBlocks = [], _mlProducts = [];
+    // ──── HISTORIAL DE CAMPAÑAS + ATRIBUCIÓN ────
+    let _cmpCache = [];
 
-    async function mlLoadBlocks() {
+    async function mlLoadCampaigns() {
+      const tbody = document.getElementById('cmp-tbody');
+      const summary = document.getElementById('cmp-summary');
+      if (!tbody) return;
+      const windowDays = document.getElementById('cmp-window')?.value || 14;
+      tbody.innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--mut)">Cargando…</td></tr>';
       try {
-        const d = await api('/api/marketing/design-blocks');
-        _mlBlocks = d.blocks || [];
-        const wrap = document.getElementById('ml-blocks');
-        wrap.innerHTML = _mlBlocks.map((b, i) =>
-          '<button type="button" onclick="mlInsertBlock(' + i + ')" class="btn btn-sm" style="background:linear-gradient(135deg,#0A0A0A,#1a1a1a);color:#E30613;border:1px solid #333;padding:6px 12px;font-size:11px;cursor:pointer;border-radius:5px;font-weight:700">🎨 ' + b.name + '</button>'
+        const d = await api('/api/mailing/campaigns?window_days=' + windowDays);
+        _cmpCache = d.campaigns || [];
+        if (!_cmpCache.length) {
+          tbody.innerHTML = '<tr><td colspan="7" style="padding:40px;text-align:center;color:var(--mut)">Aún no enviaste ninguna campaña. Cuando envíes una, aparecerá acá con sus métricas.</td></tr>';
+          summary.innerHTML = '';
+          return;
+        }
+        // Resumen totales
+        const totSent = _cmpCache.reduce((n, c) => n + (c.sent || 0), 0);
+        const totConv = _cmpCache.reduce((n, c) => n + (c.converted || 0), 0);
+        const totRev = _cmpCache.reduce((n, c) => n + (c.revenue || 0), 0);
+        const avgRate = totSent > 0 ? Math.round((totConv / totSent) * 1000) / 10 : 0;
+        summary.innerHTML = [
+          { label: 'Campañas', value: _cmpCache.length, color: '#0A0A0A' },
+          { label: 'Enviados totales', value: totSent.toLocaleString('es-PE'), color: '#0A0A0A' },
+          { label: 'Conversiones', value: totConv, color: '#10b981' },
+          { label: 'Ingresos atribuidos', value: 'S/ ' + totRev.toLocaleString('es-PE', { minimumFractionDigits: 2 }), color: '#E30613' },
+          { label: 'Tasa conversión', value: avgRate + '%', color: '#0A0A0A' }
+        ].map(s =>
+          '<div style="flex:1;min-width:130px;padding:10px 12px;background:#fafafa;border:1px solid var(--bdr);border-radius:8px">' +
+          '<div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;font-weight:700">' + s.label + '</div>' +
+          '<div style="font-size:18px;font-weight:800;color:' + s.color + ';margin-top:2px">' + s.value + '</div>' +
+          '</div>'
         ).join('');
-      } catch (e) { toast('Error cargando bloques: ' + e.message, 'err'); }
+        // Tabla
+        tbody.innerHTML = _cmpCache.map(c => {
+          const fecha = new Date(c.created_at).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' });
+          const subj = (c.subject || '').replace(/</g, '&lt;').slice(0, 60);
+          const segLabel = { active: 'Activos', paused: 'Pausados', cancelled: 'Cancelados', all_subs: 'Todos', payment_incomplete: 'Pago incompleto', payment_pending: 'Pago pendiente', any_attempt: 'Cualquier intento' }[c.segment] || c.segment;
+          return '<tr onclick="mlOpenDetail(\'' + c.id + '\')" style="border-bottom:1px solid var(--bdr);cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'#fafafa\'" onmouseout="this.style.background=\'\'">' +
+            '<td style="padding:10px 14px;color:var(--mut);white-space:nowrap">' + fecha + '</td>' +
+            '<td style="padding:10px 14px;font-weight:600">' + subj + '</td>' +
+            '<td style="padding:10px 14px"><span style="background:#f3f4f6;padding:3px 8px;border-radius:100px;font-size:11px">' + segLabel + '</span></td>' +
+            '<td style="padding:10px 14px;text-align:right;font-weight:700">' + c.sent + ' / ' + c.total + '</td>' +
+            '<td style="padding:10px 14px;text-align:right;font-weight:800;color:' + (c.converted > 0 ? '#10b981' : 'var(--mut)') + '">' + c.converted + '</td>' +
+            '<td style="padding:10px 14px;text-align:right;font-weight:800;color:#E30613">S/ ' + (c.revenue || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 }) + '</td>' +
+            '<td style="padding:10px 14px;text-align:right;color:var(--mut)">' + c.conversion_rate + '%</td>' +
+            '</tr>';
+        }).join('');
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center;color:#E30613">Error: ' + e.message + '</td></tr>';
+      }
     }
 
-    function mlInsertBlock(idx) {
-      const b = _mlBlocks[idx];
-      if (!b) return;
-      const ta = document.getElementById('ml-body');
-      const pos = ta.selectionStart || ta.value.length;
-      const before = ta.value.slice(0, pos), after = ta.value.slice(pos);
-      ta.value = before + '\n' + b.html + '\n' + after;
-      ta.focus();
-      mlRefreshPreview();
-    }
-
-    async function mlLoadProducts() {
-      const hint = document.getElementById('ml-product-hint');
-      hint.textContent = 'Cargando productos…';
+    async function mlOpenDetail(campaignId) {
+      const modal = document.getElementById('cmp-modal');
+      modal.style.display = 'flex';
+      document.getElementById('cmp-modal-subject').textContent = '…';
+      document.getElementById('cmp-modal-meta').textContent = '…';
+      document.getElementById('cmp-modal-stats').innerHTML = '<div style="padding:20px;color:var(--mut)">Cargando…</div>';
+      document.getElementById('cmp-modal-conversions').innerHTML = '';
+      document.getElementById('cmp-modal-audience').innerHTML = '';
+      const windowDays = document.getElementById('cmp-window')?.value || 14;
       try {
-        const d = await api('/api/marketing/products-with-plans');
-        _mlProducts = d.products || [];
-        const sel = document.getElementById('ml-product-picker');
-        sel.innerHTML = '<option value="">— Elige producto —</option>' + _mlProducts.map((p, i) =>
-          '<option value="' + i + '">' + p.title + ' (' + (p.plans?.length || 0) + ' planes)</option>'
+        const d = await api('/api/mailing/campaigns/' + encodeURIComponent(campaignId) + '?window_days=' + windowDays);
+        document.getElementById('cmp-modal-subject').textContent = d.subject;
+        document.getElementById('cmp-modal-meta').textContent =
+          new Date(d.created_at).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' }) +
+          ' · segmento ' + d.segment + ' · ventana ' + d.window_days + 'd';
+        document.getElementById('cmp-modal-stats').innerHTML = [
+          { l: 'Enviados', v: d.sent + '/' + d.total, c: '#0A0A0A' },
+          { l: 'Fallidos', v: d.failed, c: d.failed > 0 ? '#E30613' : 'var(--mut)' },
+          { l: 'Conversiones', v: d.converted, c: d.converted > 0 ? '#10b981' : 'var(--mut)' },
+          { l: 'Ingresos', v: 'S/ ' + (d.revenue || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 }), c: '#E30613' },
+          { l: 'Tasa', v: d.conversion_rate + '%', c: '#0A0A0A' }
+        ].map(s =>
+          '<div style="flex:1;min-width:120px;padding:10px;background:#fafafa;border:1px solid var(--bdr);border-radius:8px">' +
+          '<div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;font-weight:700">' + s.l + '</div>' +
+          '<div style="font-size:17px;font-weight:800;color:' + s.c + ';margin-top:2px">' + s.v + '</div>' +
+          '</div>'
         ).join('');
-        hint.textContent = _mlProducts.length + ' productos con planes cargados';
-      } catch (e) { hint.textContent = 'Error: ' + e.message; }
+        // conversiones
+        const convs = d.conversions || [];
+        if (!convs.length) {
+          document.getElementById('cmp-modal-conversions').innerHTML = '<div style="padding:20px;text-align:center;color:var(--mut);font-size:12px">Sin conversiones atribuidas en esta ventana</div>';
+        } else {
+          document.getElementById('cmp-modal-conversions').innerHTML =
+            '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#fafafa;border-bottom:1px solid var(--bdr)">' +
+            '<th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Cliente</th>' +
+            '<th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Producto</th>' +
+            '<th style="padding:8px 12px;text-align:right;font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Precio</th>' +
+            '<th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Convertido</th>' +
+            '</tr></thead><tbody>' +
+            convs.map(c =>
+              '<tr style="border-bottom:1px solid var(--bdr)">' +
+              '<td style="padding:8px 12px"><div style="font-weight:600">' + (c.name || '—') + '</div><div style="font-size:10px;color:var(--mut)">' + c.email + '</div></td>' +
+              '<td style="padding:8px 12px">' + (c.product || '—') + '</td>' +
+              '<td style="padding:8px 12px;text-align:right;font-weight:700;color:#E30613">S/ ' + (c.price || 0).toFixed(2) + '</td>' +
+              '<td style="padding:8px 12px;color:var(--mut);font-size:11px">' + new Date(c.converted_at).toLocaleDateString('es-PE') + '</td>' +
+              '</tr>'
+            ).join('') + '</tbody></table>';
+        }
+        // audiencia completa
+        const aud = d.audience_emails || [];
+        document.getElementById('cmp-modal-audience-count').textContent = aud.length;
+        document.getElementById('cmp-modal-audience').innerHTML = aud.length
+          ? aud.join(', ')
+          : '<span style="color:var(--mut)">Sin audiencia registrada (campaña antigua)</span>';
+      } catch (e) {
+        document.getElementById('cmp-modal-stats').innerHTML = '<div style="padding:20px;color:#E30613">Error: ' + e.message + '</div>';
+      }
     }
 
-    function mlInsertProductCard() {
-      const sel = document.getElementById('ml-product-picker');
-      const idx = parseInt(sel.value);
-      if (isNaN(idx)) { toast('Elige un producto primero', 'err'); return; }
-      const p = _mlProducts[idx];
-      if (!p) return;
-      const bestPlan = (p.plans || []).sort((a, b) => (b.discount_pct || 0) - (a.discount_pct || 0))[0];
-      const disc = bestPlan ? Math.round(bestPlan.discount_pct || 0) : 30;
-      const freq = bestPlan ? (bestPlan.frequency_months === 1 ? 'mensual' : 'cada ' + bestPlan.frequency_months + ' meses') : 'mensual';
-      const perm = bestPlan ? bestPlan.permanence_months : 6;
-      const html = '<div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:12px;padding:18px;margin:16px 0">\n' +
-        (p.image ? '<img src="' + p.image + '" alt="' + p.title + '" style="width:100%;max-width:160px;height:auto;border-radius:8px;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto">\n' : '') +
-        '<div style="font-size:10px;color:#E30613;font-weight:800;letter-spacing:1.5px;margin-bottom:6px;text-align:center">⚡ SUSCRIPCIÓN BLACK DIAMOND</div>\n' +
-        '<div style="font-size:16px;font-weight:800;color:#0A0A0A;margin-bottom:8px;text-align:center">' + p.title + '</div>\n' +
-        '<div style="text-align:center;margin:10px 0"><span style="display:inline-block;background:#0A0A0A;color:#E30613;padding:6px 14px;border-radius:100px;font-weight:900;font-size:12px;letter-spacing:2px">' + disc + '% OFF ' + freq.toUpperCase() + '</span></div>\n' +
-        '<div style="text-align:center;color:#666;font-size:12px;margin-top:8px">Permanencia: ' + perm + ' meses · Envío gratis incluido</div>\n' +
-        '<div style="text-align:center;margin-top:14px"><a href="https://labnutrition.pe" style="display:inline-block;background:#E30613;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:800;font-size:13px">SUSCRIBIRME →</a></div>\n' +
-        '</div>';
-      const ta = document.getElementById('ml-body');
-      const pos = ta.selectionStart || ta.value.length;
-      const before = ta.value.slice(0, pos), after = ta.value.slice(pos);
-      ta.value = before + '\n' + html + '\n' + after;
-      ta.focus();
-      mlRefreshPreview();
+    function mlCloseDetail() {
+      document.getElementById('cmp-modal').style.display = 'none';
     }
 
     // ──── AUTOMATIZACIONES (emails transaccionales editables) ────

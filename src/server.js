@@ -3129,14 +3129,152 @@ app.post('/api/mailing/send', async (req, res) => {
             }));
             if (i + 10 < audience.length) await new Promise(r => setTimeout(r, 500));
         }
+        const campaign_id = 'cmp_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
         if (db && db.createEvent) {
             await db.createEvent({
                 subscription_id: 'campaign', event_type: 'mailing_sent',
-                metadata: JSON.stringify({ subject, segment, total: audience.length, sent, failed })
+                metadata: JSON.stringify({
+                    campaign_id,
+                    subject,
+                    segment,
+                    header_title: headerTitle,
+                    total: audience.length,
+                    sent,
+                    failed,
+                    // Guardamos emails y IDs para atribución posterior (los emails son
+                    // los destinatarios, los IDs sirven para trackear conversiones)
+                    audience_emails: audience.map(s => (s.customer_email || '').toLowerCase()).filter(Boolean),
+                    audience_sub_ids: audience.map(s => s.id).filter(Boolean),
+                    sent_at: new Date().toISOString(),
+                })
             }).catch(() => {});
         }
-        res.json({ success: true, segment, total: audience.length, sent, failed, errors });
+        res.json({ success: true, campaign_id, segment, total: audience.length, sent, failed, errors });
     } catch (e) { console.error('[MAILING]', e); res.status(500).json({ error: e.message }); }
+});
+
+/* ═══════════════════════════════════════════════
+   📬 HISTORIAL DE CAMPAÑAS + ATRIBUCIÓN DE VENTAS
+═══════════════════════════════════════════════ */
+
+// Helper: lee eventos de tipo mailing_sent y los normaliza
+async function _readMailingEvents(limit = 50) {
+    if (!db || !db.getEvents) return [];
+    try {
+        // db.getEvents admite filtro por subscription_id — usamos 'campaign' para pseudo-ID de campañas
+        const all = await db.getEvents('campaign').catch(() => []);
+        const mailings = (Array.isArray(all) ? all : [])
+            .filter(ev => ev && ev.event_type === 'mailing_sent')
+            .map(ev => {
+                let m = {};
+                try { m = typeof ev.metadata === 'string' ? JSON.parse(ev.metadata) : (ev.metadata || {}); } catch { m = {}; }
+                return {
+                    id: m.campaign_id || ev.id,
+                    event_id: ev.id,
+                    created_at: m.sent_at || ev.created_at,
+                    subject: m.subject || '(sin asunto)',
+                    segment: m.segment || '',
+                    header_title: m.header_title || '',
+                    total: Number(m.total || 0),
+                    sent: Number(m.sent || 0),
+                    failed: Number(m.failed || 0),
+                    audience_emails: Array.isArray(m.audience_emails) ? m.audience_emails : [],
+                    audience_sub_ids: Array.isArray(m.audience_sub_ids) ? m.audience_sub_ids : [],
+                };
+            })
+            .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+        return mailings.slice(0, limit);
+    } catch (e) {
+        console.warn('[CAMPAIGNS]', e.message);
+        return [];
+    }
+}
+
+// Helper: computa atribución de un mailing
+// Regla: suscripción cuyo email esté en audience_emails, cuyo updated_at (o created_at) caiga
+// entre sent_at y sent_at + windowDays, y cuyo status sea active.
+async function _attribute(mailing, windowDays = 14) {
+    const result = { converted: 0, revenue: 0, items: [] };
+    if (!mailing || !mailing.audience_emails || !mailing.audience_emails.length) return result;
+    const sentAt = new Date(mailing.created_at || Date.now());
+    const windowEnd = new Date(sentAt.getTime() + windowDays * 86400000);
+    const emailSet = new Set(mailing.audience_emails.map(e => (e || '').toLowerCase()));
+    let subs = [];
+    try { subs = await db.getSubscriptions({}); } catch { subs = []; }
+    for (const s of (subs || [])) {
+        const em = (s.customer_email || '').toLowerCase();
+        if (!emailSet.has(em)) continue;
+        if (s.status !== 'active') continue;
+        const changed = new Date(s.updated_at || s.created_at || 0);
+        if (changed < sentAt || changed > windowEnd) continue;
+        const price = Number(s.final_price || 0);
+        result.converted++;
+        result.revenue += price;
+        result.items.push({
+            id: s.id,
+            email: s.customer_email,
+            name: s.customer_name || '',
+            product: s.product_title || '',
+            price,
+            converted_at: s.updated_at || s.created_at,
+        });
+    }
+    return result;
+}
+
+// GET /api/mailing/campaigns?limit=50 → lista resumida con conversiones
+app.get('/api/mailing/campaigns', async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+        const window = parseInt(req.query.window_days) || 14;
+        const mailings = await _readMailingEvents(limit);
+        // computamos atribución para todas (puede ser lento si hay muchas — por ahora OK <100 campañas)
+        const withAttr = [];
+        for (const m of mailings) {
+            const attr = await _attribute(m, window);
+            withAttr.push({
+                id: m.id,
+                created_at: m.created_at,
+                subject: m.subject,
+                segment: m.segment,
+                header_title: m.header_title,
+                total: m.total,
+                sent: m.sent,
+                failed: m.failed,
+                converted: attr.converted,
+                revenue: Math.round(attr.revenue * 100) / 100,
+                conversion_rate: m.sent > 0 ? Math.round((attr.converted / m.sent) * 1000) / 10 : 0,
+            });
+        }
+        res.json({ campaigns: withAttr, window_days: window });
+    } catch (e) { console.error('[CAMPAIGNS LIST]', e); res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/mailing/campaigns/:id → detalle con audiencia + convertidos
+app.get('/api/mailing/campaigns/:id', async (req, res) => {
+    try {
+        const window = parseInt(req.query.window_days) || 14;
+        const mailings = await _readMailingEvents(500);
+        const m = mailings.find(x => x.id === req.params.id || x.event_id === req.params.id);
+        if (!m) return res.status(404).json({ error: 'Campaña no encontrada' });
+        const attr = await _attribute(m, window);
+        res.json({
+            id: m.id,
+            created_at: m.created_at,
+            subject: m.subject,
+            segment: m.segment,
+            header_title: m.header_title,
+            total: m.total,
+            sent: m.sent,
+            failed: m.failed,
+            audience_emails: m.audience_emails,
+            converted: attr.converted,
+            revenue: Math.round(attr.revenue * 100) / 100,
+            conversion_rate: m.sent > 0 ? Math.round((attr.converted / m.sent) * 1000) / 10 : 0,
+            conversions: attr.items,
+            window_days: window,
+        });
+    } catch (e) { console.error('[CAMPAIGN DETAIL]', e); res.status(500).json({ error: e.message }); }
 });
 
 /* ═══════════════════════════════════════════════
@@ -3312,75 +3450,6 @@ app.get('/api/automations/preview', async (req, res) => {
         const html = notifications.__baseHTML(bodyHTML, { headerTitle: header_title || def.header_title });
         res.json({ subject: subj, html });
     } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-/* ═══════════════════════════════════════════════
-   MARKETING HELPERS — productos con planes activos
-═══════════════════════════════════════════════ */
-app.get('/api/marketing/products-with-plans', async (req, res) => {
-    try {
-        const raw = await readFromShopify().catch(() => ({}));
-        const settings = (raw && raw.settings) ? raw.settings : (raw || {});
-        const plans = Array.isArray(settings.plans) ? settings.plans : [];
-        const activePlans = plans.filter(p => p && p.active !== false);
-        // Set de productos aplicables mencionados en los planes (si hay filtro por producto)
-        const byProduct = {};
-        for (const plan of activePlans) {
-            const applies = plan.applies_to || {};
-            const mode = applies.mode || 'all';
-            const prods = Array.isArray(applies.products) ? applies.products :
-                (Array.isArray(applies.product_ids) ? applies.product_ids.map(id => ({ id: String(id), title: 'Producto ' + id, image: '' })) : []);
-            if (mode === 'all' || !prods.length) {
-                byProduct['__all__'] = byProduct['__all__'] || { id: 'all', title: 'Todos los productos', image: '', plans: [] };
-                byProduct['__all__'].plans.push({ id: plan.id || plan.key, name: plan.name || (plan.frequency_months + 'm x ' + plan.permanence_months + 'm'), discount_pct: plan.discount_pct, frequency_months: plan.frequency_months, permanence_months: plan.permanence_months });
-            } else {
-                for (const p of prods) {
-                    const pid = String(p.id || p);
-                    byProduct[pid] = byProduct[pid] || { id: pid, title: p.title || ('Producto ' + pid), image: p.image || '', plans: [] };
-                    byProduct[pid].plans.push({ id: plan.id || plan.key, name: plan.name || (plan.frequency_months + 'm x ' + plan.permanence_months + 'm'), discount_pct: plan.discount_pct, frequency_months: plan.frequency_months, permanence_months: plan.permanence_months });
-                }
-            }
-        }
-        const products = Object.values(byProduct);
-        res.json({ products, total_plans: activePlans.length });
-    } catch (e) { console.error('[MKT PRODUCTS]', e); res.status(500).json({ error: e.message }); }
-});
-
-/** GET /api/marketing/design-blocks → bloques HTML pre-hechos listos para insertar */
-app.get('/api/marketing/design-blocks', async (req, res) => {
-    const blocks = [
-        {
-            key: 'cta_button',
-            name: 'Bot\u00f3n CTA rojo',
-            html: '<div style="text-align:center;margin:24px 0"><a href="https://labnutrition.pe" style="display:inline-block;background:#E30613;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:800;font-size:14px;letter-spacing:.5px">VER EN LA TIENDA \u2192</a></div>'
-        },
-        {
-            key: 'discount_badge',
-            name: 'Badge de descuento',
-            html: '<div style="text-align:center;margin:16px 0"><span style="display:inline-block;background:#0A0A0A;color:#E30613;padding:8px 18px;border-radius:100px;font-weight:900;font-size:12px;letter-spacing:2px;border:2px solid #E30613">\u2666 BLACK DIAMOND \u2022 {{discount_pct}}% OFF</span></div>'
-        },
-        {
-            key: 'product_card',
-            name: 'Tarjeta de producto',
-            html: '<div style="background:#f9f9f9;border:1px solid #e5e5e5;border-radius:12px;padding:20px;margin:16px 0;display:flex;gap:16px;align-items:center">\n<div style="flex:1"><div style="font-size:10px;color:#E30613;font-weight:800;letter-spacing:1.5px;margin-bottom:6px">PRODUCTO</div><div style="font-size:16px;font-weight:800;color:#0A0A0A;margin-bottom:8px">{{product}}</div><div style="color:#E30613;font-size:20px;font-weight:900">{{final_price}} <span style="font-size:11px;color:#888;font-weight:600">+ env\u00edo</span></div></div></div>'
-        },
-        {
-            key: 'divider',
-            name: 'Separador elegante',
-            html: '<div style="text-align:center;margin:24px 0"><div style="height:1px;background:#eee;position:relative"><span style="background:#fff;color:#E30613;padding:0 16px;position:relative;top:-10px;font-size:12px;font-weight:800">\u2666</span></div></div>'
-        },
-        {
-            key: 'highlight_box',
-            name: 'Caja destacada (alerta)',
-            html: '<div style="background:#fff8e6;border-left:4px solid #E30613;padding:16px 20px;margin:16px 0;border-radius:6px"><strong style="color:#0A0A0A">Atenci\u00f3n:</strong> <span style="color:#555">Tu mensaje aqu\u00ed.</span></div>'
-        },
-        {
-            key: 'footer_social',
-            name: 'Footer con redes',
-            html: '<div style="text-align:center;padding:20px 0;border-top:1px solid #eee;margin-top:24px"><div style="font-size:11px;color:#888;margin-bottom:8px">S\u00edguenos en redes:</div><a href="https://www.instagram.com/labnutritionoficial" style="color:#E30613;text-decoration:none;font-weight:700;margin:0 8px">Instagram</a> \u00b7 <a href="https://web.facebook.com/labnutritionoficial" style="color:#E30613;text-decoration:none;font-weight:700;margin:0 8px">Facebook</a> \u00b7 <a href="https://labnutrition.pe" style="color:#E30613;text-decoration:none;font-weight:700;margin:0 8px">labnutrition.pe</a></div>'
-        }
-    ];
-    res.json({ blocks });
 });
 
 /* ── Export subscribers as CSV ── */
