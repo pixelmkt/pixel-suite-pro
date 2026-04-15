@@ -735,6 +735,82 @@ app.delete('/api/admin/subscriptions/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/** GET /api/admin/orders/diagnose?numbers=8419,8420 — READ-ONLY: compara campos críticos Navasoft
+ *  Devuelve para cada orden: dni, tipo_documento, location_distrito/departamento, shipping_code,
+ *  shipping_address completa, billing_address.company (= DNI SUNAT). NO modifica nada.
+ *  Sirve para entender por qué un pedido cae y otro no. */
+app.get('/api/admin/orders/diagnose', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'No Shopify token' });
+        const numbers = String(req.query.numbers || '').split(',').map(n => n.trim()).filter(Boolean);
+        if (!numbers.length) return res.status(400).json({ error: 'Pasa ?numbers=8419,8420 separados por coma' });
+
+        // Los números de orden en Shopify se buscan por "name" con prefijo "#"
+        const results = [];
+        for (const num of numbers) {
+            try {
+                const q = encodeURIComponent(`name:#${num}`);
+                const url = `https://${shop}/admin/api/2026-01/orders.json?status=any&name=%23${num}&limit=1`;
+                const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+                if (!r.ok) { results.push({ number: num, error: `Shopify ${r.status}` }); continue; }
+                const data = await r.json();
+                const order = (data.orders || [])[0];
+                if (!order) { results.push({ number: num, error: 'Orden no encontrada' }); continue; }
+
+                // Extraer los campos que Navasoft necesita
+                const attrs = {};
+                (order.note_attributes || []).forEach(a => { attrs[a.name] = a.value; });
+                const critical = {
+                    number: order.order_number || order.name,
+                    created_at: order.created_at,
+                    email: order.email,
+                    tags: order.tags,
+                    financial_status: order.financial_status,
+                    // Navasoft critical fields
+                    dni: attrs['dni'] || null,
+                    ClusterCart_dni: attrs['ClusterCart-dni'] || null,
+                    tipo_documento: attrs['tipo_documento'] || null,
+                    location_departamento: attrs['location_departamento'] || null,
+                    location_provincia: attrs['location_provincia'] || null,
+                    location_distrito: attrs['location_distrito'] || null,
+                    shipping_code: attrs['shipping_code'] || null,
+                    courier_id: attrs['courier_id'] || null,
+                    ClusterCart_optimized: attrs['ClusterCart-optimized'] || null,
+                    // From billing address (SUNAT boleta)
+                    billing_company_dni: order.billing_address?.company || null,
+                    // Shipping address snapshot
+                    shipping: order.shipping_address ? {
+                        name: order.shipping_address.name,
+                        address1: order.shipping_address.address1,
+                        city: order.shipping_address.city,
+                        province: order.shipping_address.province,
+                        province_code: order.shipping_address.province_code,
+                        zip: order.shipping_address.zip,
+                        phone: order.shipping_address.phone
+                    } : null,
+                    // Full note_attribute keys for diff
+                    _note_attribute_keys: Object.keys(attrs).sort()
+                };
+                // Flags de salud
+                critical._health = {
+                    has_dni: !!critical.dni && critical.dni.length >= 8,
+                    has_cluster_dni: !!critical.ClusterCart_dni && critical.ClusterCart_dni.length >= 8,
+                    has_distrito: !!critical.location_distrito,
+                    has_departamento: !!critical.location_departamento,
+                    has_shipping_code: !!critical.shipping_code,
+                    has_shipping_address: !!critical.shipping,
+                    has_billing_company_dni: !!critical.billing_company_dni
+                };
+                critical._navasoft_ready = Object.values(critical._health).every(v => v === true);
+                results.push(critical);
+            } catch (e) { results.push({ number: num, error: e.message }); }
+        }
+        res.json({ results, comparison_note: 'Si _navasoft_ready=true → la orden tiene todos los campos. Si false → falta al menos uno (ver _health).' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ── PLANS — stored inside the proven settings metafield as 'plans_config' sub-key ── */
 // FIX 2026-03-23: New separate metafields fail silently in API 2026-01 (owner_resource bug).
 // Solution: store plans/products/configs as sub-keys of the EXISTING settings metafield.
