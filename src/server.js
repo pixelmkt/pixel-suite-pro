@@ -933,6 +933,72 @@ app.get('/api/admin/shopify/locations', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/** GET /api/admin/orders/fulfillment-locations?limit=30 — READ-ONLY: para cada orden de
+ *  suscripción lee su fulfillment_orders y devuelve en QUÉ location Shopify rutea el pedido.
+ *  Esto es lo que realmente determina a qué tienda/hub va el pedido (order.location_id es solo POS).
+ */
+app.get('/api/admin/orders/fulfillment-locations', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'No Shopify token' });
+        const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+        const configured = process.env.SHOPIFY_LOCATION_ID || null;
+
+        // Últimas orders con tag 'suscripcion'
+        const ordUrl = `https://${shop}/admin/api/2026-01/orders.json?status=any&limit=100&fields=id,order_number,name,created_at,tags,email`;
+        const ordR = await fetch(ordUrl, { headers: { 'X-Shopify-Access-Token': token } });
+        if (!ordR.ok) return res.status(ordR.status).json({ error: `Shopify ${ordR.status}: ${await ordR.text()}` });
+        const ordData = await ordR.json();
+        const subsOrders = (ordData.orders || [])
+            .filter(o => (o.tags || '').toLowerCase().includes('suscripcion'))
+            .slice(0, limit);
+
+        const results = [];
+        const locationCounts = {};
+        for (const o of subsOrders) {
+            try {
+                const foUrl = `https://${shop}/admin/api/2026-01/orders/${o.id}/fulfillment_orders.json`;
+                const foR = await fetch(foUrl, { headers: { 'X-Shopify-Access-Token': token } });
+                if (!foR.ok) {
+                    results.push({ order_number: o.order_number, name: o.name, email: o.email, error: `fulfillment_orders ${foR.status}` });
+                    continue;
+                }
+                const foData = await foR.json();
+                const fos = foData.fulfillment_orders || [];
+                const locs = fos.map(f => ({
+                    id: f.assigned_location_id || f.assigned_location?.location_id || null,
+                    name: f.assigned_location?.name || null,
+                    status: f.status,
+                    request_status: f.request_status
+                }));
+                // Count
+                for (const l of locs) {
+                    const k = l.id ? `${l.id}|${l.name || ''}` : '(sin location)';
+                    locationCounts[k] = (locationCounts[k] || 0) + 1;
+                }
+                results.push({
+                    order_number: o.order_number,
+                    name: o.name,
+                    email: o.email,
+                    created_at: o.created_at,
+                    fulfillment_count: fos.length,
+                    locations: locs
+                });
+            } catch (e) {
+                results.push({ order_number: o.order_number, error: e.message });
+            }
+        }
+        res.json({
+            total_orders: subsOrders.length,
+            configured_navasoft_location_id: configured,
+            location_distribution: locationCounts,
+            results: results.slice(0, 20),
+            hint: 'Cada fulfillment_order.assigned_location_id es la tienda que Shopify eligió para procesar el pedido. Si ves múltiples locations en location_distribution, los pedidos se están rutando a varias tiendas (inventario-based).'
+        });
+    } catch (e) { console.error('[FULFILL AUDIT]', e); res.status(500).json({ error: e.message }); }
+});
+
 /** GET /api/admin/orders/audit-subscriptions?limit=50 — READ-ONLY: audita las últimas N órdenes
  *  con tag 'suscripcion' y reporta cuántas tienen o no location_id asignado. Calcula tasa de
  *  órdenes correctamente ruteadas a Navasoft (si está configurada la env var).
@@ -2959,6 +3025,13 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         ...(shouldDeliverGifts ? [{ name: 'gift_included', value: String(giftLineItems.length) + ' item(s)' }] : [])
     ].filter(a => a.value);
 
+    // 🏬 Hub/tienda que procesará la orden. Navasoft lee location_id para enrutar fulfillment.
+    // Si SHOPIFY_LOCATION_ID no está configurada, Shopify usa la location default de la tienda
+    // (lo cual deja las subs en limbo cuando la default no coincide con el hub de despacho).
+    const hubLocationId = process.env.SHOPIFY_LOCATION_ID
+        ? parseInt(process.env.SHOPIFY_LOCATION_ID, 10)
+        : null;
+
     const orderBody = {
         order: {
             email: sub.customer_email,
@@ -2974,6 +3047,7 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             note_attributes: noteAttrs,
             shipping_address: shippingAddr || undefined,
             billing_address: shippingAddr ? { ...shippingAddr, company: sub.dni || '' } : undefined,
+            ...(hubLocationId && Number.isFinite(hubLocationId) ? { location_id: hubLocationId } : {}),
             metafields: [
                 { namespace: 'shipping', key: 'courier_code', value: '02', type: 'single_line_text_field' },
                 { namespace: 'shipping', key: 'courier_name', value: 'Urbaner', type: 'single_line_text_field' }
@@ -2993,7 +3067,8 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
     }
     const result = await r.json();
     const order = result.order;
-    console.log(`[SHOPIFY ORDER] ✅ Orden #${order.order_number} creada para ${sub.customer_email} | ${cycleLabel}`);
+    const routedLoc = order.location_id || 'default-store';
+    console.log(`[SHOPIFY ORDER] ✅ Orden #${order.order_number} creada para ${sub.customer_email} | ${cycleLabel} | location_id=${routedLoc}${hubLocationId ? ' (enviado=' + hubLocationId + ')' : ' (sin SHOPIFY_LOCATION_ID env)'}`);
 
     // 🎁 Si se entregó el regalo en esta orden, marcar gifts_delivered=true (foto congelada)
     // para que cobros siguientes NO repitan el regalo. Fallo silencioso: no rompe el return del order.
