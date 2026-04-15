@@ -13,6 +13,32 @@ const transporter = nodemailer.createTransport({
 
 const FROM = `"${process.env.EMAIL_FROM || 'LAB NUTRITION'}" <${process.env.SMTP_USER || 'marketing@labnutrition.com'}>`;
 
+// ── RESEND (HTTP API, puerto 443 — Railway no lo bloquea) ──────────
+// Se prefiere Resend si existe RESEND_API_KEY. Fallback: nodemailer (SMTP).
+// El dominio labnutrition.com debe estar verificado en Resend para usar un FROM
+// distinto de `onboarding@resend.dev` (sandbox por default).
+async function sendViaResend(to, subject, html, fromOverride) {
+    const key = process.env.RESEND_API_KEY;
+    if (!key) throw new Error('RESEND_API_KEY not set');
+    const from = fromOverride
+        || process.env.RESEND_FROM
+        || 'LAB NUTRITION <onboarding@resend.dev>';
+    const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+            Authorization: 'Bearer ' + key,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ from, to, subject, html })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        const msg = j?.message || j?.error || ('Resend HTTP ' + res.status);
+        throw new Error('[Resend] ' + msg);
+    }
+    return j; // { id: 're_xxx' }
+}
+
 /* ─── BASE TEMPLATE — Club Black Diamond Premium Design ─── */
 function baseHTML(content, { headerIcon = '', headerTitle = '' } = {}) {
     return `<!DOCTYPE html>
@@ -82,6 +108,15 @@ function baseHTML(content, { headerIcon = '', headerTitle = '' } = {}) {
 }
 
 async function sendEmail(to, subject, html) {
+    // Preferir Resend (HTTP) si está configurado → evita bloqueo SMTP de Railway.
+    if (process.env.RESEND_API_KEY) {
+        try {
+            return await sendViaResend(to, subject, html);
+        } catch (e) {
+            console.warn('[EMAIL] Resend falló, intento SMTP fallback:', e.message);
+            // cae al SMTP más abajo
+        }
+    }
     return transporter.sendMail({ from: FROM, to, subject, html });
 }
 
@@ -370,5 +405,8 @@ module.exports = {
     sendRenewalInvite,
     sendCancellationConfirmation,
     getPreviewHTML,
-    sendTestEmail
+    sendTestEmail,
+    // expuestos para server.js (mailing bulk + preview builder)
+    sendViaResend,
+    __baseHTML: baseHTML
 };

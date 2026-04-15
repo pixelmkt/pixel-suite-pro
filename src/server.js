@@ -3054,14 +3054,28 @@ app.post('/api/mailing/send', async (req, res) => {
         const { segment = 'active', subject, body, headerTitle = 'Club Black Diamond', test_email } = req.body || {};
         if (!subject || !body) return res.status(400).json({ error: 'subject y body son requeridos' });
 
-        const nodemailer = require('nodemailer');
-        const smtpPort = parseInt(process.env.SMTP_PORT || '465');
-        const transporter = nodemailer.createTransport({
-            host: process.env.SMTP_HOST, port: smtpPort, secure: smtpPort === 465,
-            auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-            connectionTimeout: 10000, socketTimeout: 15000
-        });
-        const FROM = `"${process.env.EMAIL_FROM || 'LAB NUTRITION'}" <${process.env.SMTP_USER || 'contacto@labnutrition.pe'}>`;
+        // ── Transporte: Resend (HTTP 443) si hay key, sino nodemailer SMTP ──
+        const useResend = !!process.env.RESEND_API_KEY;
+        let transporter = null, FROM;
+        if (useResend) {
+            FROM = process.env.RESEND_FROM || 'LAB NUTRITION <onboarding@resend.dev>';
+        } else {
+            const nodemailer = require('nodemailer');
+            const smtpPort = parseInt(process.env.SMTP_PORT || '465');
+            transporter = nodemailer.createTransport({
+                host: process.env.SMTP_HOST, port: smtpPort, secure: smtpPort === 465,
+                auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+                connectionTimeout: 10000, socketTimeout: 15000
+            });
+            FROM = `"${process.env.EMAIL_FROM || 'LAB NUTRITION'}" <${process.env.SMTP_USER || 'contacto@labnutrition.pe'}>`;
+        }
+
+        async function dispatch(to, subj, html) {
+            if (useResend) {
+                return notifications.sendViaResend(to, subj, html, FROM);
+            }
+            return transporter.sendMail({ from: FROM, to, subject: subj, html });
+        }
 
         const buildHtml = (sub) => {
             const rendered = _renderVars(body, sub).replace(/\n/g, '<br>');
@@ -3073,8 +3087,8 @@ app.post('/api/mailing/send', async (req, res) => {
             const mock = { customer_name: 'Test User', customer_email: test_email, product_title: 'CREATINE MICRONIZED BLACK', final_price: 90, next_charge_at: new Date(Date.now() + 7 * 86400000).toISOString() };
             const html = buildHtml(mock);
             const renderedSubject = _renderVars(subject, mock);
-            await transporter.sendMail({ from: FROM, to: test_email, subject: '[TEST] ' + renderedSubject, html });
-            return res.json({ success: true, test: true, to: test_email });
+            await dispatch(test_email, '[TEST] ' + renderedSubject, html);
+            return res.json({ success: true, test: true, to: test_email, via: useResend ? 'resend' : 'smtp' });
         }
 
         const audience = await _filterMailingAudience(segment);
@@ -3087,7 +3101,7 @@ app.post('/api/mailing/send', async (req, res) => {
                 try {
                     const html = buildHtml(sub);
                     const renderedSubject = _renderVars(subject, sub);
-                    await transporter.sendMail({ from: FROM, to: sub.customer_email, subject: renderedSubject, html });
+                    await dispatch(sub.customer_email, renderedSubject, html);
                     sent++;
                 } catch (e) {
                     failed++;
@@ -3353,7 +3367,9 @@ app.put('/api/settings', async (req, res) => {
         supabase_key: 'SUPABASE_SERVICE_KEY',
         shopify_shop: 'SHOPIFY_SHOP',
         smtp_host: 'SMTP_HOST', smtp_port: 'SMTP_PORT',
-        smtp_user: 'SMTP_USER', smtp_pass: 'SMTP_PASS', email_from: 'EMAIL_FROM'
+        smtp_user: 'SMTP_USER', smtp_pass: 'SMTP_PASS', email_from: 'EMAIL_FROM',
+        // Resend (HTTP API — alternativa a SMTP, necesaria en Railway)
+        resend_api_key: 'RESEND_API_KEY', resend_from: 'RESEND_FROM'
     };
     Object.entries(envMap).forEach(([key, envKey]) => { if (body[key]) process.env[envKey] = String(body[key]); });
     if (body.shopify_access_token) { process.env.SHOPIFY_ACCESS_TOKEN = body.shopify_access_token; _shopifyToken = body.shopify_access_token; }
@@ -3814,6 +3830,24 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
     if (db?.initializeTypes) {
         try { await db.initializeTypes(); } catch (e) { console.warn('[DB] Init:', e.message); }
     }
+    // ── Hidrata env vars persistidos en Shopify metafield (SMTP/Resend/etc.) ──
+    // Permite que la key Resend configurada vía PUT /api/settings sobreviva a redeploys.
+    try {
+        const persisted = await readFromShopify().catch(() => null) || readFromFile() || {};
+        const envMap = {
+            smtp_host: 'SMTP_HOST', smtp_port: 'SMTP_PORT',
+            smtp_user: 'SMTP_USER', smtp_pass: 'SMTP_PASS', email_from: 'EMAIL_FROM',
+            resend_api_key: 'RESEND_API_KEY', resend_from: 'RESEND_FROM'
+        };
+        let loaded = [];
+        for (const [k, e] of Object.entries(envMap)) {
+            if (persisted[k] && !process.env[e]) {
+                process.env[e] = String(persisted[k]);
+                loaded.push(e);
+            }
+        }
+        if (loaded.length) console.log('[BOOT] Hydrated env from settings:', loaded.join(', '));
+    } catch (e) { console.warn('[BOOT] Env hydration warn:', e.message); }
     // Start daily billing crons
     if (process.env.NODE_ENV !== 'test') {
         scheduleDailyCron(2, 0, runDailyBillingCron);  // 2am Lima
