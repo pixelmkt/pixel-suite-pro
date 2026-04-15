@@ -206,6 +206,7 @@ async function resolveGiftsForNewSub(frequencyMonths, permanenceMonths, productI
         return items.map(it => ({
             product_id: String(it.product_id || ''),
             product_title: it.product_title || '',
+            product_handle: it.product_handle || '',
             variant_id: String(it.variant_id || ''),
             variant_title: it.variant_title || '',
             variant_sku: it.variant_sku || '',
