@@ -938,6 +938,122 @@ app.get('/api/admin/subs-incomplete', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/** GET /api/admin/gifts-report — reporte de regalos (shakers) entregados + stock actual.
+ *  Devuelve: entregados este mes, all-time, catálogo de regalos configurados con stock, y subs pendientes.
+ *  Solo lectura. No modifica nada. */
+app.get('/api/admin/gifts-report', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        // 1) Recopilar regalos configurados en planes (activos o no — si hay subs con gifts_delivered, aplica)
+        const data = await readFromShopify().catch(() => null);
+        const plans = Array.isArray(data?.plans_config) ? data.plans_config : [];
+        const giftVariants = new Map(); // variant_id → {product_id, product_title, variant_title, variant_sku, image, plans_using:[]}
+        for (const p of plans) {
+            const items = (p && p.gifts && p.gifts.enabled && Array.isArray(p.gifts.items)) ? p.gifts.items : [];
+            for (const g of items) {
+                if (!g || !g.variant_id) continue;
+                const key = String(g.variant_id);
+                if (!giftVariants.has(key)) {
+                    giftVariants.set(key, {
+                        product_id: String(g.product_id || ''),
+                        product_title: g.product_title || '',
+                        variant_title: g.variant_title || '',
+                        variant_sku: g.variant_sku || '',
+                        image: g.image || null,
+                        plan_active: p.active !== false,
+                        frequency: p.frequency || p.freq_months || null,
+                        permanence: p.permanence || p.permanence_months || null
+                    });
+                }
+            }
+        }
+        // 2) Stock actual por variante (consulta productos únicos)
+        const stockByVariant = {};
+        const productIds = [...new Set([...giftVariants.values()].map(v => v.product_id).filter(Boolean))];
+        if (token) {
+            for (const pid of productIds) {
+                try {
+                    const r = await fetch(`https://${shop}/admin/api/2026-01/products/${encodeURIComponent(pid)}.json?fields=id,title,variants`, {
+                        headers: { 'X-Shopify-Access-Token': token }
+                    });
+                    if (!r.ok) continue;
+                    const d = await r.json();
+                    for (const v of (d.product?.variants || [])) {
+                        stockByVariant[String(v.id)] = Number.isFinite(v.inventory_quantity) ? v.inventory_quantity : 0;
+                    }
+                } catch (e) { console.warn('[GIFT REPORT] stock fetch error pid=' + pid + ':', e.message); }
+            }
+        }
+        // 3) Contar entregados + subs pendientes (usa getSubscriptions como fuente única)
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        let deliveredThisMonth = 0;
+        let deliveredAllTime = 0;
+        let pending = [];
+        let recentDeliveries = [];
+        try {
+            const allSubs = await db.getSubscriptions().catch(() => []);
+            for (const s of allSubs) {
+                if (s.gifts_delivered === true) {
+                    deliveredAllTime++;
+                    if ((s.gifts_delivered_at || '') >= monthStart) deliveredThisMonth++;
+                    recentDeliveries.push({
+                        id: s.id,
+                        email: s.customer_email,
+                        order: s.gifts_delivered_order_name || null,
+                        order_id: s.gifts_delivered_order_id || null,
+                        at: s.gifts_delivered_at || null,
+                        gifts: (s.gifts_planned || []).map(g => (g.product_title || '') + (g.variant_title ? ' — ' + g.variant_title : '')).filter(Boolean)
+                    });
+                }
+                if ((s.status === 'active' || s.status === 'pending_payment') &&
+                    Array.isArray(s.gifts_planned) && s.gifts_planned.length > 0 && s.gifts_delivered !== true) {
+                    pending.push({
+                        id: s.id,
+                        email: s.customer_email,
+                        product_title: s.product_title,
+                        status: s.status,
+                        cycles_completed: s.cycles_completed || 0,
+                        next_charge_at: s.next_charge_at || null,
+                        gifts: s.gifts_planned.map(g => ({
+                            product_title: g.product_title, variant_title: g.variant_title,
+                            variant_sku: g.variant_sku, quantity: g.quantity
+                        }))
+                    });
+                }
+            }
+        } catch (e) { console.warn('[GIFT REPORT] sub aggregate error:', e.message); }
+
+        // 4) Construir catálogo
+        const giftsCatalog = [...giftVariants.entries()].map(([vid, info]) => ({
+            variant_id: vid,
+            product_id: info.product_id,
+            product_title: info.product_title,
+            variant_title: info.variant_title,
+            variant_sku: info.variant_sku,
+            image: info.image,
+            stock: stockByVariant[vid] ?? null,
+            plan_active: info.plan_active,
+            plan_frequency_months: info.frequency,
+            plan_permanence_months: info.permanence
+        }));
+        recentDeliveries.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+        res.json({
+            delivered_this_month: deliveredThisMonth,
+            delivered_all_time: deliveredAllTime,
+            gifts_catalog: giftsCatalog,
+            pending_count: pending.length,
+            pending: pending.slice(0, 50),
+            recent_deliveries: recentDeliveries.slice(0, 20),
+            month_start: monthStart
+        });
+    } catch (e) {
+        console.error('[GIFT REPORT] Error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 /** PUT /api/admin/subscriptions/:id/patch-data — completa datos faltantes de una suscripción.
  *  Admin manda {dni, tipo_documento, shipping_address: {address1, city, province, province_code, zip, phone, name}, customer_phone}.
  *  Solo actualiza los campos provistos. No cancela, no cobra, no genera pedidos. */
