@@ -1052,6 +1052,17 @@
         </div>
         <div class="info-box warn">⚠️ Los planes activos se muestran en el widget de Shopify. Desactivar un plan no
           afecta suscripciones existentes.</div>
+
+        <!-- 🎁 WIDGET: REPORTE DE REGALOS -->
+        <div class="card" style="margin-top:18px">
+          <div class="card-head" style="display:flex;align-items:center;justify-content:space-between">
+            <span class="card-title">🎁 Regalos en primer pedido</span>
+            <button class="btn btn-g btn-sm" onclick="loadGiftsReport()">🔄 Actualizar</button>
+          </div>
+          <div id="gifts-report-box" style="padding:18px">
+            <div style="color:var(--mut);font-size:12px;text-align:center;padding:16px">Haz clic en <strong>Actualizar</strong> para cargar el reporte.</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2305,6 +2316,68 @@
         })),
         applies_to: { mode, product_ids }
       };
+    }
+
+    async function loadGiftsReport() {
+      const box = document.getElementById('gifts-report-box');
+      box.innerHTML = '<div style="color:var(--mut);font-size:12px;text-align:center;padding:16px">Cargando reporte...</div>';
+      try {
+        const r = await api('/api/admin/gifts-report');
+        if (r.error) { box.innerHTML = '<div style="color:var(--amber);font-size:12px">Error: ' + r.error + '</div>'; return; }
+        const catalogHtml = (r.gifts_catalog || []).length
+          ? r.gifts_catalog.map(g => {
+            const stockColor = g.stock > 5 ? 'var(--grn)' : (g.stock > 0 ? 'var(--amber)' : '#991b1b');
+            const stockLabel = g.stock == null ? '—' : g.stock;
+            const planBadge = g.plan_active ? '<span style="font-size:9px;color:var(--grn);font-weight:700">● activo</span>' : '<span style="font-size:9px;color:var(--mut);font-weight:700">● inactivo</span>';
+            return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--bdr);border-radius:8px;background:#fff">' +
+              '<img src="' + (g.image || '') + '" style="width:36px;height:36px;border-radius:4px;object-fit:cover;background:#f3f4f6" onerror="this.style.visibility=\'hidden\'">' +
+              '<div style="flex:1;min-width:0">' +
+              '  <div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (g.product_title || '—') + ' · ' + (g.variant_title || '') + '</div>' +
+              '  <div style="font-size:10px;color:var(--mut)">SKU ' + (g.variant_sku || '—') + ' · Plan ' + (g.plan_frequency_months || '?') + 'm/' + (g.plan_permanence_months || '?') + 'm ' + planBadge + '</div>' +
+              '</div>' +
+              '<div style="font-size:11px;font-weight:800;color:' + stockColor + ';text-align:right;min-width:64px">Stock<br>' + stockLabel + '</div>' +
+              '</div>';
+          }).join('')
+          : '<div style="padding:16px;color:var(--mut);font-size:12px;text-align:center;border:1px dashed var(--bdr);border-radius:6px">Ningún plan tiene regalos configurados todavía.</div>';
+
+        const pendingHtml = r.pending_count > 0
+          ? '<div style="margin-top:14px"><div style="font-size:11px;font-weight:700;color:var(--mut);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Pendientes de entregar (' + r.pending_count + ')</div>' +
+            r.pending.slice(0, 10).map(p => {
+              const giftsStr = (p.gifts || []).map(g => g.product_title + ' x' + g.quantity).join(' + ');
+              return '<div style="font-size:11px;padding:6px 8px;background:#fff5f5;border-left:3px solid var(--red);margin-bottom:4px;border-radius:4px"><strong>' + (p.email || p.id) + '</strong> · <span style="color:var(--mut)">' + (p.product_title || '—') + '</span><br><span style="color:#991b1b">🎁 ' + giftsStr + '</span></div>';
+            }).join('') +
+            (r.pending_count > 10 ? '<div style="font-size:10px;color:var(--mut);margin-top:4px">... y ' + (r.pending_count - 10) + ' más</div>' : '') +
+            '</div>'
+          : '';
+
+        const recentHtml = (r.recent_deliveries || []).length
+          ? '<div style="margin-top:14px"><div style="font-size:11px;font-weight:700;color:var(--mut);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Últimas entregas</div>' +
+            r.recent_deliveries.slice(0, 5).map(d => {
+              const when = d.at ? new Date(d.at).toLocaleDateString('es-PE') : '—';
+              return '<div style="font-size:11px;padding:6px 8px;background:#f0fdf4;border-left:3px solid var(--grn);margin-bottom:4px;border-radius:4px">' + (d.order || '—') + ' · <strong>' + (d.email || d.id) + '</strong> · <span style="color:var(--mut)">' + when + '</span><br><span style="color:#166534">🎁 ' + (d.gifts || []).join(' + ') + '</span></div>';
+            }).join('') + '</div>'
+          : '';
+
+        box.innerHTML =
+          '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">' +
+          '  <div style="background:#fff5f5;border:1px solid #fecaca;border-radius:8px;padding:12px;text-align:center">' +
+          '    <div style="font-size:22px;font-weight:900;color:var(--red)">' + r.delivered_this_month + '</div>' +
+          '    <div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;font-weight:700">Entregados este mes</div>' +
+          '  </div>' +
+          '  <div style="background:#f9fafb;border:1px solid var(--bdr);border-radius:8px;padding:12px;text-align:center">' +
+          '    <div style="font-size:22px;font-weight:900">' + r.delivered_all_time + '</div>' +
+          '    <div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;font-weight:700">Total entregados</div>' +
+          '  </div>' +
+          '  <div style="background:' + (r.pending_count > 0 ? '#fffaf0' : '#f9fafb') + ';border:1px solid ' + (r.pending_count > 0 ? '#fed7aa' : 'var(--bdr)') + ';border-radius:8px;padding:12px;text-align:center">' +
+          '    <div style="font-size:22px;font-weight:900;color:' + (r.pending_count > 0 ? 'var(--amber)' : 'var(--mut)') + '">' + r.pending_count + '</div>' +
+          '    <div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;font-weight:700">Pendientes</div>' +
+          '  </div>' +
+          '</div>' +
+          '<div style="display:flex;flex-direction:column;gap:6px">' + catalogHtml + '</div>' +
+          pendingHtml + recentHtml;
+      } catch (e) {
+        box.innerHTML = '<div style="color:var(--amber);font-size:12px">Error: ' + e.message + '</div>';
+      }
     }
 
     async function loadPlans() {
