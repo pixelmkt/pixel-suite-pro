@@ -177,6 +177,47 @@ function getShopifyShop() { return _shopifyShop; }
    🛒 SUBSCRIPTION API
 ═══════════════════════════════════════════════ */
 
+/**
+ * Resuelve los regalos aplicables a una suscripción NUEVA según su plan + producto.
+ * Lee el metafield settings.plans_config y matchea por frecuencia/permanencia.
+ * Respeta applies_to: 'all_products' | 'specific_products' (lista de product_ids).
+ * Devuelve un array snapshot (foto congelada) de items de regalo, o null si no aplica.
+ * No modifica nada, solo lee. Si falla por cualquier razón, devuelve null (no bloquea la venta).
+ */
+async function resolveGiftsForNewSub(frequencyMonths, permanenceMonths, productId) {
+    try {
+        const data = await readFromShopify().catch(() => null);
+        const plans = Array.isArray(data?.plans_config) ? data.plans_config : [];
+        const freq = Number(frequencyMonths);
+        const perm = Number(permanenceMonths);
+        const plan = plans.find(p =>
+            p && p.active !== false &&
+            Number(p.frequency || p.freq_months) === freq &&
+            Number(p.permanence || p.permanence_months) === perm
+        );
+        if (!plan || !plan.gifts || !plan.gifts.enabled) return null;
+        const items = Array.isArray(plan.gifts.items) ? plan.gifts.items : [];
+        if (!items.length) return null;
+        const appliesMode = plan.gifts.applies_to?.mode || 'all_products';
+        if (appliesMode === 'specific_products') {
+            const ids = (plan.gifts.applies_to?.product_ids || []).map(String);
+            if (!ids.includes(String(productId))) return null;
+        }
+        return items.map(it => ({
+            product_id: String(it.product_id || ''),
+            product_title: it.product_title || '',
+            variant_id: String(it.variant_id || ''),
+            variant_title: it.variant_title || '',
+            variant_sku: it.variant_sku || '',
+            quantity: Math.max(1, Math.min(3, parseInt(it.quantity, 10) || 1)),
+            image: it.image || null
+        })).filter(it => it.variant_id); // filtro seguridad: sin variant_id no sirve
+    } catch (e) {
+        console.warn('[GIFTS] resolveGiftsForNewSub error:', e.message);
+        return null;
+    }
+}
+
 /* ── CREATE subscription ── */
 app.post('/api/subscriptions/create', async (req, res) => {
     try {
@@ -213,7 +254,10 @@ app.post('/api/subscriptions/create', async (req, res) => {
         const nextCharge = new Date();
         nextCharge.setMonth(nextCharge.getMonth() + frequencyMonths);
 
-        // 4. Save to Shopify Metaobjects
+        // 4. Resolver regalos aplicables según plan+producto (snapshot congelado)
+        const giftsPlanned = await resolveGiftsForNewSub(frequencyMonths, permanenceMonths, productId);
+
+        // 5. Save to Shopify Metaobjects
         const sub = await db.createSubscription({
             customer_id: customerId || customerEmail,
             customer_email: customerEmail,
@@ -235,7 +279,10 @@ app.post('/api/subscriptions/create', async (req, res) => {
             cycles_completed: 0,
             next_charge_at: nextCharge.toISOString(),
             shipping_address: shippingAddress,
-            expires_at: new Date(Date.now() + permanenceMonths * 30 * 24 * 3600 * 1000).toISOString()
+            expires_at: new Date(Date.now() + permanenceMonths * 30 * 24 * 3600 * 1000).toISOString(),
+            // Regalos (solo 1er pedido). Si hay items se intenta entregar en la primera orden.
+            gifts_planned: Array.isArray(giftsPlanned) ? giftsPlanned : [],
+            gifts_delivered: false
         });
 
         // 5. Tag customer in Shopify
@@ -414,6 +461,9 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
             throw new Error('Mercado Pago no devolvió URL de checkout');
         }
 
+        // Resolver regalos aplicables para esta suscripción (snapshot congelado)
+        const giftsPlanned = await resolveGiftsForNewSub(freq, perm, pId);
+
         // Save pending subscription record
         const pendingId = `pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         const subRecord = {
@@ -446,7 +496,10 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
             tc_accepted: true,
             tc_version: tcVersion,
             tc_accepted_at: tcAcceptedAt,
-            tc_ip: tcIp
+            tc_ip: tcIp,
+            // Regalos (solo 1er pedido). Snapshot para no depender del plan actual después.
+            gifts_planned: Array.isArray(giftsPlanned) ? giftsPlanned : [],
+            gifts_delivered: false
         };
 
         if (db?.createSubscription) {
