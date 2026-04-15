@@ -1755,20 +1755,20 @@
 
 
         <div class="settings-section">
-          <div class="settings-title">Email / SMTP</div>
-          <div class="frow">
-            <div class="fg"><label class="fl">Host SMTP</label><input class="fi" id="sm-host" value="smtp.gmail.com">
-            </div>
-            <div class="fg"><label class="fl">Puerto</label><input class="fi" id="sm-port" value="587"></div>
+          <div class="settings-title">Email</div>
+          <div style="background:#eef7ee;border:1px solid #c7e2c7;color:#2c5f2d;padding:10px 12px;border-radius:6px;font-size:13px;margin-bottom:12px">
+            &#x2705; Envío de correos operativo (Resend HTTPS). No requiere configurar servidor SMTP.
           </div>
           <div class="frow">
             <div class="fg"><label class="fl">Email remitente</label><input class="fi" id="sm-user"
                 placeholder="notificaciones@labnutrition.com"></div>
-            <div class="fg"><label class="fl">Contraseña / App Password</label><input class="fi" type="password"
-                id="sm-pass" placeholder="xxxx xxxx xxxx xxxx"></div>
+            <div class="fg"><label class="fl">Nombre remitente</label><input class="fi" id="sm-from"
+                placeholder="LAB NUTRITION"></div>
           </div>
-          <div class="fg"><label class="fl">Nombre remitente</label><input class="fi" id="sm-from"
-              placeholder="LAB NUTRITION &#x3c;notificaciones@labnutrition.com&#x3e;"></div>
+          <!-- Campos legacy (ocultos) mantenidos por compatibilidad con el backend -->
+          <input type="hidden" id="sm-host" value="smtp.gmail.com">
+          <input type="hidden" id="sm-port" value="587">
+          <input type="hidden" id="sm-pass" value="">
         </div>
 
         <div class="settings-section">
