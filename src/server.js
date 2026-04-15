@@ -806,6 +806,23 @@ app.get('/api/admin/orders/diagnose', async (req, res) => {
                     // Full note_attribute keys for diff
                     _note_attribute_keys: Object.keys(attrs).sort()
                 };
+                // Fetch ALL metafields for this order (includes Navasoft app metafields)
+                try {
+                    const mfUrl = `https://${shop}/admin/api/2026-01/orders/${order.id}/metafields.json?limit=250`;
+                    const mfr = await fetch(mfUrl, { headers: { 'X-Shopify-Access-Token': token } });
+                    if (mfr.ok) {
+                        const mfd = await mfr.json();
+                        critical.metafields = (mfd.metafields || []).map(m => ({
+                            namespace: m.namespace,
+                            key: m.key,
+                            value: typeof m.value === 'string' ? m.value.slice(0, 400) : m.value,
+                            type: m.type
+                        }));
+                    } else {
+                        critical.metafields = { error: `HTTP ${mfr.status}` };
+                    }
+                } catch (e) { critical.metafields = { error: e.message }; }
+
                 // Flags de salud
                 critical._health = {
                     has_dni: !!critical.dni && critical.dni.length >= 8,
@@ -815,7 +832,8 @@ app.get('/api/admin/orders/diagnose', async (req, res) => {
                     has_shipping_code: !!critical.shipping_code,
                     has_shipping_address: !!critical.shipping,
                     has_billing_company_dni: !!critical.billing_company_dni,
-                    has_tienda_assigned: !!critical.order_location_id
+                    has_tienda_assigned: !!critical.order_location_id,
+                    has_navasoft_metafields: Array.isArray(critical.metafields) && critical.metafields.some(m => (m.namespace || '').toLowerCase().includes('navasoft') || (m.key || '').toLowerCase().includes('navasoft'))
                 };
                 critical._navasoft_ready = Object.values(critical._health).every(v => v === true);
                 results.push(critical);
