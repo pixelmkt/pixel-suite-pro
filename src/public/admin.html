@@ -1118,9 +1118,16 @@
             <label class="fl" style="margin-bottom:6px;display:block">Aplicar regalos a</label>
             <select class="fsl" id="plan-gifts-applies-to" onchange="toggleGiftsAppliesInput()" style="margin-bottom:4px">
               <option value="all_products">Todos los productos del plan</option>
-              <option value="specific_products">Solo productos específicos (IDs Shopify)</option>
+              <option value="specific_products">Solo productos específicos</option>
             </select>
-            <input type="text" class="fi" id="plan-gifts-applies-ids" placeholder="IDs Shopify separados por coma (ej: 15637409988689,15579809087569)" style="display:none;margin-top:6px">
+            <div id="plan-gifts-applies-block" style="display:none;margin-top:8px">
+              <input type="text" class="fi" id="plan-gifts-applies-search" placeholder="Buscar producto por título... (ej: creatina, whey)" oninput="searchAppliesProducts()">
+              <div id="plan-gifts-applies-results" style="max-height:160px;overflow:auto;border:1px solid var(--bdr);border-radius:8px;margin-top:6px;display:none;background:#fff"></div>
+              <div style="font-size:11px;font-weight:700;color:var(--mut);margin:10px 0 5px;text-transform:uppercase;letter-spacing:.5px">
+                Productos seleccionados (<span id="plan-gifts-applies-count">0</span>)
+              </div>
+              <div id="plan-gifts-applies-list" style="display:flex;flex-direction:column;gap:5px;min-height:34px"></div>
+            </div>
             <div class="fin" id="plan-gifts-applies-hint" style="margin-top:4px">Se aplicará a cualquier producto suscrito con este plan.</div>
           </div>
         </div>
@@ -2143,15 +2150,89 @@
 
     function toggleGiftsAppliesInput() {
       const mode = document.getElementById('plan-gifts-applies-to').value;
-      const input = document.getElementById('plan-gifts-applies-ids');
+      const block = document.getElementById('plan-gifts-applies-block');
       const hint = document.getElementById('plan-gifts-applies-hint');
       if (mode === 'specific_products') {
-        input.style.display = 'block';
+        block.style.display = 'block';
         hint.textContent = 'Los regalos solo se aplicarán a suscripciones de estos productos.';
       } else {
-        input.style.display = 'none';
+        block.style.display = 'none';
         hint.textContent = 'Se aplicará a cualquier producto suscrito con este plan.';
       }
+    }
+
+    // ──── SELECTOR DE PRODUCTOS "APLICA A" (buscador visual) ────
+    let _giftsAppliesProducts = []; // [{id, title, image}]
+    let _giftsAppliesSearchTimer = null;
+
+    function searchAppliesProducts() {
+      clearTimeout(_giftsAppliesSearchTimer);
+      _giftsAppliesSearchTimer = setTimeout(async () => {
+        const q = document.getElementById('plan-gifts-applies-search').value.trim();
+        const box = document.getElementById('plan-gifts-applies-results');
+        if (q.length < 2) { box.style.display = 'none'; return; }
+        box.innerHTML = '<div style="padding:12px;color:var(--mut);font-size:12px">Buscando...</div>';
+        box.style.display = 'block';
+        try {
+          const data = await api('/api/products/search?q=' + encodeURIComponent(q) + '&limit=15');
+          const products = (data && data.products) || [];
+          if (!products.length) {
+            box.innerHTML = '<div style="padding:12px;color:var(--mut);font-size:12px">Sin resultados para "' + q + '"</div>';
+            return;
+          }
+          box.innerHTML = products.map(p => {
+            const safeTitle = (p.title || '').replace(/"/g, '&quot;').replace(/'/g, "\\'");
+            const safeImg = (p.image || '').replace(/'/g, "\\'");
+            const already = _giftsAppliesProducts.find(x => String(x.id) === String(p.shopify_id));
+            const bg = already ? '#f3f4f6' : '#fff';
+            const cursor = already ? 'default' : 'pointer';
+            const opacity = already ? '0.55' : '1';
+            const onclick = already ? '' : 'onclick="addAppliesProduct(\'' + p.shopify_id + '\',\'' + safeTitle + '\',\'' + safeImg + '\')"';
+            return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--bdr);cursor:' + cursor + ';background:' + bg + ';opacity:' + opacity + '" ' + onclick + '>' +
+              '<img src="' + (p.image || '') + '" style="width:32px;height:32px;border-radius:4px;object-fit:cover;background:#f3f4f6" onerror="this.style.visibility=\'hidden\'">' +
+              '<div style="flex:1;min-width:0">' +
+              '  <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (p.title || '') + (already ? ' <span style="color:var(--grn)">✓ ya agregado</span>' : '') + '</div>' +
+              '  <div style="font-size:10px;color:var(--mut)">ID ' + p.shopify_id + '</div>' +
+              '</div>' +
+              (already ? '' : '<button type="button" class="btn btn-sm btn-r" style="padding:4px 10px;font-size:11px">+</button>') +
+              '</div>';
+          }).join('');
+        } catch (e) {
+          box.innerHTML = '<div style="padding:12px;color:var(--amber);font-size:12px">Error: ' + e.message + '</div>';
+        }
+      }, 350);
+    }
+
+    function addAppliesProduct(id, title, image) {
+      if (_giftsAppliesProducts.find(x => String(x.id) === String(id))) { toast('Ese producto ya está en la lista', 'err'); return; }
+      _giftsAppliesProducts.push({ id: String(id), title: title || ('Producto ' + id), image: image || null });
+      renderAppliesList();
+      document.getElementById('plan-gifts-applies-search').value = '';
+      document.getElementById('plan-gifts-applies-results').style.display = 'none';
+    }
+
+    function removeAppliesProduct(i) {
+      _giftsAppliesProducts.splice(i, 1);
+      renderAppliesList();
+    }
+
+    function renderAppliesList() {
+      document.getElementById('plan-gifts-applies-count').textContent = _giftsAppliesProducts.length;
+      const box = document.getElementById('plan-gifts-applies-list');
+      if (!_giftsAppliesProducts.length) {
+        box.innerHTML = '<div style="padding:8px;color:var(--amber);font-size:11px;text-align:center;border:1px dashed #fbbf24;border-radius:6px;background:#fffbeb">⚠ Sin productos seleccionados, el regalo NO se aplicará a ninguna suscripción.</div>';
+        return;
+      }
+      box.innerHTML = _giftsAppliesProducts.map((p, i) => {
+        return '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:#eff6ff;border-radius:6px;border:1px solid #bfdbfe">' +
+          '<img src="' + (p.image || '') + '" style="width:28px;height:28px;border-radius:4px;object-fit:cover;background:#f3f4f6" onerror="this.style.visibility=\'hidden\'">' +
+          '<div style="flex:1;min-width:0;font-size:11px">' +
+          '  <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + p.title + '</div>' +
+          '  <div style="font-size:10px;color:var(--mut)">ID ' + p.id + '</div>' +
+          '</div>' +
+          '<button type="button" class="btn btn-sm" style="background:#fee2e2;color:#991b1b;padding:3px 8px;font-size:11px" onclick="removeAppliesProduct(' + i + ')">×</button>' +
+          '</div>';
+      }).join('');
     }
 
     function searchGiftProducts() {
@@ -2256,16 +2337,20 @@
 
     function resetGiftsUI() {
       _giftsSelected = [];
+      _giftsAppliesProducts = [];
       document.getElementById('plan-gifts-enabled').checked = false;
       document.getElementById('plan-gifts-block').style.display = 'none';
       document.getElementById('plan-gifts-search').value = '';
       document.getElementById('plan-gifts-results').style.display = 'none';
       document.getElementById('plan-gifts-results').innerHTML = '';
       document.getElementById('plan-gifts-applies-to').value = 'all_products';
-      document.getElementById('plan-gifts-applies-ids').value = '';
-      document.getElementById('plan-gifts-applies-ids').style.display = 'none';
+      document.getElementById('plan-gifts-applies-search').value = '';
+      document.getElementById('plan-gifts-applies-results').style.display = 'none';
+      document.getElementById('plan-gifts-applies-results').innerHTML = '';
+      document.getElementById('plan-gifts-applies-block').style.display = 'none';
       document.getElementById('plan-gifts-applies-hint').textContent = 'Se aplicará a cualquier producto suscrito con este plan.';
       renderGiftsList();
+      renderAppliesList();
     }
 
     function loadGiftsUI(plan) {
@@ -2287,22 +2372,34 @@
       const appliesTo = (g.applies_to && g.applies_to.mode) || 'all_products';
       document.getElementById('plan-gifts-applies-to').value = appliesTo;
       if (appliesTo === 'specific_products') {
-        const ids = (g.applies_to.product_ids || []).join(',');
-        document.getElementById('plan-gifts-applies-ids').value = ids;
-        document.getElementById('plan-gifts-applies-ids').style.display = 'block';
+        // Rehidrata desde applies_to.products (nuevo, con título/imagen) o product_ids (viejo, solo IDs)
+        const richProducts = Array.isArray(g.applies_to?.products) ? g.applies_to.products : null;
+        const idList = Array.isArray(g.applies_to?.product_ids) ? g.applies_to.product_ids : [];
+        if (richProducts && richProducts.length) {
+          _giftsAppliesProducts = richProducts.map(p => ({
+            id: String(p.id || p.product_id || ''),
+            title: p.title || p.product_title || ('Producto ' + (p.id || p.product_id || '')),
+            image: p.image || null
+          })).filter(p => p.id);
+        } else if (idList.length) {
+          // Compat: solo teníamos IDs, los mostramos como chips con label genérico
+          _giftsAppliesProducts = idList.map(id => ({ id: String(id), title: 'Producto ' + id, image: null }));
+        }
+        document.getElementById('plan-gifts-applies-block').style.display = 'block';
         document.getElementById('plan-gifts-applies-hint').textContent = 'Los regalos solo se aplicarán a suscripciones de estos productos.';
       }
       renderGiftsList();
+      renderAppliesList();
     }
 
     function collectGiftsFromUI() {
       const enabled = document.getElementById('plan-gifts-enabled').checked;
-      if (!enabled) return { enabled: false, items: [], applies_to: { mode: 'all_products', product_ids: [] } };
+      if (!enabled) return { enabled: false, items: [], applies_to: { mode: 'all_products', product_ids: [], products: [] } };
       const mode = document.getElementById('plan-gifts-applies-to').value;
-      const idsRaw = document.getElementById('plan-gifts-applies-ids').value || '';
-      const product_ids = mode === 'specific_products'
-        ? idsRaw.split(',').map(s => s.trim()).filter(Boolean)
+      const products = mode === 'specific_products'
+        ? _giftsAppliesProducts.map(p => ({ id: String(p.id), title: p.title || '', image: p.image || null }))
         : [];
+      const product_ids = products.map(p => p.id); // compat: el server solo lee product_ids
       return {
         enabled: true,
         items: _giftsSelected.map(g => ({
@@ -2314,7 +2411,7 @@
           quantity: Math.max(1, Math.min(3, parseInt(g.quantity, 10) || 1)),
           image: g.image || null
         })),
-        applies_to: { mode, product_ids }
+        applies_to: { mode, product_ids, products }
       };
     }
 
