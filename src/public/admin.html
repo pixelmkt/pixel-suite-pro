@@ -3003,6 +3003,12 @@
         toast('Activaste regalos pero no agregaste ninguno. Agrega al menos 1 o desactiva la opción.', 'err');
         return;
       }
+      // Validación: si elegiste "Solo productos específicos" pero no agregaste productos,
+      // el regalo nunca aplicaría a nadie → bloquea el guardado con mensaje claro.
+      if (gifts.enabled && gifts.applies_to?.mode === 'specific_products' && !(gifts.applies_to.product_ids || []).length) {
+        toast('Elegiste "Solo productos específicos" pero no agregaste ninguno. Agrega productos que reciban el regalo, o cambiá a "Todos los productos".', 'err');
+        return;
+      }
       const plan = {
         id: _editingPlanId !== null ? _plans[_editingPlanId].id : Date.now().toString(),
         frequency: parseInt(document.getElementById('plan-freq').value),
