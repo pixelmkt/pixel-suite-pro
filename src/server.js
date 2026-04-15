@@ -1131,6 +1131,95 @@ app.post('/api/products/:id/config', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/** GET /api/products/search?q=X&limit=20 — Busca productos Shopify por título.
+ *  Usado por el selector de regalos en la UI admin. Read-only, no modifica nada.
+ *  Devuelve thumbnail + título + cantidad de variantes + stock total del producto. */
+app.get('/api/products/search', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.json({ products: [], error: 'No Shopify token' });
+        const q = String(req.query.q || '').trim();
+        const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+        // Shopify REST products.json soporta ?title= como filtro parcial
+        const params = new URLSearchParams({
+            limit: String(limit),
+            fields: 'id,title,handle,status,images,variants,vendor'
+        });
+        if (q) params.set('title', q);
+        const url = `https://${shop}/admin/api/2026-01/products.json?${params.toString()}`;
+        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+        if (!r.ok) {
+            const txt = await r.text().catch(() => '');
+            return res.status(502).json({ products: [], error: `Shopify ${r.status}: ${txt.slice(0, 200)}` });
+        }
+        const data = await r.json();
+        const products = (data.products || []).map(p => {
+            const variants = Array.isArray(p.variants) ? p.variants : [];
+            const totalStock = variants.reduce((sum, v) => sum + (Number.isFinite(v.inventory_quantity) ? v.inventory_quantity : 0), 0);
+            return {
+                shopify_id: String(p.id),
+                title: p.title,
+                handle: p.handle,
+                vendor: p.vendor,
+                status: p.status,
+                image: p.images?.[0]?.src || null,
+                variant_count: variants.length,
+                total_stock: totalStock,
+                variants: variants.slice(0, 3).map(v => ({
+                    id: String(v.id),
+                    title: v.title,
+                    sku: v.sku || '',
+                    price: v.price,
+                    inventory_quantity: v.inventory_quantity
+                }))
+            };
+        });
+        res.json({ products });
+    } catch (e) { res.status(500).json({ products: [], error: e.message }); }
+});
+
+/** GET /api/products/:id/variants — devuelve TODAS las variantes de un producto con stock.
+ *  Para elegir variante específica al configurar un regalo. Read-only. */
+app.get('/api/products/:id/variants', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'No Shopify token' });
+        const id = req.params.id;
+        const url = `https://${shop}/admin/api/2026-01/products/${encodeURIComponent(id)}.json?fields=id,title,handle,images,variants,status`;
+        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+        if (!r.ok) {
+            const txt = await r.text().catch(() => '');
+            return res.status(r.status).json({ error: `Shopify ${r.status}: ${txt.slice(0, 200)}` });
+        }
+        const data = await r.json();
+        const p = data.product;
+        if (!p) return res.status(404).json({ error: 'Producto no encontrado' });
+        const variants = (p.variants || []).map(v => ({
+            id: String(v.id),
+            title: v.title,
+            sku: v.sku || '',
+            price: v.price,
+            compare_at_price: v.compare_at_price,
+            inventory_quantity: Number.isFinite(v.inventory_quantity) ? v.inventory_quantity : 0,
+            inventory_policy: v.inventory_policy, // 'continue' permite overselling, 'deny' bloquea
+            inventory_management: v.inventory_management, // 'shopify' rastrea, null no rastrea
+            image_id: v.image_id,
+            weight: v.weight,
+            weight_unit: v.weight_unit
+        }));
+        res.json({
+            shopify_id: String(p.id),
+            title: p.title,
+            handle: p.handle,
+            status: p.status,
+            image: p.images?.[0]?.src || null,
+            variants
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 /* ═══════════════════════════════════════════════════════════════
    🏷️ SHOPIFY SELLING PLANS — Native subscription UI on product page
