@@ -2271,9 +2271,14 @@ app.get('/api/metrics', async (req, res) => {
 app.get('/api/subscribers/real-count', async (req, res) => {
     const report = { metaobjects_active: 0, shopify_contracts_active: 0, mp_authorized: 0, union_by_email: 0, sources: {}, errors: [] };
 
-    // 1) Metaobjects locales
+    // 1) Metaobjects locales — solo recurrentes con ciclos pendientes (excluir compras únicas/planes cumplidos)
     try {
-        const subs = await db.getSubscriptions({ status: 'active' }).catch(() => []);
+        const allActive = await db.getSubscriptions({ status: 'active' }).catch(() => []);
+        const subs = allActive.filter(s => {
+            const done = parseInt(s.cycles_completed) || 0;
+            const req = parseInt(s.cycles_required) || 999;
+            return done < req;
+        });
         report.metaobjects_active = subs.length;
         report.sources.metaobjects = subs.map(s => ({ email: s.customer_email, product: s.product_title, mp_preapproval_id: s.mp_preapproval_id, next_charge: s.next_charge_at }));
     } catch (e) { report.errors.push('metaobjects: ' + e.message); }

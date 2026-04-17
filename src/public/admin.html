@@ -1666,6 +1666,10 @@
             <div class="stat-lbl">Pausadas</div>
           </div>
           <div class="stat">
+            <div class="stat-val" id="st-completed" style="color:var(--mut)">—</div>
+            <div class="stat-lbl">Completadas</div>
+          </div>
+          <div class="stat">
             <div class="stat-val" id="st-cancelled" style="color:var(--red)">—</div>
             <div class="stat-lbl">Canceladas</div>
           </div>
@@ -3182,6 +3186,7 @@
           activeEl.title = `Metaobjects: ${realCount.metaobjects_active} · Shopify contracts: ${realCount.shopify_contracts_active} · MP authorized: ${realCount.mp_authorized} · Unión única: ${realCount.union_by_email}`;
         }
         document.getElementById('st-paused').textContent = parseInt(metrics.paused) || 0;
+        document.getElementById('st-completed').textContent = parseInt(metrics.completed) || 0;
         document.getElementById('st-cancelled').textContent = parseInt(metrics.cancelled) || 0;
         document.getElementById('st-next7').textContent = parseInt(metrics.next7d) || 0;
         checkSetupProgress();

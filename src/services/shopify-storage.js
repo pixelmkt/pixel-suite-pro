@@ -233,7 +233,21 @@ async function getEvents(subscriptionId, limit = 50) {
 
 async function getMetrics() {
     const subs = await getSubscriptions();
-    const active = subs.filter(s => s.status === 'active');
+    // "active" en status pero separamos las que YA completaron su plan (compras únicas / plan cumplido)
+    const allActive = subs.filter(s => s.status === 'active');
+    // Suscripciones RECURRENTES activas: tienen ciclos pendientes (cycles_completed < cycles_required)
+    const active = allActive.filter(s => {
+        const done = parseInt(s.cycles_completed) || 0;
+        const req = parseInt(s.cycles_required) || 999;
+        return done < req;
+    });
+    // Completadas: status=active pero ya cumplieron todos los ciclos (plan de 1 mes, etc.)
+    const completed = allActive.filter(s => {
+        const done = parseInt(s.cycles_completed) || 0;
+        const req = parseInt(s.cycles_required) || 999;
+        return done >= req && req > 0;
+    });
+    // MRR = solo suscripciones que VAN A generar un cobro futuro
     const mrr = active.reduce((n, s) => n + parseFloat(s.final_price || 0), 0);
     const now = new Date();
     const in7d = new Date(); in7d.setDate(in7d.getDate() + 7);
@@ -241,11 +255,15 @@ async function getMetrics() {
     return {
         total: subs.length,
         active: active.length,
+        completed: completed.length,
         paused: subs.filter(s => s.status === 'paused').length,
         cancelled: subs.filter(s => s.status === 'cancelled').length,
         mrr: parseFloat(mrr.toFixed(2)),
         next7d: subs.filter(s => {
-            if (!s.next_charge_at) return false;
+            if (!s.next_charge_at || s.status !== 'active') return false;
+            const done = parseInt(s.cycles_completed) || 0;
+            const req = parseInt(s.cycles_required) || 999;
+            if (done >= req) return false; // ya completó, no habrá cobro
             const d = new Date(s.next_charge_at);
             return d >= now && d <= in7d;
         }).length,
