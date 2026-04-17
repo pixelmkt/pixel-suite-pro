@@ -561,7 +561,7 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
         const sub = await db.getSubscription(req.params.id);
         if (!sub) return res.status(404).json({ error: 'Not found' });
         // Only allow safe field updates
-        const allowed = ['permanence_months', 'cycles_required', 'discount_pct', 'frequency_months', 'customer_name', 'product_title', 'variant_id', 'product_id', 'status', 'next_charge_at', 'base_price', 'final_price', 'shipping_address', 'tipo_documento', 'dni'];
+        const allowed = ['permanence_months', 'cycles_required', 'discount_pct', 'frequency_months', 'customer_name', 'product_title', 'variant_id', 'product_id', 'status', 'next_charge_at', 'base_price', 'final_price', 'shipping_address', 'tipo_documento', 'dni', 'mp_preapproval_id', 'activated_at', 'cycles_completed', 'last_charge_at', 'customer_email', 'customer_phone'];
         const updates = {};
         for (const key of allowed) { if (req.body[key] !== undefined) updates[key] = req.body[key]; }
         if (!Object.keys(updates).length) return res.status(400).json({ error: 'No valid fields to update' });
