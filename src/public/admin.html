@@ -1677,6 +1677,10 @@
             <div class="stat-val" id="st-next7">—</div>
             <div class="stat-lbl">Cobros próx. 7d</div>
           </div>
+          <div class="stat" style="border-left:3px solid var(--blk)">
+            <div class="stat-val" id="st-total" style="color:var(--blk);font-weight:800">—</div>
+            <div class="stat-lbl">Total (activas + completadas)</div>
+          </div>
         </div>
         <div class="card">
           <div class="card-head"><span class="card-title">Suscripciones recientes</span></div>
@@ -3189,6 +3193,8 @@
         document.getElementById('st-completed').textContent = parseInt(metrics.completed) || 0;
         document.getElementById('st-cancelled').textContent = parseInt(metrics.cancelled) || 0;
         document.getElementById('st-next7').textContent = parseInt(metrics.next7d) || 0;
+        const totalActComp = (parseInt(activeReal) || 0) + (parseInt(metrics.completed) || 0);
+        document.getElementById('st-total').textContent = totalActComp;
         checkSetupProgress();
         const subs = Array.isArray(recent) ? recent : [];
         document.getElementById('dash-table').innerHTML = subs.length
