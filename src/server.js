@@ -4539,11 +4539,17 @@ async function runOrderRescue() {
                     for (const pre of preapprovals) {
                         if (usedIds.has(pre.id)) continue; // Already linked
 
+                        // ✅ SOLO procesar si MP YA COBRÓ (charged_quantity >= 1)
+                        // "authorized" solo significa que el cliente autorizó la suscripción,
+                        // NO que el cobro se hizo. Verificamos charged_quantity para 100% confirmado.
+                        const charged = pre.summarized?.charged_quantity || 0;
+                        if (charged < 1) continue; // MP aún no cobró — no crear orden
+
                         // Match by plan_id
                         const matchSub = pendingSubs.find(s => s.mp_plan_id === pre.preapproval_plan_id);
                         if (!matchSub) continue;
 
-                        console.log(`[ORDER RESCUE] 🔗 Linking orphan preapproval ${pre.id} to ${matchSub.customer_email} (plan match)`);
+                        console.log(`[ORDER RESCUE] 🔗 Linking preapproval ${pre.id} to ${matchSub.customer_email} (plan match, MP charged: ${charged})`);
 
                         // Activate the subscription
                         const nextCharge = new Date();
