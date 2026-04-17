@@ -13,19 +13,46 @@ export default async (api) => {
     if (res2.ok) brand = await res2.json();
   } catch (e) {}
 
-  // ── Customer ──
+  // ── Customer — múltiples rutas del API de Shopify Customer Account ──
   let customerEmail = null;
   let customerId = null;
+  const debugInfo = { apiKeys: '', attempts: [], error: null };
   try {
+    debugInfo.apiKeys = Object.keys(api || {}).join(', ');
+    // Intento 1: api.authenticatedAccount.customer (legacy)
+    let cur = null;
     const acc = api?.authenticatedAccount?.customer;
     if (acc) {
-      const cur = typeof acc.current === 'function' ? await acc.current() : (acc.current || null);
-      if (cur) {
-        customerEmail = cur.emailAddress?.emailAddress || cur.email || null;
-        customerId = cur.id ? String(cur.id).split('/').pop() : null;
-      }
+      debugInfo.attempts.push('authenticatedAccount.customer found');
+      cur = typeof acc.current === 'function' ? await acc.current() : (acc.current || null);
     }
-  } catch (e) {}
+    // Intento 2: api.customer (newer API versions)
+    if (!cur && api?.customer) {
+      debugInfo.attempts.push('api.customer found');
+      const cust = api.customer;
+      cur = typeof cust.current === 'function' ? await cust.current() : (cust.current || null);
+    }
+    // Intento 3: api.customerAccount (alternate path)
+    if (!cur && api?.customerAccount?.customer) {
+      debugInfo.attempts.push('customerAccount.customer found');
+      const ca = api.customerAccount.customer;
+      cur = typeof ca.current === 'function' ? await ca.current() : (ca.current || null);
+    }
+    // Intento 4: directo en api (some versions expose email directly)
+    if (!cur && api?.email) {
+      debugInfo.attempts.push('api.email found');
+      cur = { email: api.email, id: api.customerId || null };
+    }
+    if (cur) {
+      debugInfo.attempts.push('customer data: ' + JSON.stringify(Object.keys(cur)));
+      customerEmail = cur.emailAddress?.emailAddress || cur.email || cur.emailAddress || null;
+      customerId = cur.id ? String(cur.id).split('/').pop() : null;
+    } else {
+      debugInfo.attempts.push('NO customer data found in any path');
+    }
+  } catch (e) {
+    debugInfo.error = e.message;
+  }
 
   // ── Customer subscriptions ──
   // Priorizar email (lo que las subs almacenan) sobre customerId (Shopify GID numeric)
@@ -489,6 +516,40 @@ export default async (api) => {
   };
 
   order.forEach(key => { if (renderers[key]) renderers[key](); });
+
+  // ── DEBUG BANNER (temporal — remover después de diagnosticar) ──
+  const dbgSec = document.createElement('s-section');
+  const dbgBox = document.createElement('s-box');
+  dbgBox.setAttribute('padding', 'base');
+  dbgBox.setAttribute('background', 'subdued');
+  dbgBox.setAttribute('cornerRadius', 'base');
+  const dbgSt = document.createElement('s-stack');
+  dbgSt.setAttribute('gap', 'extraSmall');
+  const dbgTitle = document.createElement('s-text');
+  dbgTitle.setAttribute('size', 'small');
+  dbgTitle.setAttribute('emphasis', 'bold');
+  dbgTitle.textContent = '[DEBUG] Portal Diagnostic';
+  dbgSt.appendChild(dbgTitle);
+  const lines = [
+    'API keys: ' + (debugInfo.apiKeys || 'EMPTY'),
+    'Attempts: ' + (debugInfo.attempts.join(' → ') || 'NONE'),
+    'Error: ' + (debugInfo.error || 'none'),
+    'Email found: ' + (customerEmail || 'NULL'),
+    'Customer ID: ' + (customerId || 'NULL'),
+    'Subs found: ' + mySubs.length,
+    'isActiveMember: ' + isActiveMember,
+    'Subs detail: ' + (mySubs.length ? mySubs.map(s => s.status + ' ' + (s.product_title || '').slice(0, 30)).join(', ') : 'none')
+  ];
+  lines.forEach(line => {
+    const t = document.createElement('s-text');
+    t.setAttribute('size', 'small');
+    t.setAttribute('appearance', 'subdued');
+    t.textContent = line;
+    dbgSt.appendChild(t);
+  });
+  dbgBox.appendChild(dbgSt);
+  dbgSec.appendChild(dbgBox);
+  page.appendChild(dbgSec);
 
   document.body.appendChild(page);
 };
