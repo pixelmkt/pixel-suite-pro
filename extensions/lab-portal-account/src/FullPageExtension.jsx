@@ -45,6 +45,13 @@ export default async (api) => {
       }
     } catch (e) {}
   }
+  // SOLO mostrar subs con pago confirmado (active, paused, cancelled con ciclos).
+  // NUNCA mostrar pending_payment — esas aún no tienen cobro de MP.
+  mySubs = mySubs.filter(s =>
+    s.status === 'active' ||
+    s.status === 'paused' ||
+    (s.status === 'cancelled' && (s.cycles_completed || 0) > 0)
+  );
   const isActiveMember = mySubs.some(s => s.status === 'active' || s.status === 'paused');
 
   // ═══ BUILD PAGE ═══
