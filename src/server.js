@@ -544,7 +544,13 @@ app.get('/subscriptions/pending', (req, res) => {
 app.get('/api/subscriptions/customer/:customerId', async (req, res) => {
     try {
         const subs = await db.getSubscriptions();
-        const filtered = subs.filter(s => s.customer_id === req.params.customerId || s.customer_email === req.params.customerId);
+        const key = req.params.customerId;
+        const keyLower = key.toLowerCase();
+        // Match by customer_id (Shopify numeric ID) OR email (case-insensitive)
+        const filtered = subs.filter(s =>
+            s.customer_id === key ||
+            (s.customer_email || '').toLowerCase() === keyLower
+        );
         res.json(filtered);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
