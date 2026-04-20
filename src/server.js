@@ -4595,6 +4595,17 @@ async function runOrderRescue() {
     }
 }
 
+/** POST /api/admin/run-rescue — Dispara manualmente el rescue cron para atrapar órdenes perdidas */
+app.post('/api/admin/run-rescue', async (req, res) => {
+    try {
+        // Responder inmediatamente; correr en background
+        res.json({ success: true, message: 'Rescue cron iniciado en background — revisa logs Railway en 1-2 min' });
+        setTimeout(() => {
+            runOrderRescue().catch(e => console.error('[MANUAL RESCUE] Error:', e.message));
+        }, 100);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /** REMINDER CRON: runs daily at 9am Lima — sends 7-day advance reminders */
 async function runReminderCron() {
     console.log('[REMINDER CRON] Checking 7-day upcoming billing');
