@@ -3285,6 +3285,117 @@ async function getPrimaryLocationId() {
     return null;
 }
 
+/* ── 🔒 HARDENING 2026-04-20: guardia anti-duplicado (AGREGAR, no MODIFICA flujo) ──
+   Busca en Shopify si ya existe una order para esta suscripción en los últimos 45 días.
+   Criterios de match (cualquiera bloquea creación de duplicado):
+     a) note_attribute 'subscription_id' == sub.id (forma canónica futura)
+     b) note incluye sub.id (fallback para orders viejas)
+     c) note incluye mpPaymentId REAL (no sintético como 'rescue_*')
+   Raíz del incidente Luis Miguel (#8765+#8766): rescue cron corrió y creó duplicado
+   porque el dedup previo sólo miraba los últimos 50 eventos locales, no Shopify. */
+async function alreadyHasShopifyOrderForSub(sub, mpPaymentId, shop, token) {
+    try {
+        if (!sub?.customer_email || !token || !shop) return false;
+        const since = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString();
+        const url = `https://${shop}/admin/api/2026-01/orders.json?` +
+            `email=${encodeURIComponent(sub.customer_email)}` +
+            `&status=any&created_at_min=${encodeURIComponent(since)}&limit=50` +
+            `&fields=id,name,note,tags,note_attributes,cancelled_at,created_at`;
+        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+        if (!r.ok) return false;
+        const data = await r.json();
+        const orders = (data.orders || []).filter(o =>
+            !o.cancelled_at &&
+            ((o.tags || '').toLowerCase().includes('suscripcion') ||
+             (o.note || '').toLowerCase().includes('suscripci'))
+        );
+        if (!orders.length) return false;
+
+        const subId = sub.id ? String(sub.id) : '';
+        // Sintético = rescue_*, manual_*, o vacío. IDs MP payment son numéricos (ej. '152587784379').
+        // Preapproval IDs (alfanuméricos tipo '2c9380847...') los tratamos como NO-sintéticos
+        // porque MP los devuelve como ID del evento activation; aún así no matchean mp_payment_id real.
+        const mpStr = String(mpPaymentId || '');
+        const syntheticPayment = !mpStr || mpStr.startsWith('rescue_') || mpStr.startsWith('manual_');
+        // Target cycle: el ciclo que se intenta crear ahora = cycles_completed + 1.
+        // (Si es 1er pago, cycles_completed=0 → target=1.)
+        const targetCycle = String((parseInt(sub.cycles_completed) || 0) + 1);
+
+        for (const o of orders) {
+            const note = o.note || '';
+            const attrs = Array.isArray(o.note_attributes) ? o.note_attributes : [];
+            const attrSubId = attrs.find(a => a && a.name === 'subscription_id')?.value;
+            const attrMpId = attrs.find(a => a && a.name === 'mp_payment_id')?.value;
+            const attrCycle = attrs.find(a => a && a.name === 'cycle_number')?.value;
+
+            // REGLA 1 — match por mp_payment_id REAL (el más confiable; MP asegura unicidad).
+            // NO bloquea ciclos distintos porque cada ciclo tiene su propio payment_id.
+            if (!syntheticPayment) {
+                if (attrMpId && String(attrMpId) === String(mpPaymentId)) {
+                    return { duplicate: true, existing: o, matched_by: 'mp_payment_id' };
+                }
+                if (note.includes(String(mpPaymentId))) {
+                    return { duplicate: true, existing: o, matched_by: 'note:mp_payment_id' };
+                }
+            }
+
+            // REGLA 2 — match por subscription_id + cycle_number (para rescue crons con paymentId sintético).
+            // Solo bloquea si el MISMO ciclo ya tiene order. Ciclos distintos de la misma sub NO se bloquean.
+            if (subId && attrSubId && String(attrSubId) === subId) {
+                if (attrCycle && String(attrCycle) === targetCycle) {
+                    return { duplicate: true, existing: o, matched_by: 'subscription_id+cycle_number' };
+                }
+                // Si la order vieja no tiene cycle_number (data previa al hardening),
+                // solo bloqueamos si el paymentId es sintético Y cycles_completed == 0
+                // (o sea: primer ciclo de la sub y ya hay alguna order) para no abrir un hueco.
+                if (!attrCycle && syntheticPayment && (parseInt(sub.cycles_completed) || 0) === 0) {
+                    return { duplicate: true, existing: o, matched_by: 'subscription_id (legacy no cycle)' };
+                }
+            }
+        }
+        return false;
+    } catch (e) {
+        console.warn('[ORDER DEDUP] check error:', e.message);
+        return false; // Fail-open: si Shopify falla, dejar que la lógica original decida.
+    }
+}
+
+/* ── 🔒 HARDENING 2026-04-20: validar pago MP real (AGREGAR, no MODIFICA flujo) ──
+   Cuando un rescue cron intenta crear orden con paymentId sintético ('rescue_*'),
+   esta función busca en MP un payment REAL processed de la sub antes de permitir.
+   Si no hay payment MP real → NO crear order (evita orders fantasma). */
+async function findRealMpPaymentForSub(sub) {
+    try {
+        if (!sub?.mp_preapproval_id) return null;
+        let mpToken = process.env.MP_ACCESS_TOKEN;
+        if (!mpToken) {
+            try {
+                const dyn = await readFromShopify().catch(() => ({}));
+                if (dyn?.mp_access_token) { process.env.MP_ACCESS_TOKEN = dyn.mp_access_token; mpToken = dyn.mp_access_token; }
+            } catch {}
+        }
+        if (!mpToken) return null;
+        const r = await fetch(`https://api.mercadopago.com/authorized_payments/search?preapproval_id=${sub.mp_preapproval_id}`, {
+            headers: { Authorization: `Bearer ${mpToken}` }
+        });
+        if (!r.ok) return null;
+        const data = await r.json();
+        const approved = (data?.results || [])
+            .filter(p => p.payment?.status === 'approved' || p.status === 'processed')
+            .sort((a, b) => new Date(b.date_created) - new Date(a.date_created));
+        if (!approved.length) return null;
+        const latest = approved[0];
+        return {
+            id: String(latest.payment?.id || latest.id),
+            amount: latest.transaction_amount,
+            date_created: latest.date_created
+        };
+    } catch (e) {
+        console.warn('[MP PAYMENT LOOKUP] error:', e.message);
+        return null;
+    }
+}
+
 /* ── Helper: Crear orden en Shopify desde una suscripción ── */
 async function createShopifyOrderFromSub(sub, mpPaymentId) {
     const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
@@ -3380,6 +3491,55 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         }
     }
 
+    // 🔒 HARDENING 2026-04-20: guardia anti-duplicado.
+    // Previene el caso Luis Miguel Ordoñez (#8765+#8766 creados por rescue cron sin dedup real).
+    // Consulta Shopify como source of truth antes de construir la order.
+    const dup = await alreadyHasShopifyOrderForSub(sub, mpPaymentId, shop, token).catch(() => false);
+    if (dup && dup.duplicate) {
+        console.warn(`[ORDER] 🛑 SKIP duplicado — sub ${sub.id} ya tiene order ${dup.existing.name} en Shopify (match by ${dup.matched_by}). MP payment solicitado: ${mpPaymentId || '?'}. No se crea duplicado.`);
+        // Registrar evento para que admin vea que fue bloqueado (no error, es comportamiento correcto).
+        if (db?.createEvent && sub.id && !sub.id.startsWith('orphan_')) {
+            db.createEvent({
+                subscription_id: sub.id,
+                event_type: 'order_duplicate_blocked',
+                metadata: JSON.stringify({
+                    existing_order: dup.existing.name,
+                    existing_order_id: dup.existing.id,
+                    matched_by: dup.matched_by,
+                    attempted_mp_payment_id: mpPaymentId || null,
+                    blocked_at: new Date().toISOString()
+                })
+            }).catch(() => {});
+        }
+        return null;
+    }
+
+    // 🔒 HARDENING 2026-04-20: si el caller pasó paymentId sintético (rescue_*, manual_*, vacío),
+    // validar que existe un payment MP REAL processed antes de crear order.
+    // LA LEY DEL NEGOCIO: "SE TIENEN QUE PAGAR PARA QUE CAIGAN LOS PEDIDOS".
+    // Si no hay payment real → NO crear (evita orders fantasma sin respaldo MP).
+    // Además: reemplazamos el paymentId sintético por el real, para que el note de
+    // la order tenga el ID MP correcto (trazabilidad que pidió el admin).
+    // Preapproval IDs (alfanuméricos) NO se consideran sintéticos: provienen del webhook
+    // real de activación y dispararían doble-check innecesario.
+    const mpIdStr = String(mpPaymentId || '');
+    const isSyntheticCaller = !mpIdStr || mpIdStr.startsWith('rescue_') || mpIdStr.startsWith('manual_');
+    if (isSyntheticCaller) {
+        const realPay = await findRealMpPaymentForSub(sub).catch(() => null);
+        if (!realPay) {
+            console.error(`[ORDER] ❌ BLOQUEADO: intento de crear order para sub ${sub.id} con paymentId sintético '${mpIdStr || '(vacío)'}' pero NO hay payment MP real processed. No se crea order fantasma. Cliente: ${sub.customer_email}. Preapproval: ${sub.mp_preapproval_id || '?'}`);
+            if (db?.updateSubscription && sub.id && !String(sub.id).startsWith('orphan_')) {
+                db.updateSubscription(sub.id, {
+                    last_order_error: `Orden bloqueada: no hay payment MP real respaldando '${mpIdStr || 'vacío'}' (${new Date().toISOString()})`,
+                    needs_admin_review: true
+                }).catch(() => {});
+            }
+            return null;
+        }
+        console.log(`[ORDER] ✅ Reemplazando paymentId sintético '${mpIdStr || '(vacío)'}' por real ${realPay.id} (S/${realPay.amount}) desde MP`);
+        mpPaymentId = realPay.id;
+    }
+
     // Resolver dirección de envío
     let shippingAddr = sub.shipping_address || null;
     if (!shippingAddr && sub.customer_email) {
@@ -3450,6 +3610,11 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
     // Build note_attributes so Navasoft picks up the order
     const addr = shippingAddr || {};
     const noteAttrs = [
+        // 🔒 HARDENING 2026-04-20: trazabilidad + dedup anti-duplicado
+        { name: 'subscription_id', value: String(sub.id || '') },
+        { name: 'mp_payment_id', value: String(mpPaymentId || '') },
+        { name: 'mp_preapproval_id', value: String(sub.mp_preapproval_id || '') },
+        { name: 'cycle_number', value: String((parseInt(sub.cycles_completed) || 0) + 1) },
         { name: 'ClusterCart-optimized', value: 'true' },
         { name: 'tipo_documento', value: sub.tipo_documento || '01' },
         { name: 'dni', value: sub.dni || '' },
