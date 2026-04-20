@@ -228,6 +228,69 @@ async function isVariantAllowedForSubscription(variantId, settingsMaybe) {
     return { ok: true, allowlist: Array.from(allow) };
 }
 
+/* ── 🔒 PER-CUSTOMER SUBSCRIPTION LIMITS (hardening 2026-04-20) ───────────────
+   Previene abuso/fraude/bot-spam/doble-click. Reja al inicio del checkout.
+   Reglas (todas juntas):
+     · máx 2 suscripciones en status='active' por email
+     · máx 1 suscripción activa de la misma variant_id por email
+     · máx 1 pending_payment por email dentro de los últimos 10 minutos
+   NO toca webhooks, cron, MP, ni subs existentes — solo rechaza NUEVAS
+   solicitudes en /checkout y /create antes de llegar a MP. */
+const SUB_LIMITS = {
+    MAX_ACTIVE_PER_EMAIL: 2,
+    MAX_SAME_VARIANT_PER_EMAIL: 1,
+    PENDING_WINDOW_MIN: 10
+};
+
+async function checkSubscriptionCustomerLimits(email, variantId) {
+    const emailLower = String(email || '').trim().toLowerCase();
+    if (!emailLower) return { ok: true }; // sin email no podemos evaluar; que lo ataje el validador de required
+    const vid = String(variantId || '').trim();
+    let allSubs = [];
+    try {
+        allSubs = await db.getSubscriptions({}).catch(() => []);
+    } catch (_) { allSubs = []; }
+    const mine = (Array.isArray(allSubs) ? allSubs : []).filter(s =>
+        (s.customer_email || '').trim().toLowerCase() === emailLower
+    );
+    const activeMine = mine.filter(s => s.status === 'active');
+    if (activeMine.length >= SUB_LIMITS.MAX_ACTIVE_PER_EMAIL) {
+        return {
+            ok: false,
+            code: 'MAX_ACTIVE_REACHED',
+            message: `Ya tenés ${activeMine.length} suscripciones activas. El máximo por cliente es ${SUB_LIMITS.MAX_ACTIVE_PER_EMAIL}.`,
+            existing: activeMine.length
+        };
+    }
+    if (vid) {
+        const sameVariantActive = activeMine.filter(s => String(s.variant_id || '') === vid);
+        if (sameVariantActive.length >= SUB_LIMITS.MAX_SAME_VARIANT_PER_EMAIL) {
+            return {
+                ok: false,
+                code: 'DUPLICATE_VARIANT',
+                message: 'Ya tenés una suscripción activa de este producto.',
+                existing: sameVariantActive.length
+            };
+        }
+    }
+    const windowMs = SUB_LIMITS.PENDING_WINDOW_MIN * 60 * 1000;
+    const now = Date.now();
+    const recentPending = mine.filter(s => {
+        if (s.status !== 'pending_payment') return false;
+        const createdAt = s.created_at ? new Date(s.created_at).getTime() : 0;
+        return createdAt && (now - createdAt) < windowMs;
+    });
+    if (recentPending.length >= 1) {
+        return {
+            ok: false,
+            code: 'PENDING_EXISTS',
+            message: `Ya iniciaste un checkout hace menos de ${SUB_LIMITS.PENDING_WINDOW_MIN} min. Esperá unos minutos o completá el pago pendiente.`,
+            existing: recentPending.length
+        };
+    }
+    return { ok: true };
+}
+
 /**
  * Resuelve los regalos aplicables a una suscripción NUEVA según su plan + producto.
  * Lee el metafield settings.plans_config y matchea por frecuencia/permanencia.
@@ -294,6 +357,13 @@ app.post('/api/subscriptions/create', async (req, res) => {
                 code: 'VARIANT_NOT_ALLOWED',
                 variant_id: String(variantId)
             });
+        }
+
+        // 🔒 HARDENING 2026-04-20: límites por cliente (anti-abuso/anti-bot/doble-click).
+        const limitCheck = await checkSubscriptionCustomerLimits(customerEmail, variantId);
+        if (!limitCheck.ok) {
+            console.warn(`[CREATE] ❌ Límite por cliente rechazado para ${customerEmail}: ${limitCheck.code} (${limitCheck.existing || 0} existentes)`);
+            return res.status(429).json({ error: limitCheck.message, code: limitCheck.code });
         }
 
         const cyclesRequired = Math.ceil(permanenceMonths / frequencyMonths);
@@ -507,6 +577,14 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
                 code: 'VARIANT_NOT_ALLOWED',
                 variant_id: String(vId || '')
             });
+        }
+
+        // 🔒 HARDENING 2026-04-20: límites por cliente (anti-abuso/anti-bot/doble-click).
+        // Máx 2 activas / 1 por variante / 1 pending <10 min. Rebota ANTES de MP.
+        const limitCheck = await checkSubscriptionCustomerLimits(email, vId);
+        if (!limitCheck.ok) {
+            console.warn(`[CHECKOUT] ❌ Límite por cliente rechazado para ${email}: ${limitCheck.code} (${limitCheck.existing || 0} existentes)`);
+            return res.status(429).json({ error: limitCheck.message, code: limitCheck.code });
         }
 
         const backUrl = `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/subscriptions/success?email=${encodeURIComponent(email)}&product=${encodeURIComponent(title)}`;
