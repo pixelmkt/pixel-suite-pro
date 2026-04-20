@@ -2460,6 +2460,63 @@ app.post('/api/emails/test', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* 🩺 DIAG 2026-04-20: ¿por qué no se envían emails?
+   Muestra qué envs están seteadas (sin exponer valores) y qué responde cada
+   proveedor. Temporal hasta resolver config de Resend/SMTP en Railway. */
+app.get('/api/admin/email-diagnostics', async (req, res) => {
+    const mask = v => v ? `${String(v).slice(0, 3)}…(${String(v).length} chars)` : null;
+    const report = {
+        timestamp: new Date().toISOString(),
+        env: {
+            RESEND_API_KEY: !!process.env.RESEND_API_KEY,
+            RESEND_API_KEY_preview: mask(process.env.RESEND_API_KEY),
+            RESEND_FROM: process.env.RESEND_FROM || null,
+            SMTP_HOST: process.env.SMTP_HOST || null,
+            SMTP_PORT: process.env.SMTP_PORT || null,
+            SMTP_USER: process.env.SMTP_USER || null,
+            SMTP_PASS_set: !!process.env.SMTP_PASS,
+            EMAIL_FROM: process.env.EMAIL_FROM || null
+        },
+        resend_test: null,
+        smtp_test: null
+    };
+    const testTo = String(req.query.to || 'israelsarmiento281294@gmail.com');
+    // 1) Probar Resend si existe API key
+    if (process.env.RESEND_API_KEY && notifications?.sendViaResend) {
+        try {
+            const out = await notifications.sendViaResend(testTo, '🩺 DIAG Resend — LAB NUTRITION', '<p>Test de diagnóstico Resend</p>');
+            report.resend_test = { ok: true, id: out?.id || null };
+        } catch (e) {
+            report.resend_test = { ok: false, error: e.message };
+        }
+    } else {
+        report.resend_test = { ok: false, error: 'RESEND_API_KEY not set OR sendViaResend missing' };
+    }
+    // 2) Probar SMTP sólo si Resend falló (no duplicar envío si ya salió por Resend)
+    if (!report.resend_test?.ok && notifications?.sendEmail) {
+        try {
+            // Llamo directo al transporter saltando la preferencia por Resend
+            const nodemailer = require('nodemailer');
+            const smtpPort = parseInt(process.env.SMTP_PORT || '465');
+            const t = nodemailer.createTransport({
+                host: process.env.SMTP_HOST, port: smtpPort, secure: smtpPort === 465,
+                auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+                connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 8000
+            });
+            const info = await t.sendMail({
+                from: `"LAB NUTRITION" <${process.env.SMTP_USER || 'marketing@labnutrition.com'}>`,
+                to: testTo, subject: '🩺 DIAG SMTP — LAB NUTRITION', html: '<p>Test SMTP</p>'
+            });
+            report.smtp_test = { ok: true, messageId: info?.messageId || null };
+        } catch (e) {
+            report.smtp_test = { ok: false, error: e.message, code: e.code || null };
+        }
+    } else {
+        report.smtp_test = { skipped: true, reason: 'Resend OK o módulo no disponible' };
+    }
+    res.json(report);
+});
+
 app.get('/api/metrics', async (req, res) => {
     try {
         const metrics = await db.getMetrics();
