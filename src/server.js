@@ -177,6 +177,57 @@ function getShopifyShop() { return _shopifyShop; }
    🛒 SUBSCRIPTION API
 ═══════════════════════════════════════════════ */
 
+/* ── 🔒 VARIANT ALLOWLIST (hardening 2026-04-20) ──────────────────────────────
+   Motivo: pedido #8760 (Jose Santanera) cayó con variant 59198554112081 que NO
+   es la variante oficial de suscripción (58307532587089, CREATINE BLACK LIMITED
+   EDITION 500g). Causa raíz: la validación anterior (checkout) sólo corría si
+   product_configs[pId].eligible_variant_ids estaba seteada; si no, cualquier
+   variant pasaba. Además /api/subscriptions/create y PATCH no validaban NADA.
+   Fix: allowlist GLOBAL, chequeada en TODO endpoint de creación/edición y en
+   createShopifyOrderFromSub ANTES de crear la orden Shopify.
+   Fuente de verdad (en orden):
+     1. settings.subscription_variant_whitelist (admin edita en UI)
+     2. Union de todos settings.product_configs[*].eligible_variant_ids
+     3. HARDCODED_SUBSCRIPTION_VARIANTS (fallback si settings aún no se pobló)
+   Cualquier variant fuera de esta lista es RECHAZADA. */
+const HARDCODED_SUBSCRIPTION_VARIANTS = [
+    '58307532587089' // CREATINE BLACK LIMITED EDITION 500g — única variante oficial de suscripción (abril 2026)
+];
+
+async function getSubscriptionVariantAllowlist(settingsMaybe) {
+    // settingsMaybe opcional: si lo pasan, evita un readFromShopify extra
+    let settings = settingsMaybe;
+    if (!settings) {
+        try { settings = await readFromShopify(); } catch (_) { settings = null; }
+    }
+    const set = new Set(HARDCODED_SUBSCRIPTION_VARIANTS.map(String));
+    try {
+        // 1. Lista global administrable
+        const adminList = Array.isArray(settings?.subscription_variant_whitelist)
+            ? settings.subscription_variant_whitelist
+            : [];
+        for (const v of adminList) { if (v != null && v !== '') set.add(String(v)); }
+        // 2. Union de eligible_variant_ids de cada producto configurado
+        const pCfgs = (settings && typeof settings.product_configs === 'object' && !Array.isArray(settings.product_configs))
+            ? settings.product_configs : {};
+        for (const pid of Object.keys(pCfgs)) {
+            const evs = pCfgs[pid]?.eligible_variant_ids;
+            if (Array.isArray(evs)) for (const v of evs) { if (v != null && v !== '') set.add(String(v)); }
+        }
+    } catch (_) { /* si falla leer settings, queda el hardcoded */ }
+    return set;
+}
+
+async function isVariantAllowedForSubscription(variantId, settingsMaybe) {
+    const vid = String(variantId || '').trim();
+    if (!vid) return { ok: false, reason: 'missing_variant_id', allowlist: [] };
+    const allow = await getSubscriptionVariantAllowlist(settingsMaybe);
+    if (!allow.has(vid)) {
+        return { ok: false, reason: 'variant_not_allowed', allowlist: Array.from(allow) };
+    }
+    return { ok: true, allowlist: Array.from(allow) };
+}
+
 /**
  * Resuelve los regalos aplicables a una suscripción NUEVA según su plan + producto.
  * Lee el metafield settings.plans_config y matchea por frecuencia/permanencia.
@@ -231,6 +282,18 @@ app.post('/api/subscriptions/create', async (req, res) => {
 
         if (!variantId || !customerEmail || !frequencyMonths || !permanenceMonths || !cardToken) {
             return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        // 🔒 HARDENING 2026-04-20: allowlist global de variantes suscribibles.
+        // Motivo: incidente #8760 — una variant no oficial se suscribió por falta de check.
+        const variantCheck = await isVariantAllowedForSubscription(variantId);
+        if (!variantCheck.ok) {
+            console.warn(`[CREATE] ❌ Variant ${variantId} rechazada (${variantCheck.reason}). Allowlist: [${variantCheck.allowlist.join(', ')}]. Cliente: ${customerEmail}`);
+            return res.status(400).json({
+                error: 'Esta variante no está habilitada para suscripción. Contactá al equipo si creés que es un error.',
+                code: 'VARIANT_NOT_ALLOWED',
+                variant_id: String(variantId)
+            });
         }
 
         const cyclesRequired = Math.ceil(permanenceMonths / frequencyMonths);
@@ -431,16 +494,19 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
         const dynSettings = await readFromShopify().catch(() => ({}));
         if (dynSettings?.mp_access_token) process.env.MP_ACCESS_TOKEN = dynSettings.mp_access_token;
 
-        // FIX 2026-04-11: Validate variant_id against eligible variants for the product
-        if (pId && vId) {
-            const pConfigs = (typeof dynSettings?.product_configs === 'object' && !Array.isArray(dynSettings?.product_configs)) ? dynSettings.product_configs : {};
-            const pCfg = pConfigs[pId] || {};
-            if (Array.isArray(pCfg.eligible_variant_ids) && pCfg.eligible_variant_ids.length > 0) {
-                if (!pCfg.eligible_variant_ids.includes(String(vId))) {
-                    console.warn(`[CHECKOUT] ⚠️ Variant ${vId} NOT in eligible list [${pCfg.eligible_variant_ids}] for product ${pId}`);
-                    return res.status(400).json({ error: 'Esta variante no está habilitada para suscripción. Solo la variante 500g está disponible.' });
-                }
-            }
+        // 🔒 HARDENING 2026-04-20: allowlist GLOBAL de variantes suscribibles.
+        // Antes: sólo validaba si product_configs[pId].eligible_variant_ids estaba seteado,
+        // así que si no estaba configurado (como pasó con Jose/#8760), cualquier variant pasaba.
+        // Ahora: allowlist global con baseline hardcodeada; siempre hay chequeo — incluso sin vId
+        // explícito se rechaza, porque la suscripción DEBE tener variante oficial.
+        const variantCheck = await isVariantAllowedForSubscription(vId, dynSettings);
+        if (!variantCheck.ok) {
+            console.warn(`[CHECKOUT] ❌ Variant ${vId || '(vacío)'} rechazada (${variantCheck.reason}). Producto ${pId || '-'}. Cliente ${email}. Allowlist: [${variantCheck.allowlist.join(', ')}]`);
+            return res.status(400).json({
+                error: 'Esta variante no está habilitada para suscripción. Solo la variante oficial de 500g está disponible.',
+                code: 'VARIANT_NOT_ALLOWED',
+                variant_id: String(vId || '')
+            });
         }
 
         const backUrl = `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/subscriptions/success?email=${encodeURIComponent(email)}&product=${encodeURIComponent(title)}`;
@@ -540,6 +606,46 @@ app.get('/subscriptions/pending', (req, res) => {
     res.send(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Pago pendiente</title></head><body style="font-family:sans-serif;max-width:480px;margin:60px auto;padding:20px;text-align:center"><div style="font-size:60px">⏳</div><h2 style="color:#ea580c">Pago pendiente</h2><p style="color:#666">Tu pago está siendo procesado. Te notificaremos por email cuando se confirme.</p><a href="https://nutrition-lab-cluster.myshopify.com" style="display:inline-block;background:#9d2a23;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:20px">Volver a la tienda</a></body></html>`);
 });
 
+/* ── 🔒 ADMIN: allowlist de variantes suscribibles (hardening 2026-04-20) ─────
+   GET devuelve la lista efectiva (hardcoded ∪ admin ∪ product_configs).
+   PUT reemplaza la lista admin-editable (settings.subscription_variant_whitelist).
+   El baseline hardcodeado NO se puede quitar desde acá (seguridad: siempre queda
+   al menos la variante oficial). Para removerla hay que editar código. */
+app.get('/api/admin/subscription-variant-allowlist', async (req, res) => {
+    try {
+        const settings = await readFromShopify().catch(() => ({})) || {};
+        const allow = await getSubscriptionVariantAllowlist(settings);
+        res.json({
+            allowlist: Array.from(allow),
+            hardcoded: HARDCODED_SUBSCRIPTION_VARIANTS,
+            admin_editable: Array.isArray(settings.subscription_variant_whitelist) ? settings.subscription_variant_whitelist : [],
+            from_product_configs: (() => {
+                const out = new Set();
+                const pc = (settings && typeof settings.product_configs === 'object' && !Array.isArray(settings.product_configs)) ? settings.product_configs : {};
+                for (const pid of Object.keys(pc)) {
+                    const evs = pc[pid]?.eligible_variant_ids;
+                    if (Array.isArray(evs)) for (const v of evs) if (v != null && v !== '') out.add(String(v));
+                }
+                return Array.from(out);
+            })()
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/admin/subscription-variant-allowlist', async (req, res) => {
+    try {
+        const list = Array.isArray(req.body?.variants) ? req.body.variants : null;
+        if (!list) return res.status(400).json({ error: 'Body: { variants: [\"id1\", \"id2\", ...] }' });
+        const cleaned = Array.from(new Set(list.map(v => String(v || '').trim()).filter(Boolean)));
+        const settings = await readFromShopify().catch(() => ({})) || {};
+        settings.subscription_variant_whitelist = cleaned;
+        const saved = await saveToShopify(settings);
+        if (!saved) return res.status(500).json({ error: 'No se pudo guardar en Shopify Metafields' });
+        console.log(`[ALLOWLIST] ✅ Admin actualizó allowlist a [${cleaned.join(', ')}]`);
+        res.json({ success: true, admin_editable: cleaned, hardcoded: HARDCODED_SUBSCRIPTION_VARIANTS });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ── GET customer subscriptions ── */
 app.get('/api/subscriptions/customer/:customerId', async (req, res) => {
     try {
@@ -565,6 +671,27 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
         const updates = {};
         for (const key of allowed) { if (req.body[key] !== undefined) updates[key] = req.body[key]; }
         if (!Object.keys(updates).length) return res.status(400).json({ error: 'No valid fields to update' });
+
+        // 🔒 HARDENING 2026-04-20: si se cambia variant_id, validar contra allowlist.
+        // override=true permite al admin poner cualquier variant (uso: fix manual de subs heredadas).
+        if (updates.variant_id !== undefined && String(updates.variant_id) !== String(sub.variant_id || '')) {
+            const overrideAllowed = req.body.override_variant_check === true || req.query.override === '1';
+            if (!overrideAllowed) {
+                const check = await isVariantAllowedForSubscription(updates.variant_id);
+                if (!check.ok) {
+                    console.warn(`[PATCH] ❌ Intento de cambiar variant de sub ${sub.id} a ${updates.variant_id} rechazado (${check.reason}). Allowlist: [${check.allowlist.join(', ')}]`);
+                    return res.status(400).json({
+                        error: 'La variante destino no está en la allowlist de suscripción. Enviá override_variant_check:true si es intencional.',
+                        code: 'VARIANT_NOT_ALLOWED',
+                        variant_id: String(updates.variant_id),
+                        allowlist: check.allowlist
+                    });
+                }
+            } else {
+                console.warn(`[PATCH] ⚠️ Override variant check para sub ${sub.id}: ${sub.variant_id || '(vacío)'} → ${updates.variant_id}`);
+            }
+        }
+
         const updated = await db.updateSubscription(sub.id, updates);
         res.json(updated);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3096,6 +3223,26 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
                 }
             }
         } catch (e) { console.warn('[ORDER] variant resolve error:', e.message); }
+    }
+
+    // 🔒 HARDENING 2026-04-20: última barrera — NO crear orden Shopify con variant
+    // fuera de la allowlist, aunque la sub lo tenga guardado. Incidente #8760 hubiese
+    // sido bloqueado acá. Si el variant es inválido: se aborta y se marca la sub
+    // para que admin intervenga, en lugar de generar otra orden con precio/producto
+    // incorrecto. El cobro MP queda guardado con flag para revisión manual.
+    if (variantId) {
+        const orderVariantCheck = await isVariantAllowedForSubscription(variantId);
+        if (!orderVariantCheck.ok) {
+            console.error(`[ORDER] ❌ BLOQUEADO: sub ${sub.id} tiene variant ${variantId} NO permitida (${orderVariantCheck.reason}). Cliente: ${sub.customer_email}. MP payment: ${mpPaymentId || '?'}. Allowlist: [${orderVariantCheck.allowlist.join(', ')}]. Admin debe corregir variant_id vía PATCH con override_variant_check o ajustar la allowlist.`);
+            // Marcar la sub para que quede visible en admin (no toca status activo).
+            if (db?.updateSubscription && sub.id && !sub.id.startsWith('orphan_')) {
+                db.updateSubscription(sub.id, {
+                    last_order_error: `Variant ${variantId} no está en allowlist de suscripción (${new Date().toISOString()})`,
+                    needs_admin_review: true
+                }).catch(() => {});
+            }
+            return null;
+        }
     }
 
     // Resolver dirección de envío
