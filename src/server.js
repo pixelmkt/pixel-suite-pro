@@ -5112,6 +5112,100 @@ app.delete('/api/admin/bundles/:id', async (req, res) => {
 });
 
 /**
+ * POST /api/admin/bundles/create-product
+ * 2026-04-21 — ADITIVO
+ * Helper de admin para CREAR un producto "contenedor" de bundle en Shopify.
+ * Crea un producto con N variantes (una por cada plan: 3m, 6m, etc.).
+ * El precio de cada variante = precio del plan. El cliente paga S/0 en Shopify
+ * (las suscripciones se cobran via MP); el precio del producto es referencial.
+ *
+ * Body: {
+ *   title: "C4 Energy Bundle 15 latas",
+ *   description: "...",
+ *   vendor: "Lab Nutrition",
+ *   product_type: "Suscripción",
+ *   tags: ["suscripcion", "bundle", "c4"],
+ *   image_src: "https://..." (opcional, imagen destacada),
+ *   plans: [
+ *     { name: "3 meses", price: 150, permanence: 3 },
+ *     { name: "6 meses", price: 150, permanence: 6 }
+ *   ]
+ * }
+ *
+ * Retorna el producto creado + IDs de variantes listos para usar en el bundle_config.
+ */
+app.post('/api/admin/bundles/create-product', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+
+        const b = req.body || {};
+        if (!b.title) return res.status(400).json({ error: 'title is required' });
+        if (!Array.isArray(b.plans) || b.plans.length === 0) {
+            return res.status(400).json({ error: 'plans must be a non-empty array' });
+        }
+        const variants = b.plans.map(p => ({
+            option1: String(p.name || `${p.permanence || 1} meses`),
+            price: String(Number(p.price || 0).toFixed(2)),
+            // requires_shipping=true (suscripciones llegan a domicilio)
+            requires_shipping: true,
+            // inventory_management null → Shopify no trackea stock (bundle virtual)
+            inventory_management: null,
+            // taxable → estándar (se mantiene configuración base de Shopify)
+            taxable: true
+        }));
+
+        const productPayload = {
+            product: {
+                title: String(b.title),
+                body_html: b.description ? String(b.description) : '',
+                vendor: b.vendor ? String(b.vendor) : 'Lab Nutrition',
+                product_type: b.product_type ? String(b.product_type) : 'Suscripción',
+                tags: Array.isArray(b.tags) ? b.tags.join(', ') : 'suscripcion,bundle',
+                status: b.status ? String(b.status) : 'active',
+                published: b.published !== false,
+                options: [{ name: 'Plan' }],
+                variants
+            }
+        };
+        if (b.image_src) {
+            productPayload.product.images = [{ src: String(b.image_src) }];
+        }
+
+        const url = `https://${shop}/admin/api/2026-01/products.json`;
+        const r = await fetch(url, {
+            method: 'POST',
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify(productPayload)
+        });
+        const text = await r.text();
+        if (!r.ok) {
+            return res.status(r.status).json({ error: `Shopify create product ${r.status}`, detail: text.slice(0, 500) });
+        }
+        const data = JSON.parse(text);
+        const created = data.product;
+        res.json({
+            ok: true,
+            product: {
+                id: created.id,
+                title: created.title,
+                handle: created.handle,
+                status: created.status,
+                admin_url: `https://${shop}/admin/products/${created.id}`,
+                storefront_url: `https://${shop.replace('.myshopify.com', '')}/products/${created.handle}`,
+                variants: (created.variants || []).map(v => ({
+                    id: v.id,
+                    title: v.title,
+                    price: v.price,
+                    option1: v.option1
+                }))
+            }
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
  * GET /api/bundles/product/:bundleProductId/config
  * Endpoint PÚBLICO (widget liquid) — dado el product_id del bundle (ej: C4 Energy Bundle 15),
  * devuelve la config + sabores disponibles con su estado (available/out_of_stock).
