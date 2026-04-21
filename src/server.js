@@ -5645,6 +5645,163 @@ app.post('/api/admin/products/:id/install-subscription-template', async (req, re
 });
 
 /**
+ * POST /api/admin/themes/sync-bundle-visuals
+ * 2026-04-21 — ADITIVO · arregla math savings Bundle 15 y Bundle 30 en vivo
+ *
+ * Regenera templates/product.bundle-15.json y templates/product.bundle-30.json
+ * a partir del master templates/product.bundle.json:
+ *   - Bundle 15: mantiene math base (S/180 retail, -S/30, S/150/mes — Plan 3m)
+ *   - Bundle 30: math corregida (S/360 retail, -S/75, S/285/mes — Plan 3m)
+ *   - Renombra secciones _bundle_section → _b15_section / _b30_section
+ *   - Renombra widget block key + inyecta eligible_variant_ids del bundle correcto
+ *   - Fixes contextuales: "15 latas" ↔ "30 latas", "Mix de 15", "pack de 15", etc.
+ *
+ * MASTER LOCK: solo sube 2 assets al theme. NO toca MP, webhooks, orders, crons, pedidos.
+ */
+app.post('/api/admin/themes/sync-bundle-visuals', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+
+        const WIDGET_OLD_KEY = 'suscriptions_mp_lab_subscription_aPi9pn';
+        const SECTION_RENAMES = [
+            'lab_hero_bundle_section', 'lab_bene_bundle_section', 'lab_save_bundle_section',
+            'lab_how_bundle_section', 'lab_flav_bundle_section', 'lab_comp_bundle_section',
+            'lab_test_bundle_section', 'lab_faq_bundle_section', 'lab_final_bundle_section'
+        ];
+        const ELIGIBLE_VARIANTS = {
+            15: '59393860206673,59393860239441',
+            30: '59393860272209,59393860304977'
+        };
+
+        const sh = async (p, opts = {}) => {
+            const r = await fetch(`https://${shop}/admin/api/2026-01${p}`, {
+                ...opts,
+                headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json', ...(opts.headers || {}) }
+            });
+            const t = await r.text();
+            if (!r.ok) throw new Error(`HTTP ${r.status} ${p}: ${t.substring(0, 250)}`);
+            return t ? JSON.parse(t) : null;
+        };
+
+        // 1) Main theme
+        const themesResp = await sh('/themes.json');
+        const mainTheme = (themesResp.themes || []).find(t => t.role === 'main');
+        if (!mainTheme) return res.status(404).json({ error: 'No main theme found' });
+
+        // 2) Fetch master templates/product.bundle.json
+        const masterAsset = await sh(`/themes/${mainTheme.id}/assets.json?asset[key]=${encodeURIComponent('templates/product.bundle.json')}`);
+        let masterJson;
+        try { masterJson = JSON.parse(masterAsset.asset.value); }
+        catch (e) { return res.status(500).json({ error: 'Master template not valid JSON' }); }
+
+        function generate(bundleId) {
+            const tpl = JSON.parse(JSON.stringify(masterJson));
+            const suffix = `_b${bundleId}_section`;
+            const widgetNewKey = `suscriptions_mp_lab_subscription_b${bundleId}`;
+
+            // Rename sections
+            const renameMap = {};
+            SECTION_RENAMES.forEach(old => { renameMap[old] = old.replace('_bundle_section', suffix); });
+            const newSections = {};
+            Object.keys(tpl.sections || {}).forEach(k => { newSections[renameMap[k] || k] = tpl.sections[k]; });
+            tpl.sections = newSections;
+            tpl.order = (tpl.order || []).map(k => renameMap[k] || k);
+
+            // Widget renaming + eligible_variant_ids injection
+            let widgetFound = false;
+            function walk(container) {
+                if (!container || typeof container !== 'object') return;
+                if (container.blocks && typeof container.blocks === 'object') {
+                    if (container.blocks[WIDGET_OLD_KEY]) {
+                        const w = container.blocks[WIDGET_OLD_KEY];
+                        w.settings = w.settings || {};
+                        w.settings.eligible_variant_ids = ELIGIBLE_VARIANTS[bundleId];
+                        w.settings.variant_notice_text = '';
+                        container.blocks[widgetNewKey] = w;
+                        delete container.blocks[WIDGET_OLD_KEY];
+                        if (Array.isArray(container.block_order)) {
+                            container.block_order = container.block_order.map(k => k === WIDGET_OLD_KEY ? widgetNewKey : k);
+                        }
+                        widgetFound = true;
+                    }
+                    Object.values(container.blocks).forEach(walk);
+                }
+            }
+            Object.values(tpl.sections || {}).forEach(walk);
+
+            // Contextual text fixes per bundle
+            let json = JSON.stringify(tpl, null, 2);
+            if (bundleId === 30) {
+                json = json
+                    // Savings math: Bundle 15 (S/180 → -S/30 → S/150) → Bundle 30 Plan 3m (S/360 → -S/75 → S/285)
+                    .replace(/S\/ 180/g, 'S/ 360')
+                    .replace(/− S\/ 30/g, '− S/ 75')
+                    .replace(/S\/ 150/g, 'S/ 285')
+                    // Copy / qty refs
+                    .replace(/15 latas C4 a precio unitario/g, '30 latas C4 a precio unitario')
+                    .replace(/Al comprar 15 latas sueltas en tienda/g, 'Al comprar 30 latas sueltas en tienda')
+                    .replace(/15 latas C4/g, '30 latas C4')
+                    .replace(/Combina 15 o 30 latas con tus sabores C4 favoritos cada mes/g, 'Combina 30 latas con tus sabores C4 favoritos cada mes')
+                    .replace(/Selecciona 15 o 30 latas/g, 'Selecciona 30 latas')
+                    .replace(/Mix de 15/g, 'Mix de 30')
+                    .replace(/pack de 15/g, 'pack de 30')
+                    .replace(/Arma tu Mix de 15 latas/g, 'Arma tu Mix de 30 latas')
+                    // Generic "15 latas" only if preceded by words like "de", "por", "pack", "tus" (to not break "6+ Sabores")
+                    .replace(/(?<=[\b])15 latas(?=[\b])/g, '30 latas');
+            } else {
+                // Bundle 15: asegurar textos contextuales coherentes
+                json = json
+                    .replace(/Combina 15 o 30 latas con tus sabores C4 favoritos cada mes/g, 'Combina 15 latas con tus sabores C4 favoritos cada mes')
+                    .replace(/Selecciona 15 o 30 latas/g, 'Selecciona 15 latas');
+            }
+
+            return { tpl: JSON.parse(json), widgetFound, templateKey: `templates/product.bundle-${bundleId}.json` };
+        }
+
+        const results = [];
+        for (const bid of [15, 30]) {
+            const { tpl, widgetFound, templateKey } = generate(bid);
+            const uploadResp = await sh(`/themes/${mainTheme.id}/assets.json`, {
+                method: 'PUT',
+                body: JSON.stringify({ asset: { key: templateKey, value: JSON.stringify(tpl, null, 2) } })
+            });
+            results.push({
+                bundleId: bid,
+                templateKey,
+                size: uploadResp.asset?.size || null,
+                widgetFound,
+                eligibleVariants: ELIGIBLE_VARIANTS[bid]
+            });
+        }
+
+        // Bump body_html on both bundle products to invalidate CDN cache
+        const bundleProductIds = { 15: '15769236996177', 30: '15769237028945' };
+        for (const pid of Object.values(bundleProductIds)) {
+            try {
+                const getBody = await sh(`/products/${pid}.json?fields=body_html`);
+                const cur = String(getBody.product?.body_html || '');
+                const bumped = cur.includes(' ') ? cur.replace(/ /g, ' ') : cur + ' ';
+                await sh(`/products/${pid}.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ product: { id: Number(pid), body_html: bumped } })
+                });
+            } catch (_) { /* best effort */ }
+        }
+
+        res.json({
+            ok: true,
+            theme: { id: mainTheme.id, name: mainTheme.name, role: mainTheme.role },
+            results
+        });
+    } catch (e) {
+        console.error('[SYNC-BUNDLE-VISUALS] Error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/**
  * POST /api/admin/products/:id/uninstall-subscription-template
  * 2026-04-21 — ADITIVO · reversible
  *
