@@ -745,7 +745,9 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
         const sub = await db.getSubscription(req.params.id);
         if (!sub) return res.status(404).json({ error: 'Not found' });
         // Only allow safe field updates
-        const allowed = ['permanence_months', 'cycles_required', 'discount_pct', 'frequency_months', 'customer_name', 'product_title', 'variant_id', 'product_id', 'status', 'next_charge_at', 'base_price', 'final_price', 'shipping_address', 'tipo_documento', 'dni', 'mp_preapproval_id', 'activated_at', 'cycles_completed', 'last_charge_at', 'customer_email', 'customer_phone'];
+        // ADD 2026-04-21: gifts_planned/gifts_delivered/gifts_delivered_* → admite backfill de subs
+        //   viejas (creadas antes del 15/4 sin array de regalos). No afecta crons ni webhook MP.
+        const allowed = ['permanence_months', 'cycles_required', 'discount_pct', 'frequency_months', 'customer_name', 'product_title', 'variant_id', 'product_id', 'status', 'next_charge_at', 'base_price', 'final_price', 'shipping_address', 'tipo_documento', 'dni', 'mp_preapproval_id', 'activated_at', 'cycles_completed', 'last_charge_at', 'customer_email', 'customer_phone', 'gifts_planned', 'gifts_delivered', 'gifts_delivered_at', 'gifts_delivered_order_id', 'gifts_delivered_order_name'];
         const updates = {};
         for (const key of allowed) { if (req.body[key] !== undefined) updates[key] = req.body[key]; }
         if (!Object.keys(updates).length) return res.status(400).json({ error: 'No valid fields to update' });
@@ -3589,7 +3591,25 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
     try {
         const cyclesCompleted = Number(sub.cycles_completed || 0);
         const alreadyDelivered = sub.gifts_delivered === true;
-        const plannedGifts = Array.isArray(sub.gifts_planned) ? sub.gifts_planned : [];
+        let plannedGifts = Array.isArray(sub.gifts_planned) ? sub.gifts_planned : [];
+        // 🔧 FALLBACK ADITIVO 2026-04-21: subs creadas ANTES del 15/4 no tienen gifts_planned
+        //    (el sistema de gifts_planned se introdujo ese día — commit 0d3c586). Si el sub está
+        //    en ciclo 0 y sin plannedGifts → intentamos resolver on-the-fly desde plans_config
+        //    para que esas subs viejas SÍ reciban su regalo en el primer cobro.
+        //    Puramente aditivo: si resolveGiftsForNewSub no encuentra nada, queda igual que antes.
+        if (cyclesCompleted === 0 && !alreadyDelivered && plannedGifts.length === 0) {
+            try {
+                const resolved = await resolveGiftsForNewSub(
+                    sub.frequency_months,
+                    sub.permanence_months,
+                    sub.product_id
+                );
+                if (Array.isArray(resolved) && resolved.length > 0) {
+                    plannedGifts = resolved;
+                    console.log(`[ORDER] 🎁 Fallback resolvió ${resolved.length} gift(s) para sub ${sub.id} (pre-15/4 sin gifts_planned)`);
+                }
+            } catch (e) { console.warn('[ORDER] gift fallback resolve:', e.message); }
+        }
         if (cyclesCompleted === 0 && !alreadyDelivered && plannedGifts.length > 0) {
             for (const g of plannedGifts) {
                 if (!g || !g.variant_id) continue;
@@ -5177,6 +5197,74 @@ app.post('/api/billing/run-now', async (req, res) => {
 app.post('/api/mp-polling/run-now', async (req, res) => {
     res.json({ started: true, message: 'MP payment polling triggered manually' });
     runMpPaymentPolling().catch(console.error);
+});
+
+/* ══════════════════════════════════════════════════
+   🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
+   GET  /api/admin/subs-missing-gifts       → lista read-only (preview)
+   POST /api/admin/subs-missing-gifts/backfill?dry_run=1 → rellena gifts_planned
+        del sub CON cycles_completed=0 (aun no cobraron). NO toca subs ya cobradas.
+        NO genera pedidos ni llama MP. Solo actualiza metadata local.
+   ADITIVO: funciones de admin para consistencia de data. No altera webhook/cron.
+══════════════════════════════════════════════════ */
+app.get('/api/admin/subs-missing-gifts', async (req, res) => {
+    try {
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const report = [];
+        for (const s of allSubs) {
+            if (s.status !== 'active') continue;
+            const hasPlanned = Array.isArray(s.gifts_planned) && s.gifts_planned.length > 0;
+            if (hasPlanned) continue;
+            const cycles = parseInt(s.cycles_completed) || 0;
+            // Try to resolve what gifts SHOULD have been assigned
+            const resolved = await resolveGiftsForNewSub(s.frequency_months, s.permanence_months, s.product_id).catch(() => null);
+            report.push({
+                id: s.id,
+                email: s.customer_email,
+                product_title: s.product_title,
+                frequency_months: s.frequency_months,
+                permanence_months: s.permanence_months,
+                cycles_completed: cycles,
+                cycles_required: s.cycles_required,
+                gifts_delivered: !!s.gifts_delivered,
+                can_backfill: cycles === 0, // solo si todavia no cobraron
+                missed_in_past: cycles >= 1, // ya cobraron sin regalo — hay que entregar manualmente
+                resolved_gifts: resolved || [],
+                created_at: s.created_at
+            });
+        }
+        res.json({
+            total_affected: report.length,
+            can_backfill: report.filter(r => r.can_backfill).length,
+            missed_in_past: report.filter(r => r.missed_in_past).length,
+            subs: report
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/subs-missing-gifts/backfill', async (req, res) => {
+    try {
+        const dryRun = req.query.dry_run === '1' || req.query.dry_run === 'true';
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const updated = [];
+        const skipped = [];
+        for (const s of allSubs) {
+            if (s.status !== 'active') continue;
+            const hasPlanned = Array.isArray(s.gifts_planned) && s.gifts_planned.length > 0;
+            if (hasPlanned) continue;
+            const cycles = parseInt(s.cycles_completed) || 0;
+            if (cycles !== 0) { skipped.push({ id: s.id, email: s.customer_email, reason: 'cycles_completed > 0 (ya cobro sin regalo — entregar manualmente)' }); continue; }
+            const resolved = await resolveGiftsForNewSub(s.frequency_months, s.permanence_months, s.product_id).catch(() => null);
+            if (!Array.isArray(resolved) || resolved.length === 0) { skipped.push({ id: s.id, email: s.customer_email, reason: 'no gifts match plan' }); continue; }
+            if (!dryRun) {
+                await db.updateSubscription(s.id, { gifts_planned: resolved }).catch(err => {
+                    skipped.push({ id: s.id, email: s.customer_email, reason: 'update error: ' + err.message });
+                });
+            }
+            updated.push({ id: s.id, email: s.customer_email, gifts: resolved.map(g => g.product_title + ' (' + g.variant_title + ')') });
+        }
+        res.json({ dry_run: dryRun, updated_count: updated.length, skipped_count: skipped.length, updated, skipped });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* Portal endpoints moved to early registration above checkout */
