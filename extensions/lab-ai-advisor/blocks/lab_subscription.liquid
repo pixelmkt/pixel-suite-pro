@@ -1,4 +1,5 @@
-﻿{{ 'lab-sub.css' | asset_url | stylesheet_tag }}
+{{ 'lab-sub.css' | asset_url | stylesheet_tag }}
+{{ 'lab-bundle.js' | asset_url | script_tag }}
 <style>
   #lab-sub-{{ block.id }} {
     --lab-bg: {{ block.settings.color_bg | default: '#ffffff' }};
@@ -291,7 +292,6 @@
       });
     }).catch(function() {});
 
-    // 4. Refrescar el cart-drawer via Section Rendering API (instantáneo)
     var drawerSection = document.querySelector('cart-drawer');
     if (drawerSection) {
       var sectionId = drawerSection.closest('[id^="shopify-section"]');
@@ -455,8 +455,7 @@
       enabledPlans.forEach(function(plan, i) {
         var key = plan.key;
         var label = plan.label || ((plan.frequency === 1 ? 'Mensual' : 'Cada ' + plan.frequency + 'm') + ' · ' + plan.permanence + ' meses');
-        // Badge si este plan trae regalo para este producto (sin emoji — renderiza inconsistente a 10px)
-        var hasGift = plan.gifts && plan.gifts.enabled && plan.gifts.summary && plan.gifts.summary.length > 0;
+            var hasGift = plan.gifts && plan.gifts.enabled && plan.gifts.summary && plan.gifts.summary.length > 0;
         var giftBadge = hasGift ? '<span style="display:inline-block;margin-left:6px;background:var(--lab-gift-badge-bg,#E30613);color:var(--lab-gift-badge-text,#fff);font-size:10px;font-weight:800;padding:3px 8px;border-radius:12px;letter-spacing:.5px;vertical-align:middle;line-height:1.3;white-space:nowrap;flex-shrink:0">REGALO</span>' : '';
         chipsHtml += '<button class="lab-sub__chip' + (i === 0 ? ' lab-sub__chip--active' : '') + '" data-plan-key="' + key + '">' + label + giftBadge + '</button>';
       });
@@ -591,11 +590,9 @@
         .then(function(r) { return r.ok ? r.json() : {}; })
         .then(function(cfg) {
           config = cfg || {};
-          // Auto-sync variants desde backend: si el admin configuró variantes elegibles
-          //    para este producto, se agregan al allowlist local y se re-chequea la variante actual.
+                //    para este producto, se agregan al allowlist local y se re-chequea la variante actual.
           //    Esto evita tener que actualizar manualmente `eligible_variant_ids` en el tema
-          //    cada vez que se activa la suscripción en un nuevo producto. (Aditivo — nunca remueve).
-          if (cfg && Array.isArray(cfg.eligible_variant_ids) && cfg.eligible_variant_ids.length) {
+                if (cfg && Array.isArray(cfg.eligible_variant_ids) && cfg.eligible_variant_ids.length) {
             cfg.eligible_variant_ids.forEach(function(v) {
               v = String(v || '').trim();
               if (v && eligibleVariants.indexOf(v) === -1) eligibleVariants.push(v);
@@ -666,7 +663,6 @@
       }
     };
 
-    // Modal submit → Save address + Create MP checkout → Redirect to MP
     var mBtn = document.getElementById('m-btn-' + blkId);
     if (mBtn) {
       mBtn.addEventListener('click', function() {
@@ -765,401 +761,23 @@
         });
       });
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // 🎁 BUNDLE MODE — Mix & Match suscripciones
-    // Si este producto está registrado como bundle (C4 Mix 15/30, pre-entrenos, etc.),
-    // se reemplaza el panel de suscripción por un selector de sabores/variantes.
-    // Aditivo: si no hay bundle, sigue el flujo normal (loadConfig).
-    // ═══════════════════════════════════════════════════════════
-    var _bundleConfig = null;
-    var _bundleSelected = {}; // { variantId: quantity }
-    var _bundleSelectedPlanIdx = 0;
-
-    function bundleTotalSelected() {
-      var total = 0;
-      for (var k in _bundleSelected) total += Number(_bundleSelected[k]) || 0;
-      return total;
-    }
-
-    function bundleCurrentPlan() {
-      if (!_bundleConfig || !_bundleConfig.plans) return null;
-      return _bundleConfig.plans[_bundleSelectedPlanIdx] || _bundleConfig.plans[0];
-    }
-
-    function bundleFormatPrice(n) {
-      var sym = wrap.dataset.curSymbol || 'S/ ';
-      return sym + Number(n).toFixed(2);
-    }
-
-    function bundleRenderHeader() {
-      var plan = bundleCurrentPlan();
-      if (!plan) return '';
-      var total = bundleTotalSelected();
-      var target = _bundleConfig.target_quantity;
-      var percent = Math.min(100, Math.round((total / target) * 100));
-      var perUnit = plan.price / target;
-      var copy = _bundleConfig.widget_copy || {};
-      var title = copy.title || 'Arma tu mix';
-      var subtitle = copy.subtitle || 'Elige tus sabores';
-      var counterLbl = copy.counter_label || 'Unidades seleccionadas';
-      return '' +
-        '<div class="lab-bundle__header">' +
-          '<div class="lab-bundle__title">' + escapeHtml(title) + '</div>' +
-          '<div class="lab-bundle__subtitle">' + escapeHtml(subtitle) + '</div>' +
-        '</div>' +
-        '<div class="lab-bundle__progress-wrap">' +
-          '<div class="lab-bundle__progress-bar"><div class="lab-bundle__progress-fill" style="width:' + percent + '%"></div></div>' +
-          '<div class="lab-bundle__progress-label"><span class="lab-bundle__progress-count" id="bundle-count-' + blkId + '">' + total + '/' + target + '</span><span class="lab-bundle__progress-text">' + escapeHtml(counterLbl) + '</span></div>' +
-        '</div>';
-    }
-
-    function bundleRenderPlans() {
-      if (!_bundleConfig || !_bundleConfig.plans || _bundleConfig.plans.length === 0) return '';
-      var target = _bundleConfig.target_quantity;
-      var html = '<div class="lab-bundle__plans">';
-      _bundleConfig.plans.forEach(function(p, i) {
-        var perUnit = (p.price / target).toFixed(2);
-        var permLbl = p.perm_months + ' meses';
-        var active = i === _bundleSelectedPlanIdx ? ' is-active' : '';
-        var savingLbl = p.discount_pct > 0 ? '<span class="lab-bundle__plan-save">-' + Math.round(p.discount_pct) + '%</span>' : '';
-        html += '<button type="button" class="lab-bundle__plan' + active + '" data-plan-idx="' + i + '" onclick="window.__bundleSelectPlan_' + blkId + '(' + i + ')">' +
-          '<div class="lab-bundle__plan-top">' +
-            '<span class="lab-bundle__plan-perm">Plan ' + permLbl + '</span>' +
-            savingLbl +
-          '</div>' +
-          '<div class="lab-bundle__plan-price">' + bundleFormatPrice(p.price) + '<span class="lab-bundle__plan-period">/mes</span></div>' +
-          '<div class="lab-bundle__plan-unit">' + bundleFormatPrice(perUnit) + ' por unidad</div>' +
-        '</button>';
-      });
-      html += '</div>';
-      return html;
-    }
-
-    function bundleRenderFlavors() {
-      if (!_bundleConfig || !_bundleConfig.flavors) return '';
-      var target = _bundleConfig.target_quantity;
-      var total = bundleTotalSelected();
-      var remaining = target - total;
-      var html = '<div class="lab-bundle__flavors-head"><span class="lab-bundle__flavors-title">Elige tus sabores</span></div>';
-      html += '<div class="lab-bundle__flavors">';
-      _bundleConfig.flavors.forEach(function(f) {
-        var qty = Number(_bundleSelected[f.variant_id] || 0);
-        var isAvailable = f.available === true;
-        var disabledClass = !isAvailable ? ' is-disabled' : '';
-        var plusDisabled = !isAvailable || remaining <= 0;
-        var minusDisabled = qty <= 0;
-        html += '<div class="lab-bundle__flavor' + disabledClass + '" data-vid="' + f.variant_id + '">';
-        if (!isAvailable) {
-          html += '<div class="lab-bundle__flavor-badge">Agotado</div>';
-        }
-        html += '<div class="lab-bundle__flavor-img-wrap">';
-        if (f.image) {
-          html += '<img class="lab-bundle__flavor-img" src="' + f.image + '" alt="' + escapeHtml(f.title) + '" loading="lazy">';
-        } else {
-          html += '<div class="lab-bundle__flavor-img lab-bundle__flavor-img--empty"></div>';
-        }
-        html += '</div>';
-        html += '<div class="lab-bundle__flavor-body">';
-        html += '<div class="lab-bundle__flavor-title">' + escapeHtml(f.title) + '</div>';
-        html += '<div class="lab-bundle__flavor-controls">';
-        html += '<button type="button" class="lab-bundle__flavor-btn lab-bundle__flavor-btn--minus" ' + (minusDisabled ? 'disabled' : '') + ' onclick="window.__bundleChangeQty_' + blkId + '(\'' + f.variant_id + '\', -1)" aria-label="Quitar una">−</button>';
-        html += '<span class="lab-bundle__flavor-qty" id="bundle-qty-' + f.variant_id + '-' + blkId + '">' + qty + '</span>';
-        html += '<button type="button" class="lab-bundle__flavor-btn lab-bundle__flavor-btn--plus" ' + (plusDisabled ? 'disabled' : '') + ' onclick="window.__bundleChangeQty_' + blkId + '(\'' + f.variant_id + '\', 1)" aria-label="Agregar una">+</button>';
-        html += '</div>';
-        html += '</div>';
-        html += '</div>';
-      });
-      html += '</div>';
-      return html;
-    }
-
-    function bundleRenderSummary() {
-      var target = _bundleConfig.target_quantity;
-      var total = bundleTotalSelected();
-      var remaining = target - total;
-      var isComplete = total === target;
-      var copy = _bundleConfig.widget_copy || {};
-      var errorTpl = copy.error_incomplete || 'Te faltan {remaining} unidades para completar tu pack';
-      var errorMsg = errorTpl.replace(/\{remaining\}/g, remaining);
-      var html = '';
-      if (!isComplete) {
-        html += '<div class="lab-bundle__status lab-bundle__status--warn">' + escapeHtml(errorMsg) + '</div>';
-      } else {
-        html += '<div class="lab-bundle__status lab-bundle__status--ok">✓ Pack completo — listo para suscribirte</div>';
-      }
-      // Resumen de selección (solo si hay selecciones)
-      if (total > 0 && _bundleConfig.flavors) {
-        html += '<div class="lab-bundle__summary"><div class="lab-bundle__summary-title">Tu mix</div><ul class="lab-bundle__summary-list">';
-        _bundleConfig.flavors.forEach(function(f) {
-          var q = Number(_bundleSelected[f.variant_id] || 0);
-          if (q > 0) {
-            html += '<li><span class="lab-bundle__summary-qty">' + q + '×</span> ' + escapeHtml(f.title) + '</li>';
-          }
-        });
-        html += '</ul></div>';
-      }
-      return html;
-    }
-
-    function bundleRenderCTA() {
-      var plan = bundleCurrentPlan();
-      var total = bundleTotalSelected();
-      var target = _bundleConfig.target_quantity;
-      var isComplete = total === target;
-      var ctaLbl = isComplete
-        ? 'Suscribirme — ' + bundleFormatPrice(plan.price) + '/mes'
-        : 'Completa tu pack para continuar';
-      var disabled = !isComplete ? 'disabled' : '';
-      return '<button class="lab-sub__cta lab-bundle__cta" id="bundle-cta-' + blkId + '" ' + disabled + ' onclick="window.__bundleOpenModal_' + blkId + '()"><span class="lab-sub__cta-text">' + ctaLbl + '</span></button>';
-    }
-
-    function bundleRenderPerks() {
-      // Heredamos perks del block settings si están activos
-      {% if block.settings.show_perks %}
-      var perks = [
-        {% if block.settings.perk_1 != blank %} '{{ block.settings.perk_1 | escape }}', {% endif %}
-        {% if block.settings.perk_2 != blank %} '{{ block.settings.perk_2 | escape }}', {% endif %}
-        {% if block.settings.perk_3 != blank %} '{{ block.settings.perk_3 | escape }}', {% endif %}
-        {% if block.settings.perk_4 != blank %} '{{ block.settings.perk_4 | escape }}' {% endif %}
-      ].filter(Boolean);
-      if (perks.length === 0) return '';
-      return '<div class="lab-sub__perks">' + perks.map(function(p){ return '<div class="lab-sub__perk">' + p + '</div>'; }).join('') + '</div>';
-      {% else %}
-      return '';
-      {% endif %}
-    }
-
-    function bundleRenderLegal() {
-      {% if block.settings.show_legal %}
-      return '<div class="lab-sub__legal">{{ legal_txt | escape }}</div>';
-      {% else %}
-      return '';
-      {% endif %}
-    }
-
-    function bundleRender() {
-      var subPanel = wrap.querySelector('.lab-sub__panel[data-panel="sub"]');
-      if (!subPanel) return;
-      var html = '' +
-        bundleRenderHeader() +
-        bundleRenderPlans() +
-        bundleRenderFlavors() +
-        bundleRenderSummary() +
-        bundleRenderPerks() +
-        bundleRenderLegal() +
-        bundleRenderCTA();
-      subPanel.innerHTML = html;
-    }
-
-    function escapeHtml(s) {
-      return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; });
-    }
-
-    // Exponer handlers globales (para onclick inline)
-    window['__bundleSelectPlan_' + blkId] = function(idx) {
-      _bundleSelectedPlanIdx = idx;
-      bundleRender();
+    // BUNDLE MODE - Mix & Match loaded from external asset lab-bundle.js
+    window['__LAB_BUNDLE_CTX_' + blkId] = {
+      showPerks: {% if block.settings.show_perks %}true{% else %}false{% endif %},
+      perks: [
+        {% if block.settings.perk_1 != blank %}'{{ block.settings.perk_1 | escape }}'{% else %}null{% endif %},
+        {% if block.settings.perk_2 != blank %}'{{ block.settings.perk_2 | escape }}'{% else %}null{% endif %},
+        {% if block.settings.perk_3 != blank %}'{{ block.settings.perk_3 | escape }}'{% else %}null{% endif %},
+        {% if block.settings.perk_4 != blank %}'{{ block.settings.perk_4 | escape }}'{% else %}null{% endif %}
+      ],
+      showLegal: {% if block.settings.show_legal %}true{% else %}false{% endif %},
+      legalTxt: '{{ legal_txt | escape }}'
     };
-
-    window['__bundleChangeQty_' + blkId] = function(variantId, delta) {
-      var currentQty = Number(_bundleSelected[variantId] || 0);
-      var newQty = Math.max(0, currentQty + delta);
-      // No exceder target
-      var target = _bundleConfig.target_quantity;
-      var totalOthers = 0;
-      for (var k in _bundleSelected) if (k !== variantId) totalOthers += Number(_bundleSelected[k]) || 0;
-      if (newQty + totalOthers > target) newQty = target - totalOthers;
-      if (newQty < 0) newQty = 0;
-      _bundleSelected[variantId] = newQty;
-      // Re-render (sencillo y bulletproof)
-      bundleRender();
-    };
-
-    window['__bundleOpenModal_' + blkId] = function() {
-      if (bundleTotalSelected() !== _bundleConfig.target_quantity) return;
-      // Reutilizamos el mismo modal de MP checkout (lab-modal-*)
-      // Ajustamos el título y precio del modal ANTES de abrir
-      var plan = bundleCurrentPlan();
-      var modal = document.getElementById('lab-modal-' + blkId);
-      if (!modal) return;
-      var title = document.getElementById('modal-title-' + blkId);
-      var priceEl = document.getElementById('modal-price-' + blkId);
-      var discEl = document.getElementById('modal-disc-' + blkId);
-      var savingEl = document.getElementById('modal-saving-' + blkId);
-      if (title) title.textContent = 'Suscripción ' + _bundleConfig.name;
-      if (priceEl) priceEl.textContent = bundleFormatPrice(plan.price);
-      if (discEl) {
-        var discPct = Math.round(plan.discount_pct || 0);
-        discEl.textContent = discPct > 0 ? discPct + '% OFF' : '';
-        discEl.style.display = discPct > 0 ? '' : 'none';
-      }
-      if (savingEl) {
-        var target = _bundleConfig.target_quantity;
-        var perUnit = (plan.price / target).toFixed(2);
-        savingEl.textContent = target + ' × ' + bundleFormatPrice(perUnit);
-      }
-      modal.style.display = 'flex';
-    };
-
-    function bundleLoadConfig() {
-      var productId = wrap.dataset.product;
-      var backendUrl = wrap.dataset.backend || 'https://pixel-suite-pro-production.up.railway.app';
-      if (!productId) return Promise.resolve(false);
-      return fetch(backendUrl + '/api/bundles/product/' + encodeURIComponent(productId) + '/config')
-        .then(function(r) {
-          if (r.status === 404 || r.status === 410) return null;
-          if (!r.ok) return null;
-          return r.json();
-        })
-        .then(function(cfg) {
-          if (!cfg || !cfg.bundle_id || !cfg.flavors) return false;
-          _bundleConfig = cfg;
-          // Init selección vacía
-          _bundleSelected = {};
-          // Hide ONCE tab (bundle solo aplica a suscripción)
-          var onceTab = wrap.querySelector('.lab-sub__tab[data-tab="once"]');
-          if (onceTab) onceTab.style.display = 'none';
-          var subTab = wrap.querySelector('.lab-sub__tab[data-tab="sub"]');
-          if (subTab) {
-            subTab.classList.add('lab-sub__tab--active');
-            subTab.style.display = '';
-            subTab.disabled = false;
-            subTab.removeAttribute('aria-disabled');
-          }
-          var oncePanel = wrap.querySelector('.lab-sub__panel[data-panel="once"]');
-          if (oncePanel) oncePanel.classList.remove('lab-sub__panel--active');
-          var subPanel = wrap.querySelector('.lab-sub__panel[data-panel="sub"]');
-          if (subPanel) subPanel.classList.add('lab-sub__panel--active');
-          // Hide variant restriction notice (no aplica en bundles)
-          var notice = document.getElementById('variant-notice-' + blkId);
-          if (notice) notice.style.display = 'none';
-          var subContent = document.getElementById('sub-content-' + blkId);
-          if (subContent) subContent.style.display = '';
-          // Render inicial
-          bundleRender();
-          return true;
-        })
-        .catch(function() { return false; });
+    if (window.LabBundle && typeof window.LabBundle.attach === 'function') {
+      window.LabBundle.attach(wrap, blkId, loadConfig);
+    } else {
+      loadConfig();
     }
-
-    // Reemplaza el submit del modal para enviar bundle_items si hay bundle activo
-    var mBtnBundle = document.getElementById('m-btn-' + blkId);
-    if (mBtnBundle) {
-      var originalOnClick = null;
-      // Hook: si es bundle, interceptamos ANTES del flujo normal
-      mBtnBundle.addEventListener('click', function bundleSubmitHook(ev) {
-        if (!_bundleConfig) return; // no es bundle → deja el listener legacy manejarlo
-        ev.stopImmediatePropagation();
-        ev.preventDefault();
-
-        var name = (document.getElementById('m-name-' + blkId) || {}).value;
-        var email = (document.getElementById('m-email-' + blkId) || {}).value;
-        var phone = (document.getElementById('m-phone-' + blkId) || {}).value || '';
-        var tipodoc = (document.getElementById('m-tipodoc-' + blkId) || {}).value || '01';
-        var dni = (document.getElementById('m-dni-' + blkId) || {}).value || '';
-        var addr1 = (document.getElementById('m-addr-' + blkId) || {}).value;
-        var city = (document.getElementById('m-city-' + blkId) || {}).value;
-        var province = (document.getElementById('m-province-' + blkId) || {}).value || 'Lima';
-        var tcCheck = document.getElementById('lab-tc-check-' + blkId);
-        var msgEl = document.getElementById('m-msg-' + blkId);
-
-        if (!name || !email || !email.includes('@') || !addr1 || !city || !dni) {
-          if (msgEl) { msgEl.style.display = 'block'; msgEl.style.background = '#fee2e2'; msgEl.style.color = '#991b1b'; msgEl.textContent = 'Completa nombre, email, documento, dirección y distrito.'; }
-          return;
-        }
-        if (tcCheck && !tcCheck.checked) {
-          if (msgEl) { msgEl.style.display = 'block'; msgEl.style.background = '#fee2e2'; msgEl.style.color = '#991b1b'; msgEl.textContent = 'Debes aceptar los Términos y Condiciones para continuar.'; }
-          return;
-        }
-        if (bundleTotalSelected() !== _bundleConfig.target_quantity) {
-          if (msgEl) { msgEl.style.display = 'block'; msgEl.style.background = '#fee2e2'; msgEl.style.color = '#991b1b'; msgEl.textContent = 'Tu mix está incompleto. Ajusta las cantidades.'; }
-          return;
-        }
-
-        var plan = bundleCurrentPlan();
-        // bundle_items array (solo variants con qty > 0)
-        var bundleItems = [];
-        _bundleConfig.flavors.forEach(function(f) {
-          var q = Number(_bundleSelected[f.variant_id] || 0);
-          if (q > 0) bundleItems.push({
-            variant_id: String(f.variant_id),
-            quantity: q,
-            title: f.title,
-            variant_title: f.full_title || f.title
-          });
-        });
-
-        // Usamos el variant_id_perm del plan como variant de suscripción en Shopify
-        var subVariantId = plan.variant_id_perm || wrap.dataset.variant;
-
-        var backendUrl = wrap.dataset.backend || 'https://pixel-suite-pro-production.up.railway.app';
-        mBtnBundle.disabled = true; mBtnBundle.textContent = 'Procesando...';
-
-        var nameParts = name.trim().split(' ');
-        var PE_PROV = {'lima':'LIM','arequipa':'ARE','cusco':'CUS','la libertad':'LAL','piura':'PIU','lambayeque':'LAM','junin':'JUN','cajamarca':'CAJ','ancash':'ANC','ica':'ICA','callao':'CAL','tacna':'TAC','loreto':'LOR','san martin':'SAM','ucayali':'UCA','huanuco':'HUA','puno':'PUN','amazonas':'AMA','ayacucho':'AYA','apurimac':'APU','huancavelica':'HUV','madre de dios':'MDD','moquegua':'MOQ','pasco':'PAS','tumbes':'TUM'};
-        var shippingAddress = {
-          first_name: nameParts[0] || name,
-          last_name: nameParts.slice(1).join(' ') || '',
-          address1: addr1,
-          city: city,
-          province: province,
-          province_code: PE_PROV[(province || '').toLowerCase()] || 'LIM',
-          country: 'PE',
-          country_code: 'PE',
-          zip: '15000',
-          phone: phone
-        };
-
-        // finalPrice es el precio del plan (bundle), base_price lo dejamos igual (MP lo necesita numérico)
-        var finalPriceNum = parseFloat(Number(plan.price).toFixed(2));
-
-        fetch(backendUrl + '/api/subscriptions/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            customer_name: name,
-            customer_email: email,
-            customer_phone: phone,
-            tipo_documento: tipodoc,
-            dni: dni,
-            product_id: wrap.dataset.product,
-            variant_id: subVariantId,
-            product_title: _bundleConfig.name || wrap.dataset.title,
-            base_price: finalPriceNum,
-            final_price: finalPriceNum,
-            discount_pct: parseFloat(Number(plan.discount_pct || 0).toFixed(2)),
-            frequency_months: plan.freq_months || 1,
-            permanence_months: plan.perm_months || 3,
-            free_shipping: false,
-            shipping_address: shippingAddress,
-            tc_accepted: true,
-            tc_version: '1.0',
-            tc_accepted_at: new Date().toISOString(),
-            bundle_items: bundleItems
-          })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          if (d.init_point || d.url) {
-            mBtnBundle.textContent = 'Redirigiendo a Mercado Pago...';
-            mBtnBundle.style.background = '#2E7D49';
-            setTimeout(function() { window.location.href = d.init_point || d.url; }, 500);
-          } else {
-            throw new Error(d.error || 'No se pudo crear el checkout');
-          }
-        })
-        .catch(function(err) {
-          if (msgEl) { msgEl.style.display = 'block'; msgEl.style.background = '#fee2e2'; msgEl.style.color = '#991b1b'; msgEl.textContent = err.message; }
-          mBtnBundle.disabled = false; mBtnBundle.textContent = 'Continuar al pago →';
-        });
-      }, true); // useCapture para interceptar antes del listener legacy
-    }
-
-    // Intentar cargar bundle primero. Si no es bundle, caer al flujo normal.
-    bundleLoadConfig().then(function(isBundle) {
-      if (!isBundle) loadConfig();
-    });
   }
 })();
 
