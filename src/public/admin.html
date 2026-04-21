@@ -3146,7 +3146,51 @@
         const data = await api('/api/plans').catch(() => []);
         _plans = Array.isArray(data) ? data : [];
         renderPlans();
+        // ── ADITIVO 2026-04-21 ── carga en paralelo la matriz "planes × productos"
+        // para el panel expandible "Aplica a" sin bloquear el render inicial.
+        loadPlanAssignments().then(renderPlans).catch(() => {});
       } catch (e) { toast('Error cargando planes', 'err'); }
+    }
+
+    // ── ADITIVO 2026-04-21 ──
+    // Mapa { planKey → [ {shopify_id, title, enabled, discount} ] } que se
+    // calcula a partir de /api/products + /api/products/:id/config.
+    // No toca endpoints ni la lógica de suscripción existente.
+    let _planAssignments = {};
+
+    async function loadPlanAssignments() {
+      try {
+        if (!_shopifyProds || !_shopifyProds.length) {
+          const data = await api('/api/products').catch(() => []);
+          _shopifyProds = Array.isArray(data) ? data : [];
+        }
+        const activeProds = _shopifyProds.filter(p => p.subscription_enabled);
+        const assignments = {};
+        _plans.forEach(p => { const k = p.id || (`m${p.frequency}_p${p.permanence}`); assignments[k] = []; });
+        // Fetch config per product in parallel (capped by browser concurrency)
+        const results = await Promise.all(activeProds.map(async prod => {
+          try {
+            const cfg = await api(`/api/products/${prod.shopify_id}/config`).catch(() => null);
+            return { prod, cfg };
+          } catch (e) { return { prod, cfg: null }; }
+        }));
+        results.forEach(({ prod, cfg }) => {
+          if (!cfg || !cfg.plans) return;
+          Object.keys(cfg.plans).forEach(planKey => {
+            const planCfg = cfg.plans[planKey] || {};
+            if (!assignments[planKey]) assignments[planKey] = [];
+            assignments[planKey].push({
+              shopify_id: prod.shopify_id,
+              title: prod.title,
+              image: prod.image,
+              enabled: planCfg.enabled !== false,
+              discount: planCfg.discount !== undefined ? planCfg.discount : 0
+            });
+          });
+        });
+        _planAssignments = assignments;
+        return assignments;
+      } catch (e) { return {}; }
     }
 
     function renderPlans() {
@@ -3166,18 +3210,140 @@
         const giftBadge = giftsCount > 0
           ? `<span style="display:inline-block;margin-left:6px;padding:2px 7px;background:#fff5f5;color:#991b1b;border:1px solid #fecaca;border-radius:999px;font-size:10px;font-weight:700" title="Regalo en primer pedido">🎁 ${giftsCount}</span>`
           : '';
-        return `<tr>
-        <td><strong>${freqLabel}</strong>${giftBadge}</td>
+        // ── ADITIVO 2026-04-21 ── panel expandible "Aplica a productos"
+        const planKey = p.id || (`m${p.frequency}_p${p.permanence}`);
+        const prodList = Array.isArray(_planAssignments[planKey]) ? _planAssignments[planKey] : [];
+        const enabledCount = prodList.filter(x => x.enabled).length;
+        const applyBadge = prodList.length
+          ? `<span style="display:inline-block;margin-left:6px;padding:2px 7px;background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;border-radius:999px;font-size:10px;font-weight:700" title="Productos que usan este plan">🛒 ${enabledCount}/${prodList.length}</span>`
+          : `<span style="display:inline-block;margin-left:6px;padding:2px 7px;background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;border-radius:999px;font-size:10px;font-weight:700" title="Sin productos asignados">🛒 0</span>`;
+        const rowId = `plan-row-main-${planKey}`;
+        const expandId = `plan-expand-${planKey}`;
+        return `<tr id="${rowId}">
+        <td><strong>${freqLabel}</strong>${giftBadge}${applyBadge}</td>
         <td>${permLabel}</td>
         <td><span style="font-size:15px;font-weight:800;color:${disc > 0 ? 'var(--grn)' : 'var(--mut)'}">${disc}%</span></td>
         <td style="color:var(--mut);font-size:12px">${p.description || p.desc || '—'}</td>
         <td><label class="toggle-wrap"><span class="toggle"><input type="checkbox" ${p.active !== false ? 'checked' : ''} onchange="togglePlanActive(${i},this.checked)"><span class="tslide"></span></span></label></td>
         <td style="white-space:nowrap">
-          <button class="btn btn-g btn-sm" onclick="editPlan(${i})">✏️ Editar</button>
+          <button class="btn btn-sm" style="background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe" onclick="togglePlanExpand('${planKey}')" title="Ver/editar productos que usan este plan">🎯 Aplica a</button>
+          <button class="btn btn-g btn-sm" onclick="editPlan(${i})" style="margin-left:4px">✏️ Editar</button>
           <button class="btn btn-sm" style="background:#fee2e2;color:#991b1b;margin-left:4px" onclick="deletePlan(${i})">🗑</button>
+        </td>
+      </tr>
+      <tr id="${expandId}" style="display:none;background:#fafafa">
+        <td colspan="6" style="padding:14px 16px;border-top:1px dashed var(--bdr)">
+          ${renderPlanAssignmentsInline(planKey)}
         </td>
       </tr>`;
       }).join('');
+    }
+
+    function togglePlanExpand(planKey) {
+      const row = document.getElementById('plan-expand-' + planKey);
+      if (!row) return;
+      row.style.display = (row.style.display === 'none' || !row.style.display) ? 'table-row' : 'none';
+    }
+
+    function renderPlanAssignmentsInline(planKey) {
+      const list = Array.isArray(_planAssignments[planKey]) ? _planAssignments[planKey] : [];
+      if (!list.length) {
+        return `<div style="font-size:13px;color:var(--mut);padding:8px 2px">
+          Ningún producto tiene este plan habilitado todavía.
+          Ve a <strong>Productos</strong> → busca el producto → botón <em>Config</em> → activa este plan.
+        </div>`;
+      }
+      const rows = list.map(a => {
+        const noImg = `<div style="width:36px;height:36px;border-radius:8px;background:#f3f4f6;display:inline-block"></div>`;
+        const img = a.image ? `<img src="${a.image}" style="width:36px;height:36px;border-radius:8px;object-fit:cover;border:1px solid var(--bdr)">` : noImg;
+        const titleEsc = (a.title || '').replace(/"/g, '&quot;');
+        return `<tr data-pid="${a.shopify_id}" data-pkey="${planKey}">
+          <td style="padding:6px 4px;vertical-align:middle">${img}</td>
+          <td style="padding:6px 8px;vertical-align:middle;font-size:13px;font-weight:600">${titleEsc}
+            <div style="font-size:10.5px;color:var(--mut);font-weight:400">ID: ${a.shopify_id}</div>
+          </td>
+          <td style="padding:6px 8px;vertical-align:middle">
+            <label class="toggle-wrap" style="margin:0">
+              <span class="toggle"><input type="checkbox" ${a.enabled ? 'checked' : ''}
+                onchange="updatePlanAssignment('${a.shopify_id}','${planKey}',{enabled:this.checked})"><span class="tslide"></span></span>
+            </label>
+          </td>
+          <td style="padding:6px 8px;vertical-align:middle;white-space:nowrap">
+            <input type="number" min="0" max="70" value="${a.discount}"
+              onchange="updatePlanAssignment('${a.shopify_id}','${planKey}',{discount: parseInt(this.value)||0})"
+              style="width:58px;padding:5px 6px;border:1px solid var(--bdr);border-radius:6px;font-size:13px;font-weight:700;text-align:center">
+            <span style="font-size:12px;color:var(--mut);margin-left:2px">%</span>
+          </td>
+        </tr>`;
+      }).join('');
+      return `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mut);margin-bottom:8px">
+          🎯 Productos con este plan · edita descuento o desactiva sin salir de esta vista
+        </div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px">
+            <th style="text-align:left;padding:4px 4px;font-weight:700">&nbsp;</th>
+            <th style="text-align:left;padding:4px 8px;font-weight:700">Producto</th>
+            <th style="text-align:left;padding:4px 8px;font-weight:700">Activo</th>
+            <th style="text-align:left;padding:4px 8px;font-weight:700">% Dto</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    // ── ADITIVO 2026-04-21 ──
+    // Actualiza un producto individual: sólo cambia los campos enabled/discount
+    // del plan indicado dentro de su product_config. MASTER LOCK: no toca
+    // eligible_variant_ids, ni gifts, ni otras claves. Usa GET+POST de
+    // /api/products/:id/config que ya existía.
+    async function updatePlanAssignment(productId, planKey, changes) {
+      try {
+        const cfg = await api(`/api/products/${productId}/config`).catch(() => ({}));
+        if (!cfg || typeof cfg !== 'object') return toast('No se pudo leer config', 'err');
+        cfg.plans = cfg.plans || {};
+        cfg.plans[planKey] = cfg.plans[planKey] || { enabled: true, discount: 0 };
+        if (changes.enabled !== undefined) cfg.plans[planKey].enabled = !!changes.enabled;
+        if (changes.discount !== undefined) cfg.plans[planKey].discount = Math.max(0, Math.min(70, parseInt(changes.discount) || 0));
+        // Preservar campos que ya vienen del plan global (frequency/permanence/label)
+        const plan = _plans.find(p => (p.id || (`m${p.frequency}_p${p.permanence}`)) === planKey);
+        if (plan) {
+          cfg.plans[planKey].frequency = plan.frequency;
+          cfg.plans[planKey].permanence = plan.permanence;
+          cfg.plans[planKey].label = (plan.frequency === 1 ? 'Mensual' : plan.frequency === 2 ? 'Bimestral' : `Cada ${plan.frequency} meses`) + ' · ' + plan.permanence + ' meses';
+        }
+        cfg.updated_at = new Date().toISOString();
+        await api(`/api/products/${productId}/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cfg)
+        });
+        // Actualizar memoria local para reflejar sin recargar
+        if (_planAssignments[planKey]) {
+          const hit = _planAssignments[planKey].find(x => String(x.shopify_id) === String(productId));
+          if (hit) {
+            if (changes.enabled !== undefined) hit.enabled = !!changes.enabled;
+            if (changes.discount !== undefined) hit.discount = cfg.plans[planKey].discount;
+          }
+        }
+        // Refrescar contador en la fila principal (sin cerrar el panel expandido)
+        const idx = _plans.findIndex(p => (p.id || (`m${p.frequency}_p${p.permanence}`)) === planKey);
+        if (idx >= 0) {
+          const list = _planAssignments[planKey] || [];
+          const enabledCount = list.filter(x => x.enabled).length;
+          const row = document.getElementById('plan-row-main-' + planKey);
+          if (row) {
+            const badge = row.querySelector('span[title="Productos que usan este plan"], span[title="Sin productos asignados"]');
+            if (badge) {
+              badge.textContent = '🛒 ' + enabledCount + '/' + list.length;
+              badge.style.background = list.length ? '#ecfdf5' : '#f3f4f6';
+              badge.style.color = list.length ? '#065f46' : '#6b7280';
+              badge.style.border = '1px solid ' + (list.length ? '#a7f3d0' : '#e5e7eb');
+            }
+          }
+        }
+        toast('✓ Guardado', 'ok');
+      } catch (e) {
+        toast('Error: ' + e.message, 'err');
+      }
     }
 
     function openNewPlanModal() {
