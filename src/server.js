@@ -1786,16 +1786,31 @@ app.delete('/api/plans/:id', async (req, res) => {
     }
 });
 
-/* ── ELIGIBLE PRODUCTS — fetch from Shopify Admin API ── */
+/* ── ELIGIBLE PRODUCTS — fetch from Shopify Admin API ──
+ * FIX 2026-04-21: Antes limitaba a 250 (sin paginación). La tienda tiene >250
+ *   productos → Premium Whey (entre otros) no aparecía en el admin. Ahora
+ *   pagina con Link headers hasta 2000 productos (8 páginas), suficiente para
+ *   todo el catálogo. */
 app.get('/api/products', async (req, res) => {
     try {
         const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
         const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
         if (!token) return res.json([]);
-        const url = `https://${shop}/admin/api/2026-01/products.json?limit=250&fields=id,title,images,variants,status`;
-        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
-        if (!r.ok) return res.json([]);
-        const data = await r.json();
+        let url = `https://${shop}/admin/api/2026-01/products.json?limit=250&fields=id,title,images,variants,status`;
+        const acc = [];
+        let pages = 0;
+        while (url && pages < 8) {
+            const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+            if (!r.ok) break;
+            const pageData = await r.json();
+            if (Array.isArray(pageData.products)) acc.push(...pageData.products);
+            // Extraer next page del Link header: <https://...?page_info=xyz>; rel="next"
+            const linkHeader = r.headers.get('link') || r.headers.get('Link') || '';
+            const m = linkHeader.split(',').map(s => s.trim()).find(s => s.endsWith('rel="next"'));
+            url = m ? m.match(/<([^>]+)>/)?.[1] : null;
+            pages++;
+        }
+        const data = { products: acc };
         // Read eligible_products from the proven settings metafield (sub-key)
         const settings = await readFromShopify() || readFromFile() || {};
         const savedEligible = Array.isArray(settings.eligible_products) ? settings.eligible_products : [];
