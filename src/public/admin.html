@@ -1673,6 +1673,10 @@
             <div class="stat-val" id="st-cancelled" style="color:var(--red)">—</div>
             <div class="stat-lbl">Canceladas</div>
           </div>
+          <div class="stat" title="Clientes que iniciaron checkout MP y aún no confirmaron. Incluye recientes y antiguos. Abajo se muestra cuántos llevan >2h (probable abandono)." style="border-left:3px solid #ff9800">
+            <div class="stat-val" id="st-pending" style="color:#ff9800">—</div>
+            <div class="stat-lbl">Pagos pendientes <span id="st-pending-stale" style="color:var(--mut);font-size:10px"></span></div>
+          </div>
           <div class="stat">
             <div class="stat-val" id="st-next7">—</div>
             <div class="stat-lbl">Cobros próx. 7d</div>
@@ -3192,6 +3196,16 @@
         document.getElementById('st-paused').textContent = parseInt(metrics.paused) || 0;
         document.getElementById('st-completed').textContent = parseInt(metrics.completed) || 0;
         document.getElementById('st-cancelled').textContent = parseInt(metrics.cancelled) || 0;
+        // ADD 2026-04-21: pagos pendientes — suscripciones que iniciaron MP checkout y no completaron.
+        //   Muestra total pendiente + cuántos llevan >2h (candidatos a recordatorio / lead perdido).
+        const pendEl = document.getElementById('st-pending');
+        if (pendEl) {
+          const p = parseInt(metrics.pending) || 0;
+          const pStale = parseInt(metrics.pending_stale_2h) || 0;
+          pendEl.textContent = p;
+          const staleEl = document.getElementById('st-pending-stale');
+          if (staleEl) staleEl.textContent = pStale > 0 ? ' (' + pStale + ' >2h)' : '';
+        }
         document.getElementById('st-next7').textContent = parseInt(metrics.next7d) || 0;
         const totalActComp = (parseInt(activeReal) || 0) + (parseInt(metrics.completed) || 0);
         document.getElementById('st-total').textContent = totalActComp;

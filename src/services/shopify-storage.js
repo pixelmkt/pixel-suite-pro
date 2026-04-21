@@ -252,12 +252,30 @@ async function getMetrics() {
     const now = new Date();
     const in7d = new Date(); in7d.setDate(in7d.getDate() + 7);
 
+    // ADD 2026-04-21: contar suscripciones "en proceso de pago" que antes no aparecían en dashboard.
+    //   pending_payment = checkout MP iniciado, aún no autorizado por el cliente
+    //   pending_mp_activation = autorizado, esperando primer cobro
+    //   payment_failed = intento rechazado
+    //   pending_stale_2h = pending_payment >2h (cliente abandonó el checkout, probable lead perdido)
+    //   pending_stale_7d = pending_payment >7d (candidato a limpieza)
+    // Los nuevos campos son ADITIVOS — no modifican los existentes ni el cálculo de MRR/active/completed.
+    const pending = subs.filter(s => s.status === 'pending_payment');
+    const cutoff2h = now.getTime() - 2 * 60 * 60 * 1000;
+    const cutoff7d = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+    const pendingStale2h = pending.filter(s => s.created_at && new Date(s.created_at).getTime() <= cutoff2h);
+    const pendingStale7d = pending.filter(s => s.created_at && new Date(s.created_at).getTime() <= cutoff7d);
+
     return {
         total: subs.length,
         active: active.length,
         completed: completed.length,
         paused: subs.filter(s => s.status === 'paused').length,
         cancelled: subs.filter(s => s.status === 'cancelled').length,
+        pending: pending.length,
+        pending_mp: subs.filter(s => s.status === 'pending_mp_activation').length,
+        pending_failed: subs.filter(s => s.status === 'payment_failed').length,
+        pending_stale_2h: pendingStale2h.length,
+        pending_stale_7d: pendingStale7d.length,
         mrr: parseFloat(mrr.toFixed(2)),
         next7d: subs.filter(s => {
             if (!s.next_charge_at || s.status !== 'active') return false;
