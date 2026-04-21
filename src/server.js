@@ -5420,6 +5420,295 @@ app.post('/api/admin/themes/install-bundle-template', async (req, res) => {
 });
 
 /**
+ * POST /api/admin/products/:id/install-subscription-template
+ * 2026-04-21 — ADITIVO · AUTONOMÍA MULTI-PRODUCTO
+ *
+ * Clona el template maestro `templates/product.bundle.json` a un template por-producto
+ * `templates/product.bundle-p{shortId}.json` con widget independiente:
+ *   - Renombra section keys: _bundle_section → _p{shortId}_section (únicas por producto)
+ *   - Renombra widget block key: suscriptions_mp_lab_subscription_aPi9pn → _p{shortId}
+ *   - Inyecta eligible_variant_ids desde product_configs[productId] (SEGURO: solo variantes del producto)
+ *   - Asigna template_suffix="bundle-p{shortId}" al producto
+ *   - Invalida CDN cache via body_html bump (no-op space replace)
+ *
+ * Body (opcional): { source_template?: "product.bundle" }  // default
+ * Params: :id = productId numérico Shopify
+ *
+ * MASTER LOCK: solo AGREGA 1 template y reasigna template_suffix. No toca MP, webhooks, orders ni crons.
+ */
+app.post('/api/admin/products/:id/install-subscription-template', async (req, res) => {
+    try {
+        const productId = String(req.params.id || '').trim();
+        if (!productId) return res.status(400).json({ error: 'productId required' });
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+
+        const sourceTemplateSlug = String((req.body && req.body.source_template) || 'product.bundle').trim();
+        const sourceTemplateKey = `templates/${sourceTemplateSlug}.json`;
+
+        // Short ID for template suffix (últimos 6 caracteres del productId → únicos por producto)
+        const shortId = productId.slice(-6);
+        const sectionSuffix = `_p${shortId}_section`;
+        const widgetNewKey = `suscriptions_mp_lab_subscription_p${shortId}`;
+        const newTemplateKey = `templates/product.bundle-p${shortId}.json`;
+        const newTemplateSuffix = `bundle-p${shortId}`;
+
+        const WIDGET_OLD_KEY = 'suscriptions_mp_lab_subscription_aPi9pn';
+        const SECTION_RENAMES = [
+            'lab_hero_bundle_section', 'lab_bene_bundle_section', 'lab_save_bundle_section',
+            'lab_how_bundle_section', 'lab_flav_bundle_section', 'lab_comp_bundle_section',
+            'lab_test_bundle_section', 'lab_faq_bundle_section', 'lab_final_bundle_section'
+        ];
+
+        const sh = async (p, opts = {}) => {
+            const r = await fetch(`https://${shop}/admin/api/2026-01${p}`, {
+                ...opts,
+                headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json', ...(opts.headers || {}) }
+            });
+            const t = await r.text();
+            if (!r.ok) throw new Error(`HTTP ${r.status} ${p}: ${t.substring(0, 250)}`);
+            return t ? JSON.parse(t) : null;
+        };
+
+        // 1) Main theme
+        const themesResp = await sh('/themes.json');
+        const mainTheme = (themesResp.themes || []).find(t => t.role === 'main');
+        if (!mainTheme) return res.status(404).json({ error: 'No main theme found' });
+
+        // 2) Fetch master template
+        let masterAsset;
+        try {
+            masterAsset = await sh(`/themes/${mainTheme.id}/assets.json?asset[key]=${encodeURIComponent(sourceTemplateKey)}`);
+        } catch (e) {
+            return res.status(404).json({ error: `Source template not found: ${sourceTemplateKey}`, detail: e.message });
+        }
+        let masterJson;
+        try { masterJson = JSON.parse(masterAsset.asset.value); }
+        catch (e) { return res.status(500).json({ error: `Master template not valid JSON` }); }
+
+        // 3) Clone + rename sections + rename widget block + inject eligible_variant_ids
+        const tpl = JSON.parse(JSON.stringify(masterJson));
+
+        // 3a) Rename section keys
+        const renameMap = {};
+        SECTION_RENAMES.forEach(oldKey => { renameMap[oldKey] = oldKey.replace('_bundle_section', sectionSuffix); });
+        const newSections = {};
+        Object.keys(tpl.sections || {}).forEach(k => { newSections[renameMap[k] || k] = tpl.sections[k]; });
+        tpl.sections = newSections;
+        tpl.order = (tpl.order || []).map(k => renameMap[k] || k);
+
+        // 3b) Fetch product variants + config to know eligible_variant_ids
+        const prodResp = await sh(`/products/${productId}.json?fields=id,title,handle,variants`);
+        const product = prodResp.product || {};
+        const allVariantIds = (product.variants || []).map(v => String(v.id));
+
+        let eligibleVariantIds = '';
+        try {
+            const settings = await readFromShopify() || readFromFile() || {};
+            const cfgMap = settings.product_configs || {};
+            const cfg = cfgMap[productId] || cfgMap[String(productId)] || {};
+            if (Array.isArray(cfg.eligible_variant_ids) && cfg.eligible_variant_ids.length) {
+                // Solo usar variantes que realmente existen en el producto (defensa anti-cagada)
+                const real = cfg.eligible_variant_ids.map(String).filter(v => allVariantIds.includes(v));
+                eligibleVariantIds = real.join(',');
+            }
+        } catch (_) { /* no config yet — widget will default */ }
+
+        // Fallback: si no hay product_config, usar TODAS las variantes del producto (sigue siendo seguro,
+        // porque evita cross-product; solo mostraría todas las variantes de ESTE producto)
+        if (!eligibleVariantIds && allVariantIds.length) {
+            eligibleVariantIds = allVariantIds.join(',');
+        }
+
+        // 3c) Rename widget block key (recursivo) + inyectar eligible_variant_ids
+        //     + fallback: si no existe widget en template (p. ej. source=product.json sin widget),
+        //     lo INYECTAMOS en la main-product section para que aparezca.
+        let widgetFound = false;
+        const widgetBlockType = 'shopify://apps/suscriptions-mp/blocks/lab_subscription/019cc012-a889-70d4-8ae2-a2d3cdb12669';
+
+        function walkAndRename(container) {
+            if (!container || typeof container !== 'object') return;
+            if (container.blocks && typeof container.blocks === 'object') {
+                if (container.blocks[WIDGET_OLD_KEY]) {
+                    const w = container.blocks[WIDGET_OLD_KEY];
+                    w.settings = w.settings || {};
+                    w.settings.eligible_variant_ids = eligibleVariantIds;
+                    w.settings.variant_notice_text = '';
+                    container.blocks[widgetNewKey] = w;
+                    delete container.blocks[WIDGET_OLD_KEY];
+                    if (Array.isArray(container.block_order)) {
+                        container.block_order = container.block_order.map(k => k === WIDGET_OLD_KEY ? widgetNewKey : k);
+                    }
+                    widgetFound = true;
+                }
+                Object.values(container.blocks).forEach(walkAndRename);
+            }
+        }
+        Object.values(tpl.sections || {}).forEach(walkAndRename);
+
+        // Si no existe widget → inyectarlo en main-product section (modo genérico)
+        if (!widgetFound) {
+            let mainSectionKey = null;
+            for (const [k, sec] of Object.entries(tpl.sections || {})) {
+                if (sec && String(sec.type || '').includes('main-product') || k === 'main') { mainSectionKey = k; break; }
+            }
+            if (!mainSectionKey) {
+                for (const [k, sec] of Object.entries(tpl.sections || {})) {
+                    if (sec && sec.blocks) { mainSectionKey = k; break; }
+                }
+            }
+            if (mainSectionKey) {
+                const mainSec = tpl.sections[mainSectionKey];
+                if (!mainSec.blocks) mainSec.blocks = {};
+                if (!mainSec.block_order) mainSec.block_order = [];
+                mainSec.blocks[widgetNewKey] = {
+                    type: widgetBlockType,
+                    settings: {
+                        eligible_variant_ids: eligibleVariantIds,
+                        variant_notice_text: '',
+                        text_btn_once: 'Compra única',
+                        text_btn_sub: 'Suscripción',
+                        badge_text: 'HASTA -33%',
+                        primary_color: '#9d2a23',
+                        free_shipping: false,
+                        text_legal: 'Cancelación disponible entre los días 30 y 15 antes de cada envío, una vez completada la permanencia.',
+                        color_bg: '#ffffff',
+                        color_benefit: '#fdf2f2',
+                        currency_sym: 'S/',
+                        show_badge: true,
+                        show_benefit_box: true,
+                        show_social: false,
+                        show_legal: false,
+                        show_perks: false
+                    }
+                };
+                // Insertar después de buy_buttons o price
+                const idx = mainSec.block_order.findIndex(k => {
+                    const t = (mainSec.blocks[k] && mainSec.blocks[k].type) || '';
+                    return t.includes('buy_buttons') || t.includes('price');
+                });
+                if (idx >= 0) mainSec.block_order.splice(idx + 1, 0, widgetNewKey);
+                else mainSec.block_order.push(widgetNewKey);
+                widgetFound = true;
+            }
+        }
+
+        // 4) Upload new template
+        const uploadResp = await sh(`/themes/${mainTheme.id}/assets.json`, {
+            method: 'PUT',
+            body: JSON.stringify({ asset: { key: newTemplateKey, value: JSON.stringify(tpl, null, 2) } })
+        });
+
+        // 5) Assign template_suffix
+        const assignResp = await sh(`/products/${productId}.json`, {
+            method: 'PUT',
+            body: JSON.stringify({ product: { id: Number(productId), template_suffix: newTemplateSuffix } })
+        });
+
+        // 6) Invalidate CDN cache via body_html no-op bump
+        try {
+            const getBody = await sh(`/products/${productId}.json?fields=body_html`);
+            const currentBody = String(getBody.product?.body_html || '');
+            const bumped = currentBody.includes(' ')
+                ? currentBody.replace(/ /g, ' ')
+                : currentBody + ' ';
+            await sh(`/products/${productId}.json`, {
+                method: 'PUT',
+                body: JSON.stringify({ product: { id: Number(productId), body_html: bumped } })
+            });
+        } catch (_) { /* cache bump best-effort */ }
+
+        res.json({
+            ok: true,
+            product: {
+                id: productId,
+                title: product.title,
+                handle: product.handle,
+                template_suffix: assignResp.product.template_suffix,
+                storefront_url: `https://${shop.replace('.myshopify.com', '')}/products/${product.handle}`
+            },
+            template: {
+                key: newTemplateKey,
+                size: uploadResp.asset?.size || null,
+                widget_block_key: widgetNewKey,
+                section_suffix: sectionSuffix,
+                widget_found_and_renamed: widgetFound,
+                eligible_variant_ids: eligibleVariantIds,
+                sections_renamed: Object.keys(renameMap).length
+            }
+        });
+    } catch (e) {
+        console.error('[INSTALL-SUB-TEMPLATE] Error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/**
+ * POST /api/admin/products/:id/uninstall-subscription-template
+ * 2026-04-21 — ADITIVO · reversible
+ *
+ * Quita el template_suffix del producto (vuelve al template por defecto). No borra el template
+ * del theme (queda disponible para reactivar); solo desvincula el producto.
+ *
+ * MASTER LOCK: solo cambia template_suffix → null. No toca MP, webhooks, orders, crons, pedidos.
+ */
+app.post('/api/admin/products/:id/uninstall-subscription-template', async (req, res) => {
+    try {
+        const productId = String(req.params.id || '').trim();
+        if (!productId) return res.status(400).json({ error: 'productId required' });
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+        const r = await fetch(`https://${shop}/admin/api/2026-01/products/${encodeURIComponent(productId)}.json`, {
+            method: 'PUT',
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product: { id: Number(productId), template_suffix: null } })
+        });
+        const t = await r.text();
+        if (!r.ok) return res.status(r.status).json({ error: `Shopify ${r.status}`, detail: t.slice(0, 300) });
+        const p = JSON.parse(t).product || {};
+        res.json({
+            ok: true,
+            product: {
+                id: p.id, title: p.title, handle: p.handle,
+                template_suffix: p.template_suffix || null,
+                storefront_url: `https://${shop.replace('.myshopify.com', '')}/products/${p.handle}`
+            }
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
+ * GET /api/admin/products/:id/template-status
+ * 2026-04-21 — ADITIVO · solo lectura
+ * Devuelve el template_suffix actual del producto + existencia del template en el theme.
+ */
+app.get('/api/admin/products/:id/template-status', async (req, res) => {
+    try {
+        const productId = String(req.params.id || '').trim();
+        if (!productId) return res.status(400).json({ error: 'productId required' });
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+        const rp = await fetch(`https://${shop}/admin/api/2026-01/products/${encodeURIComponent(productId)}.json?fields=id,title,handle,template_suffix`, {
+            headers: { 'X-Shopify-Access-Token': token }
+        });
+        if (!rp.ok) return res.status(rp.status).json({ error: `Shopify ${rp.status}` });
+        const p = (await rp.json()).product || {};
+        res.json({
+            ok: true,
+            product_id: p.id,
+            title: p.title,
+            handle: p.handle,
+            template_suffix: p.template_suffix || null,
+            template_file: p.template_suffix ? `templates/product.${p.template_suffix}.json` : 'templates/product.json',
+            has_custom_template: !!p.template_suffix
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
  * GET /api/bundles/product/:bundleProductId/config
  * Endpoint PÚBLICO (widget liquid) — dado el product_id del bundle (ej: C4 Energy Bundle 15),
  * devuelve la config + sabores disponibles con su estado (available/out_of_stock).

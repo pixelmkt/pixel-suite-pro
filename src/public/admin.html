@@ -2061,11 +2061,14 @@
       </div>
       <button class="btn btn-g btn-sm" onclick="closeDrawer()">✕ Cerrar</button>
     </div>
+    <div id="drawer-template-status" style="padding:10px 16px;border-bottom:1px solid var(--bdr);background:#f8fafc;font-size:12px;display:none"></div>
     <div class="drawer-body" id="drawer-body-content">
       <div style="text-align:center;padding:32px;color:var(--mut)" id="drawer-loading">Cargando planes...</div>
     </div>
-    <div class="drawer-foot">
-      <button class="btn btn-r" style="width:100%" onclick="saveProductConfig()">💾 Guardar configuración</button>
+    <div class="drawer-foot" style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-r" style="flex:1;min-width:200px" onclick="saveProductConfig()">💾 Guardar configuración</button>
+      <button class="btn btn-sm" style="background:#0a0a0a;color:#fff" onclick="installSubTemplateFromDrawer()" title="Instalar / reinstalar template exclusivo con widget y variantes">🚀 Instalar template</button>
+      <button class="btn btn-g btn-sm" onclick="uninstallSubTemplateFromDrawer()" title="Quitar template exclusivo (volver al template por defecto)">↶ Quitar template</button>
     </div>
   </div>
 
@@ -3497,15 +3500,113 @@
           return `<div class="prod-card${on ? ' on' : ''}">
           <div class="prod-img">${p.image ? `<img src="${p.image}" loading="lazy">` : noImg}</div>
           <div class="prod-name">${p.title}</div>
-          <div class="prod-actions">
+          <div class="prod-actions" style="flex-wrap:wrap;gap:6px">
             <label class="toggle-wrap" title="${on ? 'Desactivar' : 'Activar'} suscripción">
               <span class="toggle"><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleProd('${p.shopify_id}',this.checked,'${t}')"><span class="tslide"></span></span>
             </label>
             <span style="font-size:11px;color:var(--mut);flex:1">${on ? 'Activo' : 'Inactivo'}</span>
             <button class="btn btn-g btn-sm" onclick="openConfig('${p.shopify_id}','${t}')">Config</button>
+            <button class="btn btn-sm" style="background:#0a0a0a;color:#fff;font-size:11px" onclick="installSubTemplate('${p.shopify_id}','${t}', this)" title="Crear template exclusivo de suscripción para este producto (widget independiente)">🚀 Template</button>
           </div>
         </div>`;
         }).join('') + `</div>`;
+    }
+
+    // ── AUTONOMÍA: Instalar template de suscripción por-producto (widget independiente)
+    //    Crea templates/product.bundle-p{shortId}.json a partir del maestro,
+    //    inyecta eligible_variant_ids del producto, asigna template_suffix e invalida cache.
+    //    MASTER LOCK: solo AGREGA template + reasigna suffix. No toca MP, webhooks, orders, crons.
+    async function installSubTemplate(productId, title, btn) {
+      const confirmMsg = `¿Instalar template de suscripción exclusivo para "${title}"?\n\n` +
+        `• Se creará templates/product.bundle-p${productId.slice(-6)}.json\n` +
+        `• Widget independiente con eligible_variant_ids propias\n` +
+        `• Se asignará template_suffix al producto\n` +
+        `• Las variantes se tomarán de la configuración guardada (o todas si no hay config).\n\n` +
+        `⚠️ No modifica MP, webhooks, pedidos ni crons.`;
+      if (!confirm(confirmMsg)) return;
+      const origLabel = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Instalando...'; }
+      try {
+        const r = await api(`/api/admin/products/${productId}/install-subscription-template`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source_template: 'product.bundle' })
+        });
+        if (r && r.ok) {
+          toast(`✅ Template instalado: ${r.template.key} · suffix=${r.product.template_suffix} · variants=${r.template.eligible_variant_ids || '(todas del producto)'}`);
+          console.log('[INSTALL-SUB-TEMPLATE]', r);
+          // Abrir la tienda en nueva pestaña para verificar
+          if (r.product.storefront_url) {
+            setTimeout(() => window.open(r.product.storefront_url, '_blank'), 600);
+          }
+        } else {
+          toast('❌ Error: ' + (r && r.error ? r.error : 'desconocido'), 'err');
+        }
+      } catch (e) {
+        // Si falla con product.bundle (p.ej. no existe), reintentar con product.json genérico
+        if (String(e.message).includes('Source template not found')) {
+          if (btn) btn.innerHTML = '⏳ Reintentando...';
+          try {
+            const r2 = await api(`/api/admin/products/${productId}/install-subscription-template`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ source_template: 'product' })
+            });
+            if (r2 && r2.ok) {
+              toast(`✅ Template genérico instalado (fallback): ${r2.template.key}`);
+              if (r2.product.storefront_url) setTimeout(() => window.open(r2.product.storefront_url, '_blank'), 600);
+            } else {
+              toast('❌ Error fallback: ' + (r2 && r2.error ? r2.error : 'desconocido'), 'err');
+            }
+          } catch (e2) {
+            toast('❌ Falló instalación: ' + e2.message, 'err');
+          }
+        } else {
+          toast('❌ Error: ' + e.message, 'err');
+        }
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
+      }
+    }
+
+    // Drawer variants
+    async function installSubTemplateFromDrawer() {
+      if (!_currentProdId) return;
+      const name = document.getElementById('drawer-prod-name').textContent || 'este producto';
+      await installSubTemplate(_currentProdId, name);
+      refreshDrawerTemplateStatus(_currentProdId);
+    }
+    async function uninstallSubTemplateFromDrawer() {
+      if (!_currentProdId) return;
+      if (!confirm('¿Quitar el template exclusivo de este producto? Volverá al template estándar. No se pierde la config de planes.')) return;
+      try {
+        const r = await api(`/api/admin/products/${_currentProdId}/uninstall-subscription-template`, { method: 'POST' });
+        if (r && r.ok) {
+          toast('✅ Template desvinculado — producto vuelve al default');
+          refreshDrawerTemplateStatus(_currentProdId);
+        } else {
+          toast('❌ Error: ' + (r && r.error ? r.error : 'desconocido'), 'err');
+        }
+      } catch (e) { toast('❌ ' + e.message, 'err'); }
+    }
+    async function refreshDrawerTemplateStatus(productId) {
+      const box = document.getElementById('drawer-template-status');
+      if (!box) return;
+      box.style.display = 'block';
+      box.innerHTML = '<span style="color:var(--mut)">Consultando template…</span>';
+      try {
+        const r = await api(`/api/admin/products/${productId}/template-status`);
+        if (r && r.ok) {
+          const has = !!r.has_custom_template;
+          box.innerHTML = has
+            ? `<span style="color:#166534;font-weight:600">● Template exclusivo activo:</span> <code style="background:#ecfdf5;padding:2px 6px;border-radius:4px">${r.template_file}</code>`
+            : `<span style="color:#92400e;font-weight:600">○ Sin template exclusivo</span> · usando template por defecto — haz click en <strong>🚀 Instalar template</strong> para crear uno propio.`;
+        } else {
+          box.innerHTML = '<span style="color:var(--mut)">No se pudo leer el estado del template.</span>';
+        }
+      } catch (e) {
+        box.innerHTML = '<span style="color:var(--mut)">Error: ' + e.message + '</span>';
+      }
     }
 
     function filterProds(q) { _prodSearch = q.toLowerCase(); renderProds(); }
@@ -3578,6 +3679,8 @@
       document.getElementById('drawer-overlay').classList.add('open');
       document.getElementById('config-drawer').classList.add('open');
       document.getElementById('drawer-body-content').innerHTML = '<div style="text-align:center;padding:32px;color:var(--mut)">Cargando planes...</div>';
+      // Mostrar estado del template exclusivo (AUTONOMÍA)
+      refreshDrawerTemplateStatus(id);
 
       try {
         // CRITICAL FIX v6.1.0: Use local _plans (session memory) first, then fallback to API
