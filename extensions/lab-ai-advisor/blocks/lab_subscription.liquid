@@ -1,4 +1,4 @@
-{{ 'lab-sub.css' | asset_url | stylesheet_tag }}
+﻿{{ 'lab-sub.css' | asset_url | stylesheet_tag }}
 <style>
   #lab-sub-{{ block.id }} {
     --lab-bg: {{ block.settings.color_bg | default: '#ffffff' }};
@@ -25,340 +25,6 @@
   purchase-options-radio-component,
   .purchase-options-radio { display: none !important; }
 
-  /* ═══════════════════════════════════════════════════════════
-     🎁 BUNDLE MODE — Mix & Match (C4 Energy, pre-workouts, etc.)
-     Diseño minimalista, elegante, mobile-first.
-     ═══════════════════════════════════════════════════════════ */
-  #lab-sub-{{ block.id }} .lab-bundle__header {
-    text-align: center;
-    margin-bottom: 18px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__title {
-    font-size: 18px;
-    font-weight: 900;
-    letter-spacing: -0.3px;
-    color: #18181b;
-    margin-bottom: 4px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__subtitle {
-    font-size: 12px;
-    color: #6b7280;
-    line-height: 1.4;
-  }
-
-  /* Progress bar */
-  #lab-sub-{{ block.id }} .lab-bundle__progress-wrap {
-    margin-bottom: 18px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__progress-bar {
-    height: 8px;
-    background: #f3f4f6;
-    border-radius: 999px;
-    overflow: hidden;
-    position: relative;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--lab-primary, #9d2a23), #c0392b);
-    border-radius: 999px;
-    transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__progress-label {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-top: 8px;
-    font-size: 11px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__progress-count {
-    font-size: 14px;
-    font-weight: 900;
-    color: var(--lab-primary, #9d2a23);
-    letter-spacing: 0.3px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__progress-text {
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    font-weight: 700;
-  }
-
-  /* Plans (chips) */
-  #lab-sub-{{ block.id }} .lab-bundle__plans {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 20px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__plan {
-    background: #fff;
-    border: 1.5px solid #e5e7eb;
-    border-radius: 10px;
-    padding: 12px;
-    text-align: left;
-    cursor: pointer;
-    transition: all 0.18s ease;
-    position: relative;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__plan:hover {
-    border-color: #cbd5e1;
-    transform: translateY(-1px);
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__plan.is-active {
-    border-color: var(--lab-primary, #9d2a23);
-    background: #fef7f6;
-    box-shadow: 0 0 0 3px rgba(157, 42, 35, 0.08);
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__plan-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 4px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__plan-perm {
-    font-size: 11px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #374151;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__plan.is-active .lab-bundle__plan-perm {
-    color: var(--lab-primary, #9d2a23);
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__plan-save {
-    background: var(--lab-primary, #9d2a23);
-    color: #fff;
-    font-size: 10px;
-    font-weight: 900;
-    padding: 2px 7px;
-    border-radius: 12px;
-    letter-spacing: 0.3px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__plan-price {
-    font-size: 19px;
-    font-weight: 900;
-    color: #18181b;
-    letter-spacing: -0.4px;
-    margin-top: 2px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__plan-period {
-    font-size: 11px;
-    font-weight: 600;
-    color: #6b7280;
-    letter-spacing: 0;
-    margin-left: 2px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__plan-unit {
-    font-size: 10px;
-    color: #6b7280;
-    font-weight: 600;
-    margin-top: 2px;
-  }
-
-  /* Flavors grid */
-  #lab-sub-{{ block.id }} .lab-bundle__flavors-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 10px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavors-title {
-    font-size: 11px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: #374151;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavors {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 8px;
-    margin-bottom: 16px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px;
-    background: #fff;
-    border: 1.5px solid #eef0f3;
-    border-radius: 10px;
-    position: relative;
-    transition: all 0.18s ease;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor:hover {
-    border-color: #e5e7eb;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor.is-disabled {
-    background: #fafafa;
-    opacity: 0.55;
-    filter: grayscale(0.4);
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor.is-disabled .lab-bundle__flavor-img {
-    filter: grayscale(1);
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor-badge {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    background: #1f2937;
-    color: #fff;
-    font-size: 9px;
-    font-weight: 900;
-    padding: 3px 7px;
-    border-radius: 4px;
-    letter-spacing: 0.8px;
-    text-transform: uppercase;
-    z-index: 1;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor-img-wrap {
-    flex-shrink: 0;
-    width: 52px;
-    height: 52px;
-    border-radius: 8px;
-    background: #f9fafb;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor-img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    transition: transform 0.25s ease;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor-img--empty {
-    background: #e5e7eb;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor-body {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor-title {
-    font-size: 13px;
-    font-weight: 700;
-    color: #18181b;
-    line-height: 1.25;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor-controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor-btn {
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
-    border: 1.5px solid #e5e7eb;
-    background: #fff;
-    font-size: 16px;
-    font-weight: 900;
-    color: #18181b;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.15s ease;
-    padding: 0;
-    line-height: 1;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor-btn:hover:not(:disabled) {
-    border-color: var(--lab-primary, #9d2a23);
-    color: var(--lab-primary, #9d2a23);
-    transform: scale(1.05);
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor-btn:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor-btn--plus {
-    background: var(--lab-primary, #9d2a23);
-    color: #fff;
-    border-color: var(--lab-primary, #9d2a23);
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor-btn--plus:hover:not(:disabled) {
-    background: #7f211c;
-    color: #fff;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__flavor-qty {
-    min-width: 20px;
-    text-align: center;
-    font-size: 14px;
-    font-weight: 800;
-    color: #18181b;
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* Status + resumen */
-  #lab-sub-{{ block.id }} .lab-bundle__status {
-    font-size: 12px;
-    font-weight: 700;
-    padding: 10px 12px;
-    border-radius: 8px;
-    margin-bottom: 12px;
-    text-align: center;
-    letter-spacing: 0.2px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__status--warn {
-    background: #fffbeb;
-    border: 1px solid #fde68a;
-    color: #92400e;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__status--ok {
-    background: #f0fdf4;
-    border: 1px solid #bbf7d0;
-    color: #166534;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__summary {
-    background: #fafafa;
-    border: 1px solid #eef0f3;
-    border-radius: 10px;
-    padding: 12px 14px;
-    margin-bottom: 14px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__summary-title {
-    font-size: 10px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: #6b7280;
-    margin-bottom: 8px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__summary-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__summary-list li {
-    font-size: 13px;
-    color: #18181b;
-    display: flex;
-    gap: 6px;
-  }
-  #lab-sub-{{ block.id }} .lab-bundle__summary-qty {
-    font-weight: 800;
-    color: var(--lab-primary, #9d2a23);
-    min-width: 24px;
-  }
-
-  /* CTA */
-  #lab-sub-{{ block.id }} .lab-bundle__cta:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    background: #9ca3af !important;
-  }
 </style>
 
 {%- liquid
@@ -431,7 +97,8 @@
     <div id="sub-content-{{ block.id }}">
 
     {% comment %}Selling plans nativo deshabilitado — usamos MP PreApproval{% endcomment %}
-    {% if false %}{% else %}      <!-- Note: actual plans are loaded dynamically from backend via loadConfig() -->
+    {% if false %}{% else %}
+      <!-- Note: actual plans are loaded dynamically from backend via loadConfig() -->
       <div class="lab-sub__group">
         <p class="lab-sub__label">Elige tu plan</p>
         <div class="lab-sub__chips" id="plan-chips-{{ block.id }}">
@@ -591,7 +258,8 @@
 (function() {
   var blkId = '{{ block.id }}';
   var wrap = document.getElementById('lab-sub-' + blkId);
-  var hasNativePlans = {{ has_plans | json }};  wrap.querySelectorAll('.lab-sub__tab').forEach(function(tab) {
+  var hasNativePlans = {{ has_plans | json }};
+  wrap.querySelectorAll('.lab-sub__tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
       wrap.querySelectorAll('.lab-sub__tab').forEach(function(t) { t.classList.remove('lab-sub__tab--active'); });
       wrap.querySelectorAll('.lab-sub__panel').forEach(function(p) { p.classList.remove('lab-sub__panel--active'); });
@@ -599,7 +267,8 @@
       var panel = wrap.querySelector('[data-panel="' + tab.dataset.tab + '"]');
       if (panel) panel.classList.add('lab-sub__panel--active');
     });
-  });  function labCartUpdate() {
+  });
+  function labCartUpdate() {
     // 1. Leer carrito actualizado
     fetch('/cart.js').then(function(r) { return r.json(); }).then(function(cart) {
       var count = cart.item_count;
@@ -649,7 +318,8 @@
     // 5. Disparar eventos personalizados para que el tema reaccione
     document.dispatchEvent(new CustomEvent('cart:refresh'));
     document.dispatchEvent(new CustomEvent('cart:updated'));
-  }  window.labSubAddOnce = function(id) {
+  }
+  window.labSubAddOnce = function(id) {
     if (id !== blkId) return;
     var variantId = parseInt(wrap.dataset.variant);
     if (!variantId) return;
@@ -673,11 +343,13 @@
     .catch(function() {
       if (btn) { btn.disabled = false; btn.querySelector('.lab-sub__cta-text').textContent = 'Agregar al carrito'; }
     });
-  };  window.labSubOpenModal = function(id) {
+  };
+  window.labSubOpenModal = function(id) {
     if (id !== blkId) return;
     var modal = document.getElementById('lab-modal-' + id);
     if (modal) modal.style.display = 'flex';
-  };  var productHandle = '{{ product.handle }}';
+  };
+  var productHandle = '{{ product.handle }}';
 
   // 🔒 Variant allowlist (hardcoded baseline + admin setting). Fail-safe: si no hay config, tab Suscripción se oculta.
   var HARDCODED_ELIGIBLE = ['58307532587089'];
@@ -752,7 +424,8 @@
 
   var urlParams = new URLSearchParams(window.location.search);
   var urlVariant = urlParams.get('variant');
-  if (urlVariant && urlVariant !== wrap.dataset.variant) fetchVariant(urlVariant);  var socialEl = document.getElementById('social-text-' + blkId);
+  if (urlVariant && urlVariant !== wrap.dataset.variant) fetchVariant(urlVariant);
+  var socialEl = document.getElementById('social-text-' + blkId);
   if (socialEl) {
     var backend = wrap.dataset.backend || 'https://pixel-suite-pro-production.up.railway.app';
     fetch(backend + '/api/metrics')
@@ -762,7 +435,8 @@
         else socialEl.parentElement.style.display = 'none';
       })
       .catch(function() { if (socialEl && socialEl.parentElement) socialEl.parentElement.style.display = 'none'; });
-  }  if (!hasNativePlans) {
+  }
+  if (!hasNativePlans) {
     var config = {};
     var activePlans = []; // planes asignados y habilitados para este producto
     var selectedPlanKey = null;
@@ -960,7 +634,8 @@
           }
         })
         .catch(function() {});
-    }    window.labSubOpenModal = function(id) {
+    }
+    window.labSubOpenModal = function(id) {
       if (id !== blkId) return;
       var modal = document.getElementById('lab-modal-' + id);
       if (modal) modal.style.display = 'flex';
