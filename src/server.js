@@ -5206,6 +5206,50 @@ app.post('/api/admin/bundles/create-product', async (req, res) => {
 });
 
 /**
+ * POST /api/admin/products/:id/status
+ * 2026-04-21 — ADITIVO
+ * Cambia el status de un producto Shopify (ACTIVE | DRAFT | ARCHIVED).
+ * Body: { status: "ACTIVE" | "DRAFT" | "ARCHIVED" }
+ * Útil para publicar/despublicar bundles creados desde el admin.
+ */
+app.post('/api/admin/products/:id/status', async (req, res) => {
+    try {
+        const productId = String(req.params.id || '').trim();
+        const newStatus = String((req.body && req.body.status) || '').toUpperCase();
+        if (!productId) return res.status(400).json({ error: 'productId required' });
+        if (!['ACTIVE', 'DRAFT', 'ARCHIVED'].includes(newStatus)) {
+            return res.status(400).json({ error: 'status must be ACTIVE|DRAFT|ARCHIVED' });
+        }
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+
+        // REST: PUT /products/{id}.json with status lowercase
+        const url = `https://${shop}/admin/api/2026-01/products/${encodeURIComponent(productId)}.json`;
+        const r = await fetch(url, {
+            method: 'PUT',
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product: { id: productId, status: newStatus.toLowerCase() } })
+        });
+        const text = await r.text();
+        if (!r.ok) return res.status(r.status).json({ error: `Shopify ${r.status}`, detail: text.slice(0, 400) });
+        const data = JSON.parse(text);
+        const p = data.product || {};
+        res.json({
+            ok: true,
+            product: {
+                id: p.id,
+                title: p.title,
+                handle: p.handle,
+                status: p.status,
+                admin_url: `https://${shop}/admin/products/${p.id}`,
+                storefront_url: `https://${shop.replace('.myshopify.com', '')}/products/${p.handle}`
+            }
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
  * GET /api/bundles/product/:bundleProductId/config
  * Endpoint PÚBLICO (widget liquid) — dado el product_id del bundle (ej: C4 Energy Bundle 15),
  * devuelve la config + sabores disponibles con su estado (available/out_of_stock).
