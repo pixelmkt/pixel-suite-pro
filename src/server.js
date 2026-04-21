@@ -1730,9 +1730,10 @@ app.get('/api/products/:id/config', async (req, res) => {
         const cfg = newFmt[id] || oldFmt || {};
 
         // Enrich planes con info de regalo aplicable (sin tocar la estructura base)
-        // Para cada plan (matcheado por freq+perm), buscamos en plans_config si hay gifts
-        // y si aplican a este product_id. Devolvemos un resumen legible para el widget.
-        // Incluye product_handle para que el widget pueda linkear al producto del regalo.
+        // FIX 2026-04-20: matcheamos por PLAN ID primero (único y correcto). Si no hay match
+        //   por id, caemos a freq+perm PERO filtrando que el plan aplique a este producto
+        //   (antes `.find()` tomaba el primer plan con esos valores y rompía cuando había
+        //   varios planes con misma freq+perm para productos distintos — ej. Creatina vs Premium Whey).
         try {
             const plansCfg = Array.isArray(settings.plans_config) ? settings.plans_config : [];
             if (cfg.plans && typeof cfg.plans === 'object' && plansCfg.length) {
@@ -1741,11 +1742,19 @@ app.get('/api/products/:id/config', async (req, res) => {
                     const p = cfg.plans[key] || {};
                     const freq = Number(p.frequency || p.freq_months);
                     const perm = Number(p.permanence || p.permanence_months);
-                    const match = plansCfg.find(pc =>
-                        pc && pc.active !== false &&
-                        Number(pc.frequency || pc.freq_months) === freq &&
-                        Number(pc.permanence || pc.permanence_months) === perm
-                    );
+                    // 1) match exacto por plan id
+                    let match = plansCfg.find(pc => pc && pc.active !== false && String(pc.id) === String(key));
+                    // 2) fallback: match por freq+perm QUE APLIQUE A ESTE PRODUCTO
+                    if (!match) {
+                        match = plansCfg.find(pc => {
+                            if (!pc || pc.active === false) return false;
+                            if (Number(pc.frequency || pc.freq_months) !== freq) return false;
+                            if (Number(pc.permanence || pc.permanence_months) !== perm) return false;
+                            const mode = pc.gifts?.applies_to?.mode || 'all_products';
+                            const ids = (pc.gifts?.applies_to?.product_ids || []).map(String);
+                            return mode === 'all_products' || ids.includes(String(id));
+                        });
+                    }
                     if (match && match.gifts && match.gifts.enabled) {
                         const mode = match.gifts.applies_to?.mode || 'all_products';
                         const ids = (match.gifts.applies_to?.product_ids || []).map(String);
