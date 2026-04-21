@@ -3409,11 +3409,20 @@
     }
 
     async function deletePlan(i) {
+      // ── FIX 2026-04-21 ──
+      // Antes: splice(i,1) + POST array completo. Race-prone: si el backend devolvía
+      //   la lista en otro orden, el índice i apuntaba a otro plan → "lo eliminé pero
+      //   sigue saliendo" (porque se eliminaba el incorrecto o ninguno).
+      // Ahora: DELETE por id exacto. Idempotente y atómico server-side.
+      const plan = _plans[i];
+      if (!plan || !plan.id) { toast('Plan inválido', 'err'); return; }
       if (!confirm('¿Eliminar este plan? No afecta suscripciones existentes.')) return;
-      _plans.splice(i, 1);
       try {
-        await api('/api/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_plans) });
-        toast('🗑 Plan eliminado'); renderPlans();
+        const r = await api('/api/plans/' + encodeURIComponent(plan.id), { method: 'DELETE' });
+        if (r && r.error) { toast('❌ ' + r.error, 'err'); return; }
+        // Recargar desde backend para garantizar consistencia (no confiar en estado local)
+        await loadPlans();
+        toast('🗑 Plan eliminado · ' + (r && r.remaining !== undefined ? r.remaining + ' restantes' : ''));
       } catch (e) { toast('Error: ' + e.message, 'err'); }
     }
 

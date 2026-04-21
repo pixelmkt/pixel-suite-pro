@@ -1759,6 +1759,33 @@ app.put('/api/plans/:id', async (req, res) => {
     }
 });
 
+/* Eliminar un plan individual por ID — by-id (no by-index) para evitar race conditions
+ * ADITIVO 2026-04-21: El admin antes hacía splice por índice local + POST array completo,
+ *   lo que causaba "borré pero sigue saliendo" cuando el índice se desfasaba entre tabs
+ *   o el POST al sobrescribir perdía alguna eliminación en paralelo. Este endpoint:
+ *   - lee el array actual desde el metafield (fresh read)
+ *   - filtra por id exacto
+ *   - re-guarda y retorna el resultado
+ *   MASTER LOCK: no toca webhook MP, pedidos, crons, ni lógica de suscripción. */
+app.delete('/api/plans/:id', async (req, res) => {
+    try {
+        const data = await readFromShopify() || readFromFile() || {};
+        const current = Array.isArray(data.plans_config) ? data.plans_config : [];
+        const before = current.length;
+        const filtered = current.filter(p => String(p.id) !== String(req.params.id));
+        const removed = before - filtered.length;
+        data.plans_config = filtered;
+        const saved = await saveToShopify(data);
+        saveToFile(data);
+        if (!saved) return res.status(500).json({ error: 'No se pudo guardar en Shopify Metafields.' });
+        console.log(`[PLANS] 🗑  DELETE ${req.params.id} — removed ${removed}, remaining ${filtered.length}`);
+        res.json({ success: true, removed, remaining: filtered.length, plans: filtered });
+    } catch (e) {
+        console.error('[PLANS] DELETE error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 /* ── ELIGIBLE PRODUCTS — fetch from Shopify Admin API ── */
 app.get('/api/products', async (req, res) => {
     try {
