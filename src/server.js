@@ -5250,6 +5250,103 @@ app.post('/api/admin/products/:id/status', async (req, res) => {
 });
 
 /**
+ * POST /api/admin/themes/install-bundle-template
+ * 2026-04-21 — ADITIVO
+ * Crea templates/product.bundle.json en el main theme (clonando product.json base + inyectando
+ * el app block lab_subscription) y asigna template_suffix="bundle" a los product_ids indicados.
+ *
+ * Body: { product_ids: ["15769236996177", "15769237028945"] }
+ *       (opcional, por defecto usa los 2 bundles C4 creados)
+ *
+ * No toca productos ajenos, no toca webhooks, no toca pedidos, no toca MP.
+ */
+app.post('/api/admin/themes/install-bundle-template', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+
+        const EXT_UUID = '4155d041-6adb-5e48-1fc5-809fdebf7f954a1156be';
+        const BLOCK_TYPE = `shopify://apps/lab-nutrition-subscriptions/blocks/lab_subscription/${EXT_UUID}`;
+
+        const productIds = Array.isArray(req.body && req.body.product_ids) && req.body.product_ids.length
+            ? req.body.product_ids.map(String)
+            : ['15769236996177', '15769237028945'];
+
+        const api = (p, opts = {}) => fetch(`https://${shop}/admin/api/2026-01${p}`, {
+            ...opts,
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json', ...(opts.headers || {}) }
+        }).then(async r => {
+            const t = await r.text();
+            if (!r.ok) throw new Error(`HTTP ${r.status} ${p}: ${t.substring(0, 250)}`);
+            return t ? JSON.parse(t) : null;
+        });
+
+        // 1) Main theme
+        const themesResp = await api('/themes.json');
+        const mainTheme = (themesResp.themes || []).find(t => t.role === 'main');
+        if (!mainTheme) return res.status(404).json({ error: 'No main theme found' });
+
+        // 2) Fetch base templates/product.json
+        const baseAsset = await api(`/themes/${mainTheme.id}/assets.json?asset[key]=templates/product.json`);
+        let baseJson;
+        try { baseJson = JSON.parse(baseAsset.asset.value); }
+        catch (e) { return res.status(500).json({ error: 'Base product.json is not valid JSON' }); }
+
+        // 3) Clone + inject app block into main-product section
+        const clone = JSON.parse(JSON.stringify(baseJson));
+        let mainKey = null;
+        for (const [k, sec] of Object.entries(clone.sections || {})) {
+            if (sec && String(sec.type || '').includes('main-product')) { mainKey = k; break; }
+        }
+        if (!mainKey) {
+            for (const [k, sec] of Object.entries(clone.sections || {})) {
+                if (sec && sec.blocks) { mainKey = k; break; }
+            }
+        }
+        if (!mainKey) return res.status(500).json({ error: 'No main-product section found' });
+
+        const mainSec = clone.sections[mainKey];
+        if (!mainSec.blocks) mainSec.blocks = {};
+        if (!mainSec.block_order) mainSec.block_order = [];
+
+        const blockId = 'lab_subscription_widget';
+        mainSec.blocks[blockId] = { type: BLOCK_TYPE, settings: {} };
+        if (!mainSec.block_order.includes(blockId)) {
+            const idx = mainSec.block_order.findIndex(k => {
+                const t = (mainSec.blocks[k] && mainSec.blocks[k].type) || '';
+                return t.includes('buy_buttons') || t.includes('price');
+            });
+            if (idx >= 0) mainSec.block_order.splice(idx + 1, 0, blockId);
+            else mainSec.block_order.push(blockId);
+        }
+
+        // 4) Upload templates/product.bundle.json
+        const upload = await api(`/themes/${mainTheme.id}/assets.json`, {
+            method: 'PUT',
+            body: JSON.stringify({ asset: { key: 'templates/product.bundle.json', value: JSON.stringify(clone, null, 2) } })
+        });
+
+        // 5) Assign template_suffix="bundle" to each bundle product
+        const assigned = [];
+        for (const pid of productIds) {
+            const r = await api(`/products/${pid}.json`, {
+                method: 'PUT',
+                body: JSON.stringify({ product: { id: Number(pid), template_suffix: 'bundle' } })
+            });
+            assigned.push({ id: String(r.product.id), handle: r.product.handle, template_suffix: r.product.template_suffix });
+        }
+
+        res.json({
+            ok: true,
+            theme: { id: mainTheme.id, name: mainTheme.name, role: mainTheme.role },
+            template: { key: upload.asset.key, size: upload.asset.size || null, main_section: mainKey, block_id: blockId, block_type: BLOCK_TYPE },
+            products: assigned
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
  * GET /api/bundles/product/:bundleProductId/config
  * Endpoint PÚBLICO (widget liquid) — dado el product_id del bundle (ej: C4 Energy Bundle 15),
  * devuelve la config + sabores disponibles con su estado (available/out_of_stock).
