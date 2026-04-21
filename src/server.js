@@ -5287,6 +5287,42 @@ app.post('/api/admin/products/:id/template-suffix', async (req, res) => {
 });
 
 /**
+ * POST /api/admin/products/:id/body-html-replace  — 2026-04-21 ADITIVO
+ * Busca y reemplaza texto en body_html de un producto. No toca nada más.
+ * Body: { find: "Envío gratis", replace: "Envío S/10 fijo" }
+ * MASTER LOCK: solo edita el campo body_html; no webhooks, no MP, no pedidos.
+ */
+app.post('/api/admin/products/:id/body-html-replace', async (req, res) => {
+    try {
+        const productId = String(req.params.id || '').trim();
+        const find = String((req.body && req.body.find) || '');
+        const replace = String((req.body && req.body.replace) || '');
+        if (!productId) return res.status(400).json({ error: 'productId required' });
+        if (!find) return res.status(400).json({ error: 'find (string to search) required' });
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+        const urlGet = `https://${shop}/admin/api/2026-01/products/${encodeURIComponent(productId)}.json?fields=id,title,handle,body_html`;
+        const rg = await fetch(urlGet, { headers: { 'X-Shopify-Access-Token': token } });
+        const tg = await rg.text();
+        if (!rg.ok) return res.status(rg.status).json({ error: `Shopify GET ${rg.status}`, detail: tg.slice(0, 300) });
+        const dg = JSON.parse(tg);
+        const current = String(dg.product?.body_html || '');
+        const occurrences = (current.match(new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+        if (occurrences === 0) return res.json({ ok: true, changed: false, occurrences: 0, note: 'find string not present' });
+        const next = current.split(find).join(replace);
+        const rp = await fetch(`https://${shop}/admin/api/2026-01/products/${encodeURIComponent(productId)}.json`, {
+            method: 'PUT',
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product: { id: productId, body_html: next } })
+        });
+        const tp = await rp.text();
+        if (!rp.ok) return res.status(rp.status).json({ error: `Shopify PUT ${rp.status}`, detail: tp.slice(0, 300) });
+        res.json({ ok: true, changed: true, occurrences, product_id: productId, title: dg.product?.title, handle: dg.product?.handle });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
  * POST /api/admin/themes/install-bundle-template
  * 2026-04-21 — ADITIVO
  * Crea templates/product.bundle.json en el main theme (clonando product.json base + inyectando
