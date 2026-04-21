@@ -5250,6 +5250,43 @@ app.post('/api/admin/products/:id/status', async (req, res) => {
 });
 
 /**
+ * POST /api/admin/products/:id/template-suffix
+ * 2026-04-21 — ADITIVO
+ * Asigna template_suffix a un producto. Requiere write_products (ya lo tenemos).
+ * Body: { template_suffix: "bundle" } (o "" para quitar)
+ */
+app.post('/api/admin/products/:id/template-suffix', async (req, res) => {
+    try {
+        const productId = String(req.params.id || '').trim();
+        const suffix = String((req.body && req.body.template_suffix) ?? '').trim();
+        if (!productId) return res.status(400).json({ error: 'productId required' });
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+        const url = `https://${shop}/admin/api/2026-01/products/${encodeURIComponent(productId)}.json`;
+        const r = await fetch(url, {
+            method: 'PUT',
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product: { id: productId, template_suffix: suffix || null } })
+        });
+        const text = await r.text();
+        if (!r.ok) return res.status(r.status).json({ error: `Shopify ${r.status}`, detail: text.slice(0, 400) });
+        const data = JSON.parse(text);
+        const p = data.product || {};
+        res.json({
+            ok: true,
+            product: {
+                id: p.id,
+                title: p.title,
+                handle: p.handle,
+                template_suffix: p.template_suffix,
+                storefront_url: `https://${shop.replace('.myshopify.com', '')}/products/${p.handle}`
+            }
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
  * POST /api/admin/themes/install-bundle-template
  * 2026-04-21 — ADITIVO
  * Crea templates/product.bundle.json en el main theme (clonando product.json base + inyectando
