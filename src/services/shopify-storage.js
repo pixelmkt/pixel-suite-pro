@@ -16,6 +16,10 @@ const SHOPIFY_API_VERSION = '2026-01';
 
 const SUBSCRIPTION_TYPE = 'lab_subscription';
 const EVENT_TYPE = 'lab_sub_event';
+// 2026-04-21: tipo para configurar bundles configurables (ej: C4 Energy 15/30 latas — mix sabores)
+// Cada bundle define: producto master, target_quantity, allowed_variant_ids, plans, etc.
+// El sub que compra un bundle copia el mix elegido a su propio campo bundle_items y se repite cada mes.
+const BUNDLE_CONFIG_TYPE = 'lab_bundle_config';
 
 // ── GraphQL client ────────────────────────────────────────────
 async function gql(query, variables = {}) {
@@ -66,6 +70,7 @@ async function initializeTypes() {
     for (const [type, name] of [
         [SUBSCRIPTION_TYPE, 'LAB Subscription'],
         [EVENT_TYPE, 'LAB Sub Event'],
+        [BUNDLE_CONFIG_TYPE, 'LAB Bundle Config'],
     ]) {
         try {
             const r = await gql(CREATE_TYPE, {
@@ -307,6 +312,77 @@ async function getChargesComingInDays(days) {
     });
 }
 
+// ── BUNDLE CONFIGS CRUD ───────────────────────────────────────
+// 2026-04-21 — Aditivo. No afecta subs existentes ni motor de cobros.
+// Un BundleConfig define un tipo de pack configurable (ej: "C4 Energy Bundle 15 latas").
+// El admin puede crear N bundles; cada bundle apunta a un producto Shopify master y
+// lista las variantes (sabores) elegibles, junto con los planes (freq + perm + precio).
+// Al crear sub desde el widget, el cliente escoge mix de sabores que suma target_quantity.
+
+async function getBundleConfigs(filters = {}) {
+    let bundles = await _listAll(BUNDLE_CONFIG_TYPE);
+    if (filters.active !== undefined) bundles = bundles.filter(b => !!b.active === !!filters.active);
+    if (filters.source_product_id) bundles = bundles.filter(b => String(b.source_product_id) === String(filters.source_product_id));
+    if (filters.bundle_product_id) bundles = bundles.filter(b => String(b.bundle_product_id) === String(filters.bundle_product_id));
+    return bundles.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+}
+
+async function getBundleConfig(id) {
+    const all = await _listAll(BUNDLE_CONFIG_TYPE);
+    return all.find(b => b.id === id || b._gid === id || b._gid?.includes(id)) || null;
+}
+
+async function getBundleConfigByBundleProductId(bundleProductId) {
+    if (!bundleProductId) return null;
+    const all = await _listAll(BUNDLE_CONFIG_TYPE);
+    return all.find(b => String(b.bundle_product_id) === String(bundleProductId)) || null;
+}
+
+async function createBundleConfig(data) {
+    const id = uid('bdl');
+    const now = new Date().toISOString();
+    const record = {
+        active: true,
+        ...data,
+        id,
+        created_at: now,
+        updated_at: now,
+    };
+    const r = await gql(M_CREATE, {
+        input: {
+            type: BUNDLE_CONFIG_TYPE,
+            handle: id,
+            fields: [{ key: 'data', value: JSON.stringify(record) }],
+        },
+    });
+    const errs = r.metaobjectCreate?.userErrors || [];
+    if (errs.length) throw new Error(errs[0].message);
+    return { ...record, _gid: r.metaobjectCreate.metaobject.id };
+}
+
+async function updateBundleConfig(id, updates) {
+    const bundle = await getBundleConfig(id);
+    if (!bundle) throw new Error(`BundleConfig not found: ${id}`);
+    const updated = { ...bundle, ...updates, updated_at: new Date().toISOString() };
+    delete updated._gid;
+    const r = await gql(M_UPDATE, {
+        id: bundle._gid,
+        input: { fields: [{ key: 'data', value: JSON.stringify(updated) }] },
+    });
+    const errs = r.metaobjectUpdate?.userErrors || [];
+    if (errs.length) throw new Error(errs[0].message);
+    return { ...updated, _gid: bundle._gid };
+}
+
+async function deleteBundleConfig(id) {
+    const bundle = await getBundleConfig(id);
+    if (!bundle) throw new Error(`BundleConfig not found: ${id}`);
+    const r = await gql(M_DELETE, { id: bundle._gid });
+    const errs = r.metaobjectDelete?.userErrors || [];
+    if (errs.length) throw new Error(errs[0].message);
+    return { deleted: r.metaobjectDelete.deletedId, id };
+}
+
 module.exports = {
     gql,
     initializeTypes,
@@ -319,4 +395,11 @@ module.exports = {
     getEvents,
     getMetrics,
     getChargesComingInDays,
+    // 2026-04-21 — Bundle configs (aditivo)
+    getBundleConfigs,
+    getBundleConfig,
+    getBundleConfigByBundleProductId,
+    createBundleConfig,
+    updateBundleConfig,
+    deleteBundleConfig,
 };

@@ -553,6 +553,14 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
         const tcAcceptedAt = b.tc_accepted_at   || new Date().toISOString();
         const tcIp         = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
 
+        // 2026-04-21 ADITIVO: bundle configurable (mix de sabores).
+        //   Si el body trae bundle_items, validamos contra bundle_config y saltamos la
+        //   allowlist tradicional de variant (el product bundle es nuevo, no la lata individual).
+        const bundleItemsIn = Array.isArray(b.bundle_items) ? b.bundle_items : null;
+        const isBundleMode = bundleItemsIn && bundleItemsIn.length > 0;
+        let bundleConfig = null;
+        let bundleItemsNormalized = null;
+
         if (!email || !freq || !perm || !finalPrice || !dni) {
             return res.status(400).json({ error: 'Faltan datos: email, frecuencia, permanencia, precio y DNI son obligatorios.' });
         }
@@ -564,19 +572,80 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
         const dynSettings = await readFromShopify().catch(() => ({}));
         if (dynSettings?.mp_access_token) process.env.MP_ACCESS_TOKEN = dynSettings.mp_access_token;
 
-        // 🔒 HARDENING 2026-04-20: allowlist GLOBAL de variantes suscribibles.
-        // Antes: sólo validaba si product_configs[pId].eligible_variant_ids estaba seteado,
-        // así que si no estaba configurado (como pasó con Jose/#8760), cualquier variant pasaba.
-        // Ahora: allowlist global con baseline hardcodeada; siempre hay chequeo — incluso sin vId
-        // explícito se rechaza, porque la suscripción DEBE tener variante oficial.
-        const variantCheck = await isVariantAllowedForSubscription(vId, dynSettings);
-        if (!variantCheck.ok) {
-            console.warn(`[CHECKOUT] ❌ Variant ${vId || '(vacío)'} rechazada (${variantCheck.reason}). Producto ${pId || '-'}. Cliente ${email}. Allowlist: [${variantCheck.allowlist.join(', ')}]`);
-            return res.status(400).json({
-                error: 'Esta variante no está habilitada para suscripción. Solo la variante oficial de 500g está disponible.',
-                code: 'VARIANT_NOT_ALLOWED',
-                variant_id: String(vId || '')
-            });
+        if (isBundleMode) {
+            // ── Validación bundle: bypass de allowlist tradicional, reemplazada por check de config ──
+            try {
+                bundleConfig = await db.getBundleConfigByBundleProductId(pId).catch(() => null);
+            } catch (e) { bundleConfig = null; }
+            if (!bundleConfig) {
+                return res.status(400).json({
+                    error: 'Bundle no encontrado o no configurado. Contacta al administrador.',
+                    code: 'BUNDLE_NOT_FOUND',
+                    product_id: String(pId || '')
+                });
+            }
+            if (bundleConfig.active === false) {
+                return res.status(410).json({ error: 'Este bundle no está activo actualmente.', code: 'BUNDLE_INACTIVE' });
+            }
+            // Sum qty debe ser EXACTO = target_quantity
+            const totalQty = bundleItemsIn.reduce((n, it) => n + (parseInt(it?.quantity, 10) || 0), 0);
+            if (totalQty !== Number(bundleConfig.target_quantity)) {
+                return res.status(400).json({
+                    error: `El pack debe sumar exactamente ${bundleConfig.target_quantity} unidades. Has seleccionado ${totalQty}.`,
+                    code: 'BUNDLE_QTY_MISMATCH',
+                    expected: Number(bundleConfig.target_quantity),
+                    received: totalQty
+                });
+            }
+            // Todos los variant_ids deben estar en allowed_variant_ids
+            const allowedSet = new Set((bundleConfig.allowed_variant_ids || []).map(String));
+            const invalidVariants = bundleItemsIn.filter(it => !allowedSet.has(String(it?.variant_id || '')));
+            if (invalidVariants.length > 0) {
+                return res.status(400).json({
+                    error: 'Uno o más sabores seleccionados no están permitidos en este bundle.',
+                    code: 'BUNDLE_VARIANT_NOT_ALLOWED',
+                    invalid_variants: invalidVariants.map(it => String(it?.variant_id || ''))
+                });
+            }
+            // Validar stock si el bundle lo requiere
+            if (bundleConfig.validate_stock !== false) {
+                try {
+                    const url = `https://${process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com'}/admin/api/2026-01/products/${encodeURIComponent(bundleConfig.source_product_id)}.json?fields=variants`;
+                    const sr = await fetch(url, { headers: { 'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN } });
+                    if (sr.ok) {
+                        const sData = await sr.json();
+                        const variants = (sData.product?.variants || []);
+                        const stockMap = new Map(variants.map(v => [String(v.id), parseInt(v.inventory_quantity, 10) || 0]));
+                        const outOfStock = bundleItemsIn.filter(it => (stockMap.get(String(it.variant_id)) || 0) < (parseInt(it.quantity, 10) || 0));
+                        if (outOfStock.length > 0) {
+                            return res.status(409).json({
+                                error: 'Algunos sabores no tienen stock suficiente. Actualiza tu selección.',
+                                code: 'BUNDLE_OUT_OF_STOCK',
+                                out_of_stock: outOfStock.map(it => ({ variant_id: String(it.variant_id), requested: it.quantity, available: stockMap.get(String(it.variant_id)) || 0 }))
+                            });
+                        }
+                    }
+                } catch (e) { console.warn('[CHECKOUT] stock validation error (permite continuar):', e.message); }
+            }
+            // Normalizar bundle_items (agregar title/sabor para trazabilidad en order/admin)
+            bundleItemsNormalized = bundleItemsIn.map(it => ({
+                variant_id: String(it.variant_id),
+                variant_title: String(it.variant_title || it.title || ''),
+                quantity: parseInt(it.quantity, 10)
+            })).filter(it => it.variant_id && it.quantity > 0);
+
+            console.log(`[CHECKOUT] 📦 Bundle mode: ${bundleConfig.name} (${totalQty} items) | cliente ${email}`);
+        } else {
+            // Modo legacy: allowlist tradicional (intocado)
+            const variantCheck = await isVariantAllowedForSubscription(vId, dynSettings);
+            if (!variantCheck.ok) {
+                console.warn(`[CHECKOUT] ❌ Variant ${vId || '(vacío)'} rechazada (${variantCheck.reason}). Producto ${pId || '-'}. Cliente ${email}. Allowlist: [${variantCheck.allowlist.join(', ')}]`);
+                return res.status(400).json({
+                    error: 'Esta variante no está habilitada para suscripción. Solo la variante oficial de 500g está disponible.',
+                    code: 'VARIANT_NOT_ALLOWED',
+                    variant_id: String(vId || '')
+                });
+            }
         }
 
         // 🔒 HARDENING 2026-04-20: límites por cliente (anti-abuso/anti-bot/doble-click).
@@ -644,7 +713,17 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
             tc_ip: tcIp,
             // Regalos (solo 1er pedido). Snapshot para no depender del plan actual después.
             gifts_planned: Array.isArray(giftsPlanned) ? giftsPlanned : [],
-            gifts_delivered: false
+            gifts_delivered: false,
+            // 2026-04-21 ADITIVO: bundle configurable (mix de sabores).
+            // Si bundleItemsNormalized no es null → se graba en la sub para que el cron replique
+            // EXACTAMENTE el mismo mix cada mes durante la permanencia. Si es null, campo ausente → legacy.
+            ...(bundleItemsNormalized ? {
+                bundle_items: bundleItemsNormalized,
+                bundle_config_id: bundleConfig?.id || null,
+                bundle_target_quantity: bundleConfig?.target_quantity || null,
+                bundle_source_product_id: bundleConfig?.source_product_id || null,
+                bundle_name: bundleConfig?.name || ''
+            } : {})
         };
 
         if (db?.createSubscription) {
@@ -747,7 +826,9 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
         // Only allow safe field updates
         // ADD 2026-04-21: gifts_planned/gifts_delivered/gifts_delivered_* → admite backfill de subs
         //   viejas (creadas antes del 15/4 sin array de regalos). No afecta crons ni webhook MP.
-        const allowed = ['permanence_months', 'cycles_required', 'discount_pct', 'frequency_months', 'customer_name', 'product_title', 'variant_id', 'product_id', 'status', 'next_charge_at', 'base_price', 'final_price', 'shipping_address', 'tipo_documento', 'dni', 'mp_preapproval_id', 'activated_at', 'cycles_completed', 'last_charge_at', 'customer_email', 'customer_phone', 'gifts_planned', 'gifts_delivered', 'gifts_delivered_at', 'gifts_delivered_order_id', 'gifts_delivered_order_name'];
+        const allowed = ['permanence_months', 'cycles_required', 'discount_pct', 'frequency_months', 'customer_name', 'product_title', 'variant_id', 'product_id', 'status', 'next_charge_at', 'base_price', 'final_price', 'shipping_address', 'tipo_documento', 'dni', 'mp_preapproval_id', 'activated_at', 'cycles_completed', 'last_charge_at', 'customer_email', 'customer_phone', 'gifts_planned', 'gifts_delivered', 'gifts_delivered_at', 'gifts_delivered_order_id', 'gifts_delivered_order_name',
+            // 2026-04-21 — bundle configurable
+            'bundle_items', 'bundle_config_id', 'bundle_target_quantity', 'bundle_source_product_id', 'bundle_name'];
         const updates = {};
         for (const key of allowed) { if (req.body[key] !== undefined) updates[key] = req.body[key]; }
         if (!Object.keys(updates).length) return res.status(400).json({ error: 'No valid fields to update' });
@@ -3571,6 +3652,52 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         ? { variant_id: parseInt(variantId), quantity: 1, price: String(finalPrice.toFixed(2)) }
         : { title: sub.product_title || 'Suscripción LAB NUTRITION', quantity: 1, price: String(finalPrice.toFixed(2)), requires_shipping: true };
 
+    // ═══════════════════════════════════════════════════════════════════
+    // 📦 BUNDLE CONFIGURABLE 2026-04-21 — ADITIVO
+    //    Si la sub tiene bundle_items (mix de sabores), reemplazamos el lineItem
+    //    por N line items, uno por sabor elegido. El precio total se mantiene
+    //    igual al final_price (MP cobra el mismo monto fijo mensual).
+    //    Cada lata tiene un precio unitario = final_price / total_cans → redondeado a 2 dec.
+    //    Ajuste de redondeo en el ÚLTIMO line item para que la suma sea EXACTA.
+    //
+    //    Determinismo: el mix está grabado en la sub, el cron lo lee SIN recalcular nada.
+    //    Mes 1, 2, 3... caen EXACTAMENTE los mismos sabores. Garantizado.
+    //
+    //    Si bundle_items no existe o está vacío → comportamiento legacy 100% intacto.
+    // ═══════════════════════════════════════════════════════════════════
+    const bundleItems = Array.isArray(sub.bundle_items) ? sub.bundle_items : [];
+    let bundleLineItems = null;
+    if (bundleItems.length > 0) {
+        const totalQty = bundleItems.reduce((n, it) => n + (parseInt(it.quantity, 10) || 0), 0);
+        if (totalQty > 0) {
+            // Calculamos unit_price en céntimos para evitar errores de float
+            const totalCents = Math.round(finalPrice * 100);
+            const unitCents = Math.floor(totalCents / totalQty);
+            const remainderCents = totalCents - (unitCents * totalQty);
+            bundleLineItems = bundleItems
+                .filter(it => it && it.variant_id && parseInt(it.quantity, 10) > 0)
+                .map((it, idx, arr) => {
+                    const qty = parseInt(it.quantity, 10);
+                    // Al último line item le sumamos el remainder para que la suma cuadre exacta
+                    const extra = (idx === arr.length - 1) ? remainderCents : 0;
+                    const lineCents = (unitCents * qty) + extra;
+                    const perUnitCents = lineCents / qty;
+                    return {
+                        variant_id: parseInt(it.variant_id, 10),
+                        quantity: qty,
+                        price: (perUnitCents / 100).toFixed(2),
+                        properties: [
+                            { name: '_bundle', value: 'true' },
+                            { name: 'Pack', value: String(sub.product_title || 'Pack Suscripción') },
+                            { name: 'Sabor', value: String(it.variant_title || it.title || '') }
+                        ]
+                    };
+                });
+            if (bundleLineItems.length === 0) bundleLineItems = null;
+            else console.log(`[ORDER] 📦 Bundle mode: ${bundleLineItems.length} line items, total ${totalQty} unidades, S/${finalPrice.toFixed(2)}`);
+        }
+    }
+
     // Ensure shipping address has province_code and zip for Shopify PE validation
     if (shippingAddr) {
         if (!shippingAddr.province_code && shippingAddr.province) {
@@ -3693,7 +3820,11 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             taxes_included: true,
             send_receipt: true,
             send_fulfillment_receipt: true,
-            line_items: shouldDeliverGifts ? [lineItem, ...giftLineItems] : [lineItem],
+            // 2026-04-21 ADITIVO: si es bundle configurable → N line items (uno por sabor elegido).
+            // Si no es bundle → comportamiento legacy (1 line item), intocado.
+            line_items: bundleLineItems
+                ? (shouldDeliverGifts ? [...bundleLineItems, ...giftLineItems] : bundleLineItems)
+                : (shouldDeliverGifts ? [lineItem, ...giftLineItems] : [lineItem]),
             discount_codes: [],
             shipping_lines: [{ title: 'Envío suscripción', price: '10.00', code: '02' }],
             note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF | IGV incluido${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
@@ -4748,6 +4879,195 @@ app.post('/api/admin/subs-missing-gifts/backfill', async (req, res) => {
             updated.push({ id: s.id, email: s.customer_email, gifts: resolved.map(g => g.product_title + ' (' + g.variant_title + ')') });
         }
         res.json({ dry_run: dryRun, updated_count: updated.length, skipped_count: skipped.length, updated, skipped });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ══════════════════════════════════════════════════════
+   📦 BUNDLE CONFIGS — Suscripciones configurables (mix de sabores/variantes)
+   Ejemplo: C4 Energy Bundle 15 latas, el cliente arma el mix (5 Frozen + 5 Orange...).
+   El mix se graba EN LA SUB → cada mes el cron crea la MISMA order con N line items.
+
+   Admin endpoints (gestión autónoma):
+     GET    /api/admin/bundles            → lista configs
+     GET    /api/admin/bundles/:id        → detalle
+     POST   /api/admin/bundles            → crear
+     PUT    /api/admin/bundles/:id        → actualizar
+     DELETE /api/admin/bundles/:id        → eliminar (solo metaobject config, no toca subs ni productos)
+
+   ADITIVO: no toca motor de cobros, webhook MP, polling, ni crons existentes.
+   Declarado ANTES del catch-all para que no lo intercepte.
+══════════════════════════════════════════════════════ */
+app.get('/api/admin/bundles', async (req, res) => {
+    try {
+        const filters = {};
+        if (req.query.active !== undefined) filters.active = req.query.active === 'true' || req.query.active === '1';
+        if (req.query.source_product_id) filters.source_product_id = req.query.source_product_id;
+        if (req.query.bundle_product_id) filters.bundle_product_id = req.query.bundle_product_id;
+        const bundles = await db.getBundleConfigs(filters);
+        res.json({ total: bundles.length, bundles });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/bundles/:id', async (req, res) => {
+    try {
+        const b = await db.getBundleConfig(req.params.id);
+        if (!b) return res.status(404).json({ error: 'Bundle not found' });
+        res.json(b);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
+ * Crea una nueva config de bundle.
+ * Body: {
+ *   name: "C4 Energy Bundle 15 latas",
+ *   bundle_product_id: "15580000000000",         // producto Shopify que representa el pack (ej C4 Energy Bundle 15)
+ *   source_product_id: "15579925250129",        // producto master de donde salen los sabores (C4 Performance Energy 473 ml)
+ *   target_quantity: 15,                         // 15 o 30 latas
+ *   allowed_variant_ids: ["58307481501777", ...],// sabores elegibles
+ *   plans: [                                     // planes disponibles (precios y frecuencias)
+ *     { freq_months: 1, perm_months: 3, price: 150, discount_pct: 33.33 },
+ *     { freq_months: 1, perm_months: 6, price: 150, discount_pct: 33.33 }
+ *   ],
+ *   validate_stock: true,                         // si true, bloquea variantes con stock 0 en widget
+ *   hide_stock_from_ui: true,                    // no muestra stock al cliente (solo "disponible/agotado")
+ *   description: "..." (opcional),
+ *   widget_copy: { title, subtitle, counter_label, error_incomplete }
+ * }
+ */
+app.post('/api/admin/bundles', async (req, res) => {
+    try {
+        const body = req.body || {};
+        // Validación básica
+        if (!body.name) return res.status(400).json({ error: 'name is required' });
+        if (!body.bundle_product_id) return res.status(400).json({ error: 'bundle_product_id is required (product Shopify del bundle)' });
+        if (!body.source_product_id) return res.status(400).json({ error: 'source_product_id is required (product master de sabores)' });
+        if (!body.target_quantity || !Number.isFinite(Number(body.target_quantity)) || Number(body.target_quantity) <= 0) {
+            return res.status(400).json({ error: 'target_quantity must be a positive number' });
+        }
+        if (!Array.isArray(body.allowed_variant_ids) || body.allowed_variant_ids.length === 0) {
+            return res.status(400).json({ error: 'allowed_variant_ids must be a non-empty array' });
+        }
+        if (!Array.isArray(body.plans) || body.plans.length === 0) {
+            return res.status(400).json({ error: 'plans must be a non-empty array' });
+        }
+        // Normalizar
+        const record = {
+            name: String(body.name),
+            description: body.description ? String(body.description) : '',
+            bundle_product_id: String(body.bundle_product_id),
+            bundle_product_handle: body.bundle_product_handle ? String(body.bundle_product_handle) : '',
+            source_product_id: String(body.source_product_id),
+            source_product_handle: body.source_product_handle ? String(body.source_product_handle) : '',
+            source_product_title: body.source_product_title ? String(body.source_product_title) : '',
+            target_quantity: Number(body.target_quantity),
+            allowed_variant_ids: body.allowed_variant_ids.map(String),
+            plans: body.plans.map(p => ({
+                freq_months: Number(p.freq_months) || 1,
+                perm_months: Number(p.perm_months) || 3,
+                price: Number(p.price),
+                discount_pct: Number(p.discount_pct) || 0,
+                plan_id: p.plan_id ? String(p.plan_id) : '',
+                variant_id_perm: p.variant_id_perm ? String(p.variant_id_perm) : ''
+            })),
+            validate_stock: body.validate_stock !== false,
+            hide_stock_from_ui: body.hide_stock_from_ui !== false,
+            widget_copy: body.widget_copy || {},
+            active: body.active !== false,
+        };
+        const created = await db.createBundleConfig(record);
+        res.json({ ok: true, bundle: created });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/admin/bundles/:id', async (req, res) => {
+    try {
+        const body = req.body || {};
+        // Solo update de campos explícitos (evitar inyección de _gid, id, created_at)
+        const updatable = ['name', 'description', 'bundle_product_id', 'bundle_product_handle',
+            'source_product_id', 'source_product_handle', 'source_product_title',
+            'target_quantity', 'allowed_variant_ids', 'plans',
+            'validate_stock', 'hide_stock_from_ui', 'widget_copy', 'active'];
+        const updates = {};
+        for (const k of updatable) if (k in body) updates[k] = body[k];
+        if (updates.target_quantity !== undefined) updates.target_quantity = Number(updates.target_quantity);
+        if (Array.isArray(updates.allowed_variant_ids)) updates.allowed_variant_ids = updates.allowed_variant_ids.map(String);
+        const updated = await db.updateBundleConfig(req.params.id, updates);
+        res.json({ ok: true, bundle: updated });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/bundles/:id', async (req, res) => {
+    try {
+        const result = await db.deleteBundleConfig(req.params.id);
+        res.json({ ok: true, ...result });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
+ * GET /api/bundles/product/:bundleProductId/config
+ * Endpoint PÚBLICO (widget liquid) — dado el product_id del bundle (ej: C4 Energy Bundle 15),
+ * devuelve la config + sabores disponibles con su estado (available/out_of_stock).
+ *
+ * IMPORTANTE: nunca expone stock numérico al frontend si hide_stock_from_ui=true.
+ * Solo expone `available: true|false` por variante.
+ */
+app.get('/api/bundles/product/:bundleProductId/config', async (req, res) => {
+    try {
+        const bundleProductId = String(req.params.bundleProductId || '').trim();
+        if (!bundleProductId) return res.status(400).json({ error: 'bundleProductId required' });
+        const bundle = await db.getBundleConfigByBundleProductId(bundleProductId);
+        if (!bundle) return res.status(404).json({ error: 'No bundle config found for this product' });
+        if (bundle.active === false) return res.status(410).json({ error: 'Bundle is not active' });
+
+        // Fetch source product from Shopify to get variant details + stock
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+
+        const url = `https://${shop}/admin/api/2026-01/products/${encodeURIComponent(bundle.source_product_id)}.json?fields=id,title,handle,images,variants`;
+        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+        if (!r.ok) return res.status(502).json({ error: `Shopify product fetch ${r.status}` });
+        const pData = await r.json();
+        const product = pData.product;
+        if (!product) return res.status(502).json({ error: 'Product not found in Shopify' });
+
+        const allowedSet = new Set((bundle.allowed_variant_ids || []).map(String));
+        const imagesById = new Map((product.images || []).map(img => [img.id, img.src]));
+
+        // Map de variantes con estado de stock
+        const flavors = (product.variants || [])
+            .filter(v => allowedSet.has(String(v.id)))
+            .map(v => {
+                const stock = parseInt(v.inventory_quantity, 10);
+                const hasStock = Number.isFinite(stock) && stock > 0;
+                // Respeta hide_stock_from_ui: si true, NO exponer inventory_quantity
+                const out = {
+                    variant_id: String(v.id),
+                    title: String(v.title || '').split(' / ')[0].trim(), // "Frozen Bombsicle / 473 Ml" → "Frozen Bombsicle"
+                    full_title: v.title,
+                    sku: v.sku || '',
+                    image: v.image_id && imagesById.get(v.image_id) ? imagesById.get(v.image_id) : (product.images?.[0]?.src || null),
+                    available: hasStock,
+                };
+                if (bundle.hide_stock_from_ui !== true) out.stock = stock;
+                return out;
+            });
+
+        // Respuesta al widget — no incluye fields internos del bundle
+        res.json({
+            bundle_id: bundle.id,
+            name: bundle.name,
+            description: bundle.description || '',
+            bundle_product_id: bundle.bundle_product_id,
+            source_product_id: bundle.source_product_id,
+            source_product_title: bundle.source_product_title || product.title,
+            source_product_handle: product.handle,
+            target_quantity: bundle.target_quantity,
+            plans: bundle.plans || [],
+            validate_stock: bundle.validate_stock !== false,
+            widget_copy: bundle.widget_copy || {},
+            flavors,
+        });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
