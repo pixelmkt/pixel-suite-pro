@@ -24,6 +24,341 @@
   .product-form__selling-plan-fieldset,
   purchase-options-radio-component,
   .purchase-options-radio { display: none !important; }
+
+  /* ═══════════════════════════════════════════════════════════
+     🎁 BUNDLE MODE — Mix & Match (C4 Energy, pre-workouts, etc.)
+     Diseño minimalista, elegante, mobile-first.
+     ═══════════════════════════════════════════════════════════ */
+  #lab-sub-{{ block.id }} .lab-bundle__header {
+    text-align: center;
+    margin-bottom: 18px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__title {
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: -0.3px;
+    color: #18181b;
+    margin-bottom: 4px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__subtitle {
+    font-size: 12px;
+    color: #6b7280;
+    line-height: 1.4;
+  }
+
+  /* Progress bar */
+  #lab-sub-{{ block.id }} .lab-bundle__progress-wrap {
+    margin-bottom: 18px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__progress-bar {
+    height: 8px;
+    background: #f3f4f6;
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--lab-primary, #9d2a23), #c0392b);
+    border-radius: 999px;
+    transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__progress-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 8px;
+    font-size: 11px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__progress-count {
+    font-size: 14px;
+    font-weight: 900;
+    color: var(--lab-primary, #9d2a23);
+    letter-spacing: 0.3px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__progress-text {
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    font-weight: 700;
+  }
+
+  /* Plans (chips) */
+  #lab-sub-{{ block.id }} .lab-bundle__plans {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__plan {
+    background: #fff;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    position: relative;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__plan:hover {
+    border-color: #cbd5e1;
+    transform: translateY(-1px);
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__plan.is-active {
+    border-color: var(--lab-primary, #9d2a23);
+    background: #fef7f6;
+    box-shadow: 0 0 0 3px rgba(157, 42, 35, 0.08);
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__plan-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__plan-perm {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #374151;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__plan.is-active .lab-bundle__plan-perm {
+    color: var(--lab-primary, #9d2a23);
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__plan-save {
+    background: var(--lab-primary, #9d2a23);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 900;
+    padding: 2px 7px;
+    border-radius: 12px;
+    letter-spacing: 0.3px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__plan-price {
+    font-size: 19px;
+    font-weight: 900;
+    color: #18181b;
+    letter-spacing: -0.4px;
+    margin-top: 2px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__plan-period {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6b7280;
+    letter-spacing: 0;
+    margin-left: 2px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__plan-unit {
+    font-size: 10px;
+    color: #6b7280;
+    font-weight: 600;
+    margin-top: 2px;
+  }
+
+  /* Flavors grid */
+  #lab-sub-{{ block.id }} .lab-bundle__flavors-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavors-title {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #374151;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavors {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    background: #fff;
+    border: 1.5px solid #eef0f3;
+    border-radius: 10px;
+    position: relative;
+    transition: all 0.18s ease;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor:hover {
+    border-color: #e5e7eb;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor.is-disabled {
+    background: #fafafa;
+    opacity: 0.55;
+    filter: grayscale(0.4);
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor.is-disabled .lab-bundle__flavor-img {
+    filter: grayscale(1);
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: #1f2937;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 900;
+    padding: 3px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    z-index: 1;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor-img-wrap {
+    flex-shrink: 0;
+    width: 52px;
+    height: 52px;
+    border-radius: 8px;
+    background: #f9fafb;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transition: transform 0.25s ease;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor-img--empty {
+    background: #e5e7eb;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #18181b;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1.5px solid #e5e7eb;
+    background: #fff;
+    font-size: 16px;
+    font-weight: 900;
+    color: #18181b;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    padding: 0;
+    line-height: 1;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor-btn:hover:not(:disabled) {
+    border-color: var(--lab-primary, #9d2a23);
+    color: var(--lab-primary, #9d2a23);
+    transform: scale(1.05);
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor-btn--plus {
+    background: var(--lab-primary, #9d2a23);
+    color: #fff;
+    border-color: var(--lab-primary, #9d2a23);
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor-btn--plus:hover:not(:disabled) {
+    background: #7f211c;
+    color: #fff;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__flavor-qty {
+    min-width: 20px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 800;
+    color: #18181b;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Status + resumen */
+  #lab-sub-{{ block.id }} .lab-bundle__status {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    text-align: center;
+    letter-spacing: 0.2px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__status--warn {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #92400e;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__status--ok {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__summary {
+    background: #fafafa;
+    border: 1px solid #eef0f3;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__summary-title {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #6b7280;
+    margin-bottom: 8px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__summary-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__summary-list li {
+    font-size: 13px;
+    color: #18181b;
+    display: flex;
+    gap: 6px;
+  }
+  #lab-sub-{{ block.id }} .lab-bundle__summary-qty {
+    font-weight: 800;
+    color: var(--lab-primary, #9d2a23);
+    min-width: 24px;
+  }
+
+  /* CTA */
+  #lab-sub-{{ block.id }} .lab-bundle__cta:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #9ca3af !important;
+  }
 </style>
 
 {%- liquid
@@ -756,7 +1091,400 @@
       });
     }
 
-    loadConfig(); // Load and render plans for this product
+    // ═══════════════════════════════════════════════════════════
+    // 🎁 BUNDLE MODE — Mix & Match suscripciones
+    // Si este producto está registrado como bundle (C4 Mix 15/30, pre-entrenos, etc.),
+    // se reemplaza el panel de suscripción por un selector de sabores/variantes.
+    // Aditivo: si no hay bundle, sigue el flujo normal (loadConfig).
+    // ═══════════════════════════════════════════════════════════
+    var _bundleConfig = null;
+    var _bundleSelected = {}; // { variantId: quantity }
+    var _bundleSelectedPlanIdx = 0;
+
+    function bundleTotalSelected() {
+      var total = 0;
+      for (var k in _bundleSelected) total += Number(_bundleSelected[k]) || 0;
+      return total;
+    }
+
+    function bundleCurrentPlan() {
+      if (!_bundleConfig || !_bundleConfig.plans) return null;
+      return _bundleConfig.plans[_bundleSelectedPlanIdx] || _bundleConfig.plans[0];
+    }
+
+    function bundleFormatPrice(n) {
+      var sym = wrap.dataset.curSymbol || 'S/ ';
+      return sym + Number(n).toFixed(2);
+    }
+
+    function bundleRenderHeader() {
+      var plan = bundleCurrentPlan();
+      if (!plan) return '';
+      var total = bundleTotalSelected();
+      var target = _bundleConfig.target_quantity;
+      var percent = Math.min(100, Math.round((total / target) * 100));
+      var perUnit = plan.price / target;
+      var copy = _bundleConfig.widget_copy || {};
+      var title = copy.title || 'Arma tu mix';
+      var subtitle = copy.subtitle || 'Elige tus sabores';
+      var counterLbl = copy.counter_label || 'Unidades seleccionadas';
+      return '' +
+        '<div class="lab-bundle__header">' +
+          '<div class="lab-bundle__title">' + escapeHtml(title) + '</div>' +
+          '<div class="lab-bundle__subtitle">' + escapeHtml(subtitle) + '</div>' +
+        '</div>' +
+        '<div class="lab-bundle__progress-wrap">' +
+          '<div class="lab-bundle__progress-bar"><div class="lab-bundle__progress-fill" style="width:' + percent + '%"></div></div>' +
+          '<div class="lab-bundle__progress-label"><span class="lab-bundle__progress-count" id="bundle-count-' + blkId + '">' + total + '/' + target + '</span><span class="lab-bundle__progress-text">' + escapeHtml(counterLbl) + '</span></div>' +
+        '</div>';
+    }
+
+    function bundleRenderPlans() {
+      if (!_bundleConfig || !_bundleConfig.plans || _bundleConfig.plans.length === 0) return '';
+      var target = _bundleConfig.target_quantity;
+      var html = '<div class="lab-bundle__plans">';
+      _bundleConfig.plans.forEach(function(p, i) {
+        var perUnit = (p.price / target).toFixed(2);
+        var permLbl = p.perm_months + ' meses';
+        var active = i === _bundleSelectedPlanIdx ? ' is-active' : '';
+        var savingLbl = p.discount_pct > 0 ? '<span class="lab-bundle__plan-save">-' + Math.round(p.discount_pct) + '%</span>' : '';
+        html += '<button type="button" class="lab-bundle__plan' + active + '" data-plan-idx="' + i + '" onclick="window.__bundleSelectPlan_' + blkId + '(' + i + ')">' +
+          '<div class="lab-bundle__plan-top">' +
+            '<span class="lab-bundle__plan-perm">Plan ' + permLbl + '</span>' +
+            savingLbl +
+          '</div>' +
+          '<div class="lab-bundle__plan-price">' + bundleFormatPrice(p.price) + '<span class="lab-bundle__plan-period">/mes</span></div>' +
+          '<div class="lab-bundle__plan-unit">' + bundleFormatPrice(perUnit) + ' por unidad</div>' +
+        '</button>';
+      });
+      html += '</div>';
+      return html;
+    }
+
+    function bundleRenderFlavors() {
+      if (!_bundleConfig || !_bundleConfig.flavors) return '';
+      var target = _bundleConfig.target_quantity;
+      var total = bundleTotalSelected();
+      var remaining = target - total;
+      var html = '<div class="lab-bundle__flavors-head"><span class="lab-bundle__flavors-title">Elige tus sabores</span></div>';
+      html += '<div class="lab-bundle__flavors">';
+      _bundleConfig.flavors.forEach(function(f) {
+        var qty = Number(_bundleSelected[f.variant_id] || 0);
+        var isAvailable = f.available === true;
+        var disabledClass = !isAvailable ? ' is-disabled' : '';
+        var plusDisabled = !isAvailable || remaining <= 0;
+        var minusDisabled = qty <= 0;
+        html += '<div class="lab-bundle__flavor' + disabledClass + '" data-vid="' + f.variant_id + '">';
+        if (!isAvailable) {
+          html += '<div class="lab-bundle__flavor-badge">Agotado</div>';
+        }
+        html += '<div class="lab-bundle__flavor-img-wrap">';
+        if (f.image) {
+          html += '<img class="lab-bundle__flavor-img" src="' + f.image + '" alt="' + escapeHtml(f.title) + '" loading="lazy">';
+        } else {
+          html += '<div class="lab-bundle__flavor-img lab-bundle__flavor-img--empty"></div>';
+        }
+        html += '</div>';
+        html += '<div class="lab-bundle__flavor-body">';
+        html += '<div class="lab-bundle__flavor-title">' + escapeHtml(f.title) + '</div>';
+        html += '<div class="lab-bundle__flavor-controls">';
+        html += '<button type="button" class="lab-bundle__flavor-btn lab-bundle__flavor-btn--minus" ' + (minusDisabled ? 'disabled' : '') + ' onclick="window.__bundleChangeQty_' + blkId + '(\'' + f.variant_id + '\', -1)" aria-label="Quitar una">−</button>';
+        html += '<span class="lab-bundle__flavor-qty" id="bundle-qty-' + f.variant_id + '-' + blkId + '">' + qty + '</span>';
+        html += '<button type="button" class="lab-bundle__flavor-btn lab-bundle__flavor-btn--plus" ' + (plusDisabled ? 'disabled' : '') + ' onclick="window.__bundleChangeQty_' + blkId + '(\'' + f.variant_id + '\', 1)" aria-label="Agregar una">+</button>';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+      return html;
+    }
+
+    function bundleRenderSummary() {
+      var target = _bundleConfig.target_quantity;
+      var total = bundleTotalSelected();
+      var remaining = target - total;
+      var isComplete = total === target;
+      var copy = _bundleConfig.widget_copy || {};
+      var errorTpl = copy.error_incomplete || 'Te faltan {remaining} unidades para completar tu pack';
+      var errorMsg = errorTpl.replace(/\{remaining\}/g, remaining);
+      var html = '';
+      if (!isComplete) {
+        html += '<div class="lab-bundle__status lab-bundle__status--warn">' + escapeHtml(errorMsg) + '</div>';
+      } else {
+        html += '<div class="lab-bundle__status lab-bundle__status--ok">✓ Pack completo — listo para suscribirte</div>';
+      }
+      // Resumen de selección (solo si hay selecciones)
+      if (total > 0 && _bundleConfig.flavors) {
+        html += '<div class="lab-bundle__summary"><div class="lab-bundle__summary-title">Tu mix</div><ul class="lab-bundle__summary-list">';
+        _bundleConfig.flavors.forEach(function(f) {
+          var q = Number(_bundleSelected[f.variant_id] || 0);
+          if (q > 0) {
+            html += '<li><span class="lab-bundle__summary-qty">' + q + '×</span> ' + escapeHtml(f.title) + '</li>';
+          }
+        });
+        html += '</ul></div>';
+      }
+      return html;
+    }
+
+    function bundleRenderCTA() {
+      var plan = bundleCurrentPlan();
+      var total = bundleTotalSelected();
+      var target = _bundleConfig.target_quantity;
+      var isComplete = total === target;
+      var ctaLbl = isComplete
+        ? 'Suscribirme — ' + bundleFormatPrice(plan.price) + '/mes'
+        : 'Completa tu pack para continuar';
+      var disabled = !isComplete ? 'disabled' : '';
+      return '<button class="lab-sub__cta lab-bundle__cta" id="bundle-cta-' + blkId + '" ' + disabled + ' onclick="window.__bundleOpenModal_' + blkId + '()"><span class="lab-sub__cta-text">' + ctaLbl + '</span></button>';
+    }
+
+    function bundleRenderPerks() {
+      // Heredamos perks del block settings si están activos
+      {% if block.settings.show_perks %}
+      var perks = [
+        {% if block.settings.perk_1 != blank %} '{{ block.settings.perk_1 | escape }}', {% endif %}
+        {% if block.settings.perk_2 != blank %} '{{ block.settings.perk_2 | escape }}', {% endif %}
+        {% if block.settings.perk_3 != blank %} '{{ block.settings.perk_3 | escape }}', {% endif %}
+        {% if block.settings.perk_4 != blank %} '{{ block.settings.perk_4 | escape }}' {% endif %}
+      ].filter(Boolean);
+      if (perks.length === 0) return '';
+      return '<div class="lab-sub__perks">' + perks.map(function(p){ return '<div class="lab-sub__perk">' + p + '</div>'; }).join('') + '</div>';
+      {% else %}
+      return '';
+      {% endif %}
+    }
+
+    function bundleRenderLegal() {
+      {% if block.settings.show_legal %}
+      return '<div class="lab-sub__legal">{{ legal_txt | escape }}</div>';
+      {% else %}
+      return '';
+      {% endif %}
+    }
+
+    function bundleRender() {
+      var subPanel = wrap.querySelector('.lab-sub__panel[data-panel="sub"]');
+      if (!subPanel) return;
+      var html = '' +
+        bundleRenderHeader() +
+        bundleRenderPlans() +
+        bundleRenderFlavors() +
+        bundleRenderSummary() +
+        bundleRenderPerks() +
+        bundleRenderLegal() +
+        bundleRenderCTA();
+      subPanel.innerHTML = html;
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; });
+    }
+
+    // Exponer handlers globales (para onclick inline)
+    window['__bundleSelectPlan_' + blkId] = function(idx) {
+      _bundleSelectedPlanIdx = idx;
+      bundleRender();
+    };
+
+    window['__bundleChangeQty_' + blkId] = function(variantId, delta) {
+      var currentQty = Number(_bundleSelected[variantId] || 0);
+      var newQty = Math.max(0, currentQty + delta);
+      // No exceder target
+      var target = _bundleConfig.target_quantity;
+      var totalOthers = 0;
+      for (var k in _bundleSelected) if (k !== variantId) totalOthers += Number(_bundleSelected[k]) || 0;
+      if (newQty + totalOthers > target) newQty = target - totalOthers;
+      if (newQty < 0) newQty = 0;
+      _bundleSelected[variantId] = newQty;
+      // Re-render (sencillo y bulletproof)
+      bundleRender();
+    };
+
+    window['__bundleOpenModal_' + blkId] = function() {
+      if (bundleTotalSelected() !== _bundleConfig.target_quantity) return;
+      // Reutilizamos el mismo modal de MP checkout (lab-modal-*)
+      // Ajustamos el título y precio del modal ANTES de abrir
+      var plan = bundleCurrentPlan();
+      var modal = document.getElementById('lab-modal-' + blkId);
+      if (!modal) return;
+      var title = document.getElementById('modal-title-' + blkId);
+      var priceEl = document.getElementById('modal-price-' + blkId);
+      var discEl = document.getElementById('modal-disc-' + blkId);
+      var savingEl = document.getElementById('modal-saving-' + blkId);
+      if (title) title.textContent = 'Suscripción ' + _bundleConfig.name;
+      if (priceEl) priceEl.textContent = bundleFormatPrice(plan.price);
+      if (discEl) {
+        var discPct = Math.round(plan.discount_pct || 0);
+        discEl.textContent = discPct > 0 ? discPct + '% OFF' : '';
+        discEl.style.display = discPct > 0 ? '' : 'none';
+      }
+      if (savingEl) {
+        var target = _bundleConfig.target_quantity;
+        var perUnit = (plan.price / target).toFixed(2);
+        savingEl.textContent = target + ' × ' + bundleFormatPrice(perUnit);
+      }
+      modal.style.display = 'flex';
+    };
+
+    function bundleLoadConfig() {
+      var productId = wrap.dataset.product;
+      var backendUrl = wrap.dataset.backend || 'https://pixel-suite-pro-production.up.railway.app';
+      if (!productId) return Promise.resolve(false);
+      return fetch(backendUrl + '/api/bundles/product/' + encodeURIComponent(productId) + '/config')
+        .then(function(r) {
+          if (r.status === 404 || r.status === 410) return null;
+          if (!r.ok) return null;
+          return r.json();
+        })
+        .then(function(cfg) {
+          if (!cfg || !cfg.bundle_id || !cfg.flavors) return false;
+          _bundleConfig = cfg;
+          // Init selección vacía
+          _bundleSelected = {};
+          // Hide ONCE tab (bundle solo aplica a suscripción)
+          var onceTab = wrap.querySelector('.lab-sub__tab[data-tab="once"]');
+          if (onceTab) onceTab.style.display = 'none';
+          var subTab = wrap.querySelector('.lab-sub__tab[data-tab="sub"]');
+          if (subTab) {
+            subTab.classList.add('lab-sub__tab--active');
+            subTab.style.display = '';
+            subTab.disabled = false;
+            subTab.removeAttribute('aria-disabled');
+          }
+          var oncePanel = wrap.querySelector('.lab-sub__panel[data-panel="once"]');
+          if (oncePanel) oncePanel.classList.remove('lab-sub__panel--active');
+          var subPanel = wrap.querySelector('.lab-sub__panel[data-panel="sub"]');
+          if (subPanel) subPanel.classList.add('lab-sub__panel--active');
+          // Hide variant restriction notice (no aplica en bundles)
+          var notice = document.getElementById('variant-notice-' + blkId);
+          if (notice) notice.style.display = 'none';
+          var subContent = document.getElementById('sub-content-' + blkId);
+          if (subContent) subContent.style.display = '';
+          // Render inicial
+          bundleRender();
+          return true;
+        })
+        .catch(function() { return false; });
+    }
+
+    // Reemplaza el submit del modal para enviar bundle_items si hay bundle activo
+    var mBtnBundle = document.getElementById('m-btn-' + blkId);
+    if (mBtnBundle) {
+      var originalOnClick = null;
+      // Hook: si es bundle, interceptamos ANTES del flujo normal
+      mBtnBundle.addEventListener('click', function bundleSubmitHook(ev) {
+        if (!_bundleConfig) return; // no es bundle → deja el listener legacy manejarlo
+        ev.stopImmediatePropagation();
+        ev.preventDefault();
+
+        var name = (document.getElementById('m-name-' + blkId) || {}).value;
+        var email = (document.getElementById('m-email-' + blkId) || {}).value;
+        var phone = (document.getElementById('m-phone-' + blkId) || {}).value || '';
+        var tipodoc = (document.getElementById('m-tipodoc-' + blkId) || {}).value || '01';
+        var dni = (document.getElementById('m-dni-' + blkId) || {}).value || '';
+        var addr1 = (document.getElementById('m-addr-' + blkId) || {}).value;
+        var city = (document.getElementById('m-city-' + blkId) || {}).value;
+        var province = (document.getElementById('m-province-' + blkId) || {}).value || 'Lima';
+        var tcCheck = document.getElementById('lab-tc-check-' + blkId);
+        var msgEl = document.getElementById('m-msg-' + blkId);
+
+        if (!name || !email || !email.includes('@') || !addr1 || !city || !dni) {
+          if (msgEl) { msgEl.style.display = 'block'; msgEl.style.background = '#fee2e2'; msgEl.style.color = '#991b1b'; msgEl.textContent = 'Completa nombre, email, documento, dirección y distrito.'; }
+          return;
+        }
+        if (tcCheck && !tcCheck.checked) {
+          if (msgEl) { msgEl.style.display = 'block'; msgEl.style.background = '#fee2e2'; msgEl.style.color = '#991b1b'; msgEl.textContent = 'Debes aceptar los Términos y Condiciones para continuar.'; }
+          return;
+        }
+        if (bundleTotalSelected() !== _bundleConfig.target_quantity) {
+          if (msgEl) { msgEl.style.display = 'block'; msgEl.style.background = '#fee2e2'; msgEl.style.color = '#991b1b'; msgEl.textContent = 'Tu mix está incompleto. Ajusta las cantidades.'; }
+          return;
+        }
+
+        var plan = bundleCurrentPlan();
+        // bundle_items array (solo variants con qty > 0)
+        var bundleItems = [];
+        _bundleConfig.flavors.forEach(function(f) {
+          var q = Number(_bundleSelected[f.variant_id] || 0);
+          if (q > 0) bundleItems.push({
+            variant_id: String(f.variant_id),
+            quantity: q,
+            title: f.title,
+            variant_title: f.full_title || f.title
+          });
+        });
+
+        // Usamos el variant_id_perm del plan como variant de suscripción en Shopify
+        var subVariantId = plan.variant_id_perm || wrap.dataset.variant;
+
+        var backendUrl = wrap.dataset.backend || 'https://pixel-suite-pro-production.up.railway.app';
+        mBtnBundle.disabled = true; mBtnBundle.textContent = 'Procesando...';
+
+        var nameParts = name.trim().split(' ');
+        var PE_PROV = {'lima':'LIM','arequipa':'ARE','cusco':'CUS','la libertad':'LAL','piura':'PIU','lambayeque':'LAM','junin':'JUN','cajamarca':'CAJ','ancash':'ANC','ica':'ICA','callao':'CAL','tacna':'TAC','loreto':'LOR','san martin':'SAM','ucayali':'UCA','huanuco':'HUA','puno':'PUN','amazonas':'AMA','ayacucho':'AYA','apurimac':'APU','huancavelica':'HUV','madre de dios':'MDD','moquegua':'MOQ','pasco':'PAS','tumbes':'TUM'};
+        var shippingAddress = {
+          first_name: nameParts[0] || name,
+          last_name: nameParts.slice(1).join(' ') || '',
+          address1: addr1,
+          city: city,
+          province: province,
+          province_code: PE_PROV[(province || '').toLowerCase()] || 'LIM',
+          country: 'PE',
+          country_code: 'PE',
+          zip: '15000',
+          phone: phone
+        };
+
+        // finalPrice es el precio del plan (bundle), base_price lo dejamos igual (MP lo necesita numérico)
+        var finalPriceNum = parseFloat(Number(plan.price).toFixed(2));
+
+        fetch(backendUrl + '/api/subscriptions/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_name: name,
+            customer_email: email,
+            customer_phone: phone,
+            tipo_documento: tipodoc,
+            dni: dni,
+            product_id: wrap.dataset.product,
+            variant_id: subVariantId,
+            product_title: _bundleConfig.name || wrap.dataset.title,
+            base_price: finalPriceNum,
+            final_price: finalPriceNum,
+            discount_pct: parseFloat(Number(plan.discount_pct || 0).toFixed(2)),
+            frequency_months: plan.freq_months || 1,
+            permanence_months: plan.perm_months || 3,
+            free_shipping: false,
+            shipping_address: shippingAddress,
+            tc_accepted: true,
+            tc_version: '1.0',
+            tc_accepted_at: new Date().toISOString(),
+            bundle_items: bundleItems
+          })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.init_point || d.url) {
+            mBtnBundle.textContent = 'Redirigiendo a Mercado Pago...';
+            mBtnBundle.style.background = '#2E7D49';
+            setTimeout(function() { window.location.href = d.init_point || d.url; }, 500);
+          } else {
+            throw new Error(d.error || 'No se pudo crear el checkout');
+          }
+        })
+        .catch(function(err) {
+          if (msgEl) { msgEl.style.display = 'block'; msgEl.style.background = '#fee2e2'; msgEl.style.color = '#991b1b'; msgEl.textContent = err.message; }
+          mBtnBundle.disabled = false; mBtnBundle.textContent = 'Continuar al pago →';
+        });
+      }, true); // useCapture para interceptar antes del listener legacy
+    }
+
+    // Intentar cargar bundle primero. Si no es bundle, caer al flujo normal.
+    bundleLoadConfig().then(function(isBundle) {
+      if (!isBundle) loadConfig();
+    });
   }
 })();
 
