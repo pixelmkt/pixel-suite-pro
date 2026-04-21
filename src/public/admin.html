@@ -813,6 +813,12 @@
         <path d="M9 11l3 3L22 4" />
         <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
       </svg>Planes de Suscripción</div>
+    <div class="nav-item" onclick="nav('bundles')" id="n-bundles"><svg width="14" height="14" viewBox="0 0 24 24"
+        fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+        <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+        <line x1="12" y1="22.08" x2="12" y2="12" />
+      </svg>Bundles (Mix &amp; Match)</div>
     <div class="nav-item" onclick="nav('subs')" id="n-subs"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"
         stroke="currentColor" stroke-width="2">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -1288,6 +1294,187 @@
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
           <button class="btn btn-g" onclick="closePlanModal()">Cancelar</button>
           <button class="btn btn-r" onclick="savePlan()">💾 Guardar plan</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         BUNDLES (MIX & MATCH) — Suscripciones configurables
+         El cliente arma su propio pack de sabores (ej. 15 latas mix)
+         Aplica a CUALQUIER producto: C4 Energy, Pre-workouts, Geles, etc.
+         ═══════════════════════════════════════════════════════════ -->
+    <div id="p-bundles" class="panel">
+      <div class="ph">
+        <div>
+          <div class="pt">Bundles (Mix &amp; Match)</div>
+          <div class="ps">Packs configurables donde el cliente elige los sabores/variantes. Ideal para C4, pre-entrenos, proteínas, snacks, etc.</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-r" onclick="openNewBundleModal()">+ Nuevo bundle</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="info-box">💡 Un <strong>bundle</strong> es un producto Shopify (el "contenedor") al que el cliente asigna sabores/variantes de otro producto <strong>fuente</strong>. El mix queda guardado en la suscripción y se repite idéntico cada ciclo. Puedes crear bundles para cualquier producto de tu catálogo.</div>
+
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Bundles configurados</span>
+            <span id="bundles-count" style="font-size:11px;color:var(--mut)"></span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Producto bundle</th>
+                <th>Fuente de sabores</th>
+                <th>Unidades</th>
+                <th>Planes</th>
+                <th>Stock mín.</th>
+                <th>Activo</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="bundles-tbody">
+              <tr>
+                <td colspan="8" style="text-align:center;padding:28px;color:var(--mut)">Cargando bundles...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="info-box warn">⚠️ Las variantes con stock por debajo del umbral mínimo se muestran <strong>sombreadas</strong> en el widget (no seleccionables). Las variantes <strong>excluidas permanentemente</strong> no se muestran. El mix se guarda en la suscripción — si un cliente elige 5 Frozen Bombsicle + 5 Orange Mango + 5 Strawberry Watermelon, cada mes recibirá esa misma combinación.</div>
+      </div>
+    </div>
+
+    <!-- MODAL NUEVO/EDITAR BUNDLE -->
+    <div id="bundle-modal"
+      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;align-items:center;justify-content:center;padding:16px">
+      <div style="background:#fff;border-radius:14px;width:760px;max-width:96vw;max-height:94vh;overflow-y:auto;padding:28px;position:relative;box-shadow:0 30px 60px rgba(0,0,0,.3)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;border-bottom:1px solid var(--bdr);padding-bottom:14px">
+          <div style="font-size:16px;font-weight:800;text-transform:uppercase" id="bundle-modal-title">Nuevo bundle</div>
+          <button onclick="closeBundleModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--mut);padding:0;line-height:1">&times;</button>
+        </div>
+
+        <input type="hidden" id="bundle-id">
+
+        <!-- Nombre + activo -->
+        <div class="frow">
+          <div class="fg" style="flex:2"><label class="fl">Nombre del bundle</label>
+            <input type="text" class="fi" id="bundle-name" placeholder="Ej: C4 Energy Bundle 15 latas mix">
+            <div class="fin">Nombre interno (no se muestra al cliente a menos que lo referencies en el widget)</div>
+          </div>
+          <div class="fg" style="flex:1"><label class="fl">Estado</label>
+            <select class="fsl" id="bundle-active">
+              <option value="true">Activo (visible en widget)</option>
+              <option value="false">Inactivo</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="fg">
+          <label class="fl">Descripción interna (opcional)</label>
+          <input type="text" class="fi" id="bundle-description" placeholder="Ej: Pack de 15 latas C4, cliente elige los sabores">
+        </div>
+
+        <!-- Producto bundle (contenedor) -->
+        <div style="border-top:1.5px dashed var(--bdr);margin-top:18px;padding-top:16px">
+          <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;color:var(--txt)">1. Producto Bundle (contenedor)</div>
+          <div class="fin" style="margin-bottom:10px;line-height:1.45">Es el producto de Shopify que representa el pack (por ejemplo <em>"C4 Energy Bundle 15"</em>). Cuando el cliente abre este producto, verá el selector de sabores.</div>
+          <input type="text" class="fi" id="bundle-product-search" placeholder="Buscar producto bundle por título..." oninput="searchBundleProduct('bundle', this.value)">
+          <div id="bundle-product-results" style="max-height:180px;overflow:auto;border:1px solid var(--bdr);border-radius:8px;margin-top:6px;display:none;background:#fff"></div>
+          <div id="bundle-product-selected" style="margin-top:8px;min-height:34px"></div>
+          <input type="hidden" id="bundle-product-id">
+          <input type="hidden" id="bundle-product-handle">
+        </div>
+
+        <!-- Producto fuente (de donde salen las variantes) -->
+        <div style="border-top:1.5px dashed var(--bdr);margin-top:18px;padding-top:16px">
+          <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;color:var(--txt)">2. Producto fuente de sabores/variantes</div>
+          <div class="fin" style="margin-bottom:10px;line-height:1.45">Es el producto del cual se tomarán las <strong>variantes reales</strong> (sabores). El stock se lee desde este producto. Ejemplo: <em>"C4 Performance Energy 473 ml"</em>.</div>
+          <input type="text" class="fi" id="bundle-source-search" placeholder="Buscar producto fuente por título..." oninput="searchBundleProduct('source', this.value)">
+          <div id="bundle-source-results" style="max-height:180px;overflow:auto;border:1px solid var(--bdr);border-radius:8px;margin-top:6px;display:none;background:#fff"></div>
+          <div id="bundle-source-selected" style="margin-top:8px;min-height:34px"></div>
+          <input type="hidden" id="bundle-source-id">
+          <input type="hidden" id="bundle-source-handle">
+          <input type="hidden" id="bundle-source-title">
+        </div>
+
+        <!-- Variantes permitidas (se cargan al seleccionar source) -->
+        <div id="bundle-variants-wrap" style="border-top:1.5px dashed var(--bdr);margin-top:18px;padding-top:16px;display:none">
+          <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;color:var(--txt)">3. Variantes disponibles en el mix</div>
+          <div class="fin" style="margin-bottom:10px;line-height:1.45">Elige qué sabores pueden usarse en el pack. Marca como <strong>excluida</strong> la que quieras quitar permanentemente (no aparecerá en el widget).</div>
+          <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+            <button type="button" class="btn btn-g btn-sm" onclick="bundleVariantsToggleAll(true)">✓ Todas permitidas</button>
+            <button type="button" class="btn btn-g btn-sm" onclick="bundleVariantsToggleAll(false)">✗ Ninguna</button>
+          </div>
+          <div id="bundle-variants-list" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;padding:8px;background:#fafafa"></div>
+          <div id="bundle-variants-summary" style="font-size:11px;color:var(--mut);margin-top:8px"></div>
+        </div>
+
+        <!-- Cantidad total y stock mínimo -->
+        <div style="border-top:1.5px dashed var(--bdr);margin-top:18px;padding-top:16px">
+          <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;color:var(--txt)">4. Configuración del mix</div>
+          <div class="frow">
+            <div class="fg"><label class="fl">Unidades que suman el pack</label>
+              <input type="number" class="fi" id="bundle-target-quantity" value="15" min="1" max="500" placeholder="Ej: 15">
+              <div class="fin">Total de unidades que el cliente deberá distribuir entre sabores (ej: 15 latas)</div>
+            </div>
+            <div class="fg"><label class="fl">Stock mínimo por variante</label>
+              <input type="number" class="fi" id="bundle-min-stock" value="100" min="0" max="10000" placeholder="Ej: 100">
+              <div class="fin">Variantes con stock menor a esto se muestran <strong>sombreadas</strong> (no seleccionables)</div>
+            </div>
+          </div>
+          <div class="frow">
+            <div class="fg">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px">
+                <input type="checkbox" id="bundle-validate-stock" checked> Validar stock al momento de comprar
+              </label>
+              <div class="fin">Recomendado: evita ventas de variantes sin stock real</div>
+            </div>
+            <div class="fg">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px">
+                <input type="checkbox" id="bundle-hide-stock" checked> Ocultar número de stock al cliente
+              </label>
+              <div class="fin">El cliente verá "disponible/agotado" sin unidades específicas</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Planes -->
+        <div style="border-top:1.5px dashed var(--bdr);margin-top:18px;padding-top:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--txt)">5. Planes de suscripción (precios)</div>
+            <button type="button" class="btn btn-r btn-sm" onclick="bundlePlanAdd()">+ Agregar plan</button>
+          </div>
+          <div class="fin" style="margin-bottom:10px;line-height:1.45">Cada plan define cuántos meses debe permanecer, la frecuencia de entrega, y el <strong>precio total del pack</strong>. Este precio se reparte entre las unidades del mix.</div>
+          <div id="bundle-plans-list" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+
+        <!-- Textos del widget (marketing) -->
+        <div style="border-top:1.5px dashed var(--bdr);margin-top:18px;padding-top:16px">
+          <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;color:var(--txt)">6. Textos del widget (marketing)</div>
+          <div class="frow">
+            <div class="fg"><label class="fl">Título</label>
+              <input type="text" class="fi" id="bundle-copy-title" placeholder="Arma tu mix de 15 latas" value="Arma tu mix">
+            </div>
+            <div class="fg"><label class="fl">Subtítulo</label>
+              <input type="text" class="fi" id="bundle-copy-subtitle" placeholder="Elige los sabores que más te gustan" value="Elige los sabores que más te gustan">
+            </div>
+          </div>
+          <div class="frow">
+            <div class="fg"><label class="fl">Etiqueta del contador</label>
+              <input type="text" class="fi" id="bundle-copy-counter" placeholder="Unidades seleccionadas" value="Unidades seleccionadas">
+            </div>
+            <div class="fg"><label class="fl">Mensaje de error al faltar unidades</label>
+              <input type="text" class="fi" id="bundle-copy-error" placeholder="Te faltan X unidades para completar tu pack" value="Te faltan {remaining} unidades para completar tu pack">
+              <div class="fin">Usa <code>{remaining}</code> como placeholder del número que falta</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:24px;padding-top:16px;border-top:1px solid var(--bdr)">
+          <button class="btn btn-g" onclick="closeBundleModal()">Cancelar</button>
+          <button class="btn btn-r" onclick="saveBundle()" id="bundle-save-btn">💾 Guardar bundle</button>
         </div>
       </div>
     </div>
@@ -1974,6 +2161,7 @@
       if (id === 'customers') loadCustomers();
       if (id === 'remarketing') loadRemarketing();
       if (id === 'automations') loadAutomations();
+      if (id === 'bundles') loadBundles();
     }
 
     // \u2500\u2500\u2500\u2500 CLIENTES \u2500\u2500\u2500\u2500
@@ -4285,6 +4473,421 @@
         console.error('[APP_BRIDGE] Error:', e.message);
       }
     })();
+
+    /* ═══════════════════════════════════════════════════════════
+       BUNDLES (MIX & MATCH) — admin UI
+       Gestiona suscripciones con mix de sabores: aplica a C4, pre-workouts,
+       proteínas, snacks, o cualquier producto con variantes.
+       ═══════════════════════════════════════════════════════════ */
+
+    let _bundlesCache = [];
+    let _bundleEditingId = null;
+    let _bundleVariantsData = [];   // [{id, title, inventory_quantity, image}]
+    let _bundlePlans = [];          // array de planes en el modal
+    let _bundleExcludedSet = new Set();
+    let _bundleSearchDebounce = {};
+
+    async function loadBundles() {
+      const tbody = document.getElementById('bundles-tbody');
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--mut)">Cargando bundles...</td></tr>';
+      try {
+        const r = await fetch('/api/admin/bundles');
+        const d = await r.json();
+        _bundlesCache = d.bundles || [];
+        document.getElementById('bundles-count').textContent = `${_bundlesCache.length} bundle${_bundlesCache.length === 1 ? '' : 's'}`;
+        if (_bundlesCache.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--mut)">Aún no hay bundles. Crea el primero para habilitar suscripciones mix &amp; match.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = _bundlesCache.map(b => {
+          const plansLabel = (b.plans || []).map(p => `${p.perm_months}m · S/${p.price}`).join(' / ');
+          const activeBadge = b.active !== false
+            ? '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">Activo</span>'
+            : '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">Inactivo</span>';
+          const allowedCount = (b.allowed_variant_ids || []).length;
+          const excludedCount = (b.excluded_variant_ids || []).length;
+          return `<tr>
+            <td><strong>${escapeHtml(b.name)}</strong><br><span style="font-size:10px;color:var(--mut)">${allowedCount} variantes permitidas${excludedCount ? ' · ' + excludedCount + ' excluidas' : ''}</span></td>
+            <td style="font-size:11px"><code>${escapeHtml(b.bundle_product_id || '-')}</code></td>
+            <td style="font-size:11px">${escapeHtml(b.source_product_title || b.source_product_id || '-')}</td>
+            <td style="text-align:center;font-weight:700">${b.target_quantity || '-'}</td>
+            <td style="font-size:11px">${plansLabel || '-'}</td>
+            <td style="text-align:center;font-size:11px">${b.min_stock_threshold || 100}</td>
+            <td>${activeBadge}</td>
+            <td>
+              <button class="btn btn-g btn-sm" onclick="openEditBundle('${b.id}')">Editar</button>
+              <button class="btn btn-g btn-sm" onclick="deleteBundle('${b.id}', '${escapeHtml(b.name).replace(/'/g, "\\'")}')">Eliminar</button>
+            </td>
+          </tr>`;
+        }).join('');
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:28px;color:#b00">Error: ${escapeHtml(e.message)}</td></tr>`;
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function openNewBundleModal() {
+      _bundleEditingId = null;
+      _bundleVariantsData = [];
+      _bundlePlans = [];
+      _bundleExcludedSet = new Set();
+      document.getElementById('bundle-modal-title').textContent = 'Nuevo bundle';
+      document.getElementById('bundle-id').value = '';
+      document.getElementById('bundle-name').value = '';
+      document.getElementById('bundle-description').value = '';
+      document.getElementById('bundle-active').value = 'true';
+      document.getElementById('bundle-product-search').value = '';
+      document.getElementById('bundle-product-id').value = '';
+      document.getElementById('bundle-product-handle').value = '';
+      document.getElementById('bundle-product-selected').innerHTML = '';
+      document.getElementById('bundle-product-results').style.display = 'none';
+      document.getElementById('bundle-source-search').value = '';
+      document.getElementById('bundle-source-id').value = '';
+      document.getElementById('bundle-source-handle').value = '';
+      document.getElementById('bundle-source-title').value = '';
+      document.getElementById('bundle-source-selected').innerHTML = '';
+      document.getElementById('bundle-source-results').style.display = 'none';
+      document.getElementById('bundle-target-quantity').value = 15;
+      document.getElementById('bundle-min-stock').value = 100;
+      document.getElementById('bundle-validate-stock').checked = true;
+      document.getElementById('bundle-hide-stock').checked = true;
+      document.getElementById('bundle-copy-title').value = 'Arma tu mix';
+      document.getElementById('bundle-copy-subtitle').value = 'Elige los sabores que más te gustan';
+      document.getElementById('bundle-copy-counter').value = 'Unidades seleccionadas';
+      document.getElementById('bundle-copy-error').value = 'Te faltan {remaining} unidades para completar tu pack';
+      document.getElementById('bundle-variants-wrap').style.display = 'none';
+      document.getElementById('bundle-variants-list').innerHTML = '';
+      // 2 planes por defecto para acelerar la creación
+      _bundlePlans = [
+        { freq_months: 1, perm_months: 3, price: 150, discount_pct: 0 },
+        { freq_months: 1, perm_months: 6, price: 270, discount_pct: 0 }
+      ];
+      renderBundlePlans();
+      document.getElementById('bundle-modal').style.display = 'flex';
+    }
+
+    async function openEditBundle(id) {
+      const b = _bundlesCache.find(x => x.id === id);
+      if (!b) return alert('Bundle no encontrado en caché, recarga la página');
+      _bundleEditingId = id;
+      _bundleExcludedSet = new Set((b.excluded_variant_ids || []).map(String));
+      document.getElementById('bundle-modal-title').textContent = 'Editar bundle';
+      document.getElementById('bundle-id').value = id;
+      document.getElementById('bundle-name').value = b.name || '';
+      document.getElementById('bundle-description').value = b.description || '';
+      document.getElementById('bundle-active').value = (b.active !== false) ? 'true' : 'false';
+      document.getElementById('bundle-product-id').value = b.bundle_product_id || '';
+      document.getElementById('bundle-product-handle').value = b.bundle_product_handle || '';
+      document.getElementById('bundle-product-selected').innerHTML = b.bundle_product_id
+        ? `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:12px"><strong>✓ Seleccionado</strong> — ID <code>${escapeHtml(b.bundle_product_id)}</code>${b.bundle_product_handle ? ' · ' + escapeHtml(b.bundle_product_handle) : ''}</div>`
+        : '';
+      document.getElementById('bundle-source-id').value = b.source_product_id || '';
+      document.getElementById('bundle-source-handle').value = b.source_product_handle || '';
+      document.getElementById('bundle-source-title').value = b.source_product_title || '';
+      document.getElementById('bundle-source-selected').innerHTML = b.source_product_id
+        ? `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:12px"><strong>✓ Seleccionado</strong> — ${escapeHtml(b.source_product_title || '')} · ID <code>${escapeHtml(b.source_product_id)}</code></div>`
+        : '';
+      document.getElementById('bundle-target-quantity').value = b.target_quantity || 15;
+      document.getElementById('bundle-min-stock').value = b.min_stock_threshold || 100;
+      document.getElementById('bundle-validate-stock').checked = b.validate_stock !== false;
+      document.getElementById('bundle-hide-stock').checked = b.hide_stock_from_ui !== false;
+      const copy = b.widget_copy || {};
+      document.getElementById('bundle-copy-title').value = copy.title || 'Arma tu mix';
+      document.getElementById('bundle-copy-subtitle').value = copy.subtitle || 'Elige los sabores que más te gustan';
+      document.getElementById('bundle-copy-counter').value = copy.counter_label || 'Unidades seleccionadas';
+      document.getElementById('bundle-copy-error').value = copy.error_incomplete || 'Te faltan {remaining} unidades para completar tu pack';
+      _bundlePlans = (b.plans || []).map(p => ({
+        freq_months: Number(p.freq_months) || 1,
+        perm_months: Number(p.perm_months) || 3,
+        price: Number(p.price) || 0,
+        discount_pct: Number(p.discount_pct) || 0
+      }));
+      if (_bundlePlans.length === 0) _bundlePlans = [{ freq_months: 1, perm_months: 3, price: 0, discount_pct: 0 }];
+      renderBundlePlans();
+      // Cargar variantes del source para mostrar allowed + excluded
+      if (b.source_product_id) {
+        await loadBundleSourceVariants(b.source_product_id, b.allowed_variant_ids || []);
+      }
+      document.getElementById('bundle-modal').style.display = 'flex';
+    }
+
+    function closeBundleModal() {
+      document.getElementById('bundle-modal').style.display = 'none';
+    }
+
+    function searchBundleProduct(which, q) {
+      // which: 'bundle' (contenedor) o 'source' (fuente)
+      clearTimeout(_bundleSearchDebounce[which]);
+      _bundleSearchDebounce[which] = setTimeout(async () => {
+        const query = (q || '').trim();
+        const boxResults = document.getElementById(which === 'bundle' ? 'bundle-product-results' : 'bundle-source-results');
+        if (query.length < 2) { boxResults.style.display = 'none'; boxResults.innerHTML = ''; return; }
+        try {
+          const r = await fetch('/api/shopify/products?limit=20&query=' + encodeURIComponent(query));
+          const d = await r.json();
+          const products = d.products || [];
+          if (products.length === 0) {
+            boxResults.innerHTML = '<div style="padding:10px;color:var(--mut);font-size:12px">Sin resultados</div>';
+          } else {
+            boxResults.innerHTML = products.map(p => `
+              <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:12px;display:flex;justify-content:space-between;gap:8px"
+                   onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background='#fff'"
+                   onclick='selectBundleProduct(${JSON.stringify(which)}, ${JSON.stringify(p)})'>
+                <span><strong>${escapeHtml(p.title)}</strong><br><span style="font-size:10px;color:var(--mut)">${p.variants_count || 0} variantes · ${escapeHtml(p.handle || '')}</span></span>
+                <code style="font-size:10px;color:var(--mut);white-space:nowrap">${p.id}</code>
+              </div>
+            `).join('');
+          }
+          boxResults.style.display = 'block';
+        } catch (e) {
+          boxResults.innerHTML = `<div style="padding:10px;color:#b00;font-size:12px">Error: ${escapeHtml(e.message)}</div>`;
+          boxResults.style.display = 'block';
+        }
+      }, 320);
+    }
+
+    async function selectBundleProduct(which, product) {
+      if (which === 'bundle') {
+        document.getElementById('bundle-product-id').value = String(product.id);
+        document.getElementById('bundle-product-handle').value = product.handle || '';
+        document.getElementById('bundle-product-search').value = product.title;
+        document.getElementById('bundle-product-results').style.display = 'none';
+        document.getElementById('bundle-product-selected').innerHTML = `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:12px"><strong>✓ Producto bundle:</strong> ${escapeHtml(product.title)} · <code>${product.id}</code></div>`;
+      } else {
+        document.getElementById('bundle-source-id').value = String(product.id);
+        document.getElementById('bundle-source-handle').value = product.handle || '';
+        document.getElementById('bundle-source-title').value = product.title;
+        document.getElementById('bundle-source-search').value = product.title;
+        document.getElementById('bundle-source-results').style.display = 'none';
+        document.getElementById('bundle-source-selected').innerHTML = `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:12px"><strong>✓ Producto fuente:</strong> ${escapeHtml(product.title)} · <code>${product.id}</code></div>`;
+        await loadBundleSourceVariants(product.id, []);
+      }
+    }
+
+    async function loadBundleSourceVariants(sourceProductId, preselectedAllowed) {
+      const wrap = document.getElementById('bundle-variants-wrap');
+      const list = document.getElementById('bundle-variants-list');
+      wrap.style.display = 'block';
+      list.innerHTML = '<div style="padding:12px;color:var(--mut);font-size:12px">Cargando variantes de Shopify...</div>';
+      try {
+        const r = await fetch('/api/shopify/products/' + encodeURIComponent(sourceProductId) + '/variants');
+        const d = await r.json();
+        _bundleVariantsData = d.variants || [];
+        const allowedSet = new Set((preselectedAllowed || []).map(String));
+        const hasPreselection = allowedSet.size > 0;
+        list.innerHTML = _bundleVariantsData.map(v => {
+          const vid = String(v.id);
+          const isAllowed = hasPreselection ? allowedSet.has(vid) : true;
+          const isExcluded = _bundleExcludedSet.has(vid);
+          const stock = (v.inventory_quantity == null) ? '?' : Number(v.inventory_quantity);
+          const imgHtml = v.image ? `<img src="${escapeHtml(v.image)}" style="width:32px;height:32px;object-fit:cover;border-radius:4px">` : '<div style="width:32px;height:32px;background:#f3f4f6;border-radius:4px"></div>';
+          return `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:#fff;border:1px solid var(--bdr);border-radius:8px">
+            ${imgHtml}
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(v.title)}</div>
+              <div style="font-size:10px;color:var(--mut)">ID <code>${vid}</code> · Stock: <strong style="color:${stock < 100 ? '#b45309' : '#065f46'}">${stock}</strong></div>
+            </div>
+            <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer">
+              <input type="checkbox" class="bundle-var-allowed" data-vid="${vid}" ${isAllowed && !isExcluded ? 'checked' : ''}> Permitida
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;color:#991b1b">
+              <input type="checkbox" class="bundle-var-excluded" data-vid="${vid}" onchange="bundleVariantToggleExcluded('${vid}', this.checked)" ${isExcluded ? 'checked' : ''}> Excluir permanentemente
+            </label>
+          </div>`;
+        }).join('');
+        bundleVariantsUpdateSummary();
+      } catch (e) {
+        list.innerHTML = `<div style="padding:12px;color:#b00;font-size:12px">Error cargando variantes: ${escapeHtml(e.message)}</div>`;
+      }
+    }
+
+    function bundleVariantsToggleAll(checked) {
+      document.querySelectorAll('.bundle-var-allowed').forEach(cb => {
+        const vid = cb.getAttribute('data-vid');
+        if (!_bundleExcludedSet.has(vid)) cb.checked = checked;
+      });
+      bundleVariantsUpdateSummary();
+    }
+
+    function bundleVariantToggleExcluded(vid, checked) {
+      if (checked) {
+        _bundleExcludedSet.add(vid);
+        // Si se excluye, se desmarca de "permitida"
+        const allowedCb = document.querySelector('.bundle-var-allowed[data-vid="' + vid + '"]');
+        if (allowedCb) allowedCb.checked = false;
+      } else {
+        _bundleExcludedSet.delete(vid);
+      }
+      bundleVariantsUpdateSummary();
+    }
+
+    function bundleVariantsUpdateSummary() {
+      const allowed = Array.from(document.querySelectorAll('.bundle-var-allowed')).filter(cb => cb.checked).length;
+      const excluded = _bundleExcludedSet.size;
+      const total = _bundleVariantsData.length;
+      document.getElementById('bundle-variants-summary').textContent =
+        `${allowed} permitidas · ${excluded} excluidas · ${total - allowed - excluded} no incluidas (no se mostrarán)`;
+    }
+
+    // Delegación para refrescar summary al marcar/desmarcar permitida
+    document.addEventListener('change', e => {
+      if (e.target && e.target.classList && e.target.classList.contains('bundle-var-allowed')) {
+        bundleVariantsUpdateSummary();
+      }
+    });
+
+    function renderBundlePlans() {
+      const box = document.getElementById('bundle-plans-list');
+      if (_bundlePlans.length === 0) {
+        box.innerHTML = '<div style="padding:12px;color:var(--mut);font-size:12px;border:1px dashed var(--bdr);border-radius:8px;text-align:center">Aún no hay planes. Agrega al menos uno para poder guardar el bundle.</div>';
+        return;
+      }
+      box.innerHTML = _bundlePlans.map((p, i) => `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;padding:10px;border:1px solid var(--bdr);border-radius:8px;background:#fafafa">
+          <div>
+            <label class="fl">Frecuencia (meses)</label>
+            <select class="fsl bundle-plan-freq" data-i="${i}">
+              <option value="1" ${p.freq_months === 1 ? 'selected' : ''}>Mensual (1)</option>
+              <option value="2" ${p.freq_months === 2 ? 'selected' : ''}>Bimestral (2)</option>
+              <option value="3" ${p.freq_months === 3 ? 'selected' : ''}>Trimestral (3)</option>
+              <option value="6" ${p.freq_months === 6 ? 'selected' : ''}>Semestral (6)</option>
+            </select>
+          </div>
+          <div>
+            <label class="fl">Permanencia (meses)</label>
+            <input type="number" class="fi bundle-plan-perm" data-i="${i}" min="1" max="36" value="${p.perm_months}">
+          </div>
+          <div>
+            <label class="fl">Precio total (S/)</label>
+            <input type="number" class="fi bundle-plan-price" data-i="${i}" min="0" step="0.01" value="${p.price}">
+          </div>
+          <div>
+            <label class="fl">% Descuento</label>
+            <input type="number" class="fi bundle-plan-disc" data-i="${i}" min="0" max="80" step="0.1" value="${p.discount_pct}">
+          </div>
+          <button type="button" class="btn btn-g btn-sm" onclick="bundlePlanRemove(${i})" title="Eliminar plan">✕</button>
+        </div>
+      `).join('');
+    }
+
+    function bundlePlanAdd() {
+      _bundlePlans.push({ freq_months: 1, perm_months: 3, price: 0, discount_pct: 0 });
+      bundleSyncPlansFromForm();
+      renderBundlePlans();
+    }
+
+    function bundlePlanRemove(i) {
+      bundleSyncPlansFromForm();
+      _bundlePlans.splice(i, 1);
+      renderBundlePlans();
+    }
+
+    function bundleSyncPlansFromForm() {
+      const freqs = document.querySelectorAll('.bundle-plan-freq');
+      const perms = document.querySelectorAll('.bundle-plan-perm');
+      const prices = document.querySelectorAll('.bundle-plan-price');
+      const discs = document.querySelectorAll('.bundle-plan-disc');
+      freqs.forEach((el, i) => {
+        if (_bundlePlans[i]) {
+          _bundlePlans[i].freq_months = Number(el.value) || 1;
+          if (perms[i]) _bundlePlans[i].perm_months = Number(perms[i].value) || 3;
+          if (prices[i]) _bundlePlans[i].price = Number(prices[i].value) || 0;
+          if (discs[i]) _bundlePlans[i].discount_pct = Number(discs[i].value) || 0;
+        }
+      });
+    }
+
+    async function saveBundle() {
+      const btn = document.getElementById('bundle-save-btn');
+      const origLabel = btn.innerHTML;
+      btn.disabled = true; btn.innerHTML = 'Guardando...';
+      try {
+        bundleSyncPlansFromForm();
+
+        const name = document.getElementById('bundle-name').value.trim();
+        const bundleProductId = document.getElementById('bundle-product-id').value.trim();
+        const bundleProductHandle = document.getElementById('bundle-product-handle').value.trim();
+        const sourceProductId = document.getElementById('bundle-source-id').value.trim();
+        const sourceProductHandle = document.getElementById('bundle-source-handle').value.trim();
+        const sourceProductTitle = document.getElementById('bundle-source-title').value.trim();
+        const targetQty = Number(document.getElementById('bundle-target-quantity').value) || 0;
+        const minStock = Number(document.getElementById('bundle-min-stock').value) || 100;
+        const validateStock = document.getElementById('bundle-validate-stock').checked;
+        const hideStock = document.getElementById('bundle-hide-stock').checked;
+        const active = document.getElementById('bundle-active').value === 'true';
+
+        if (!name) { alert('El nombre es obligatorio'); btn.disabled = false; btn.innerHTML = origLabel; return; }
+        if (!bundleProductId) { alert('Debes seleccionar el producto BUNDLE (contenedor)'); btn.disabled = false; btn.innerHTML = origLabel; return; }
+        if (!sourceProductId) { alert('Debes seleccionar el producto FUENTE de variantes'); btn.disabled = false; btn.innerHTML = origLabel; return; }
+        if (!targetQty || targetQty < 1) { alert('La cantidad total debe ser mayor a 0'); btn.disabled = false; btn.innerHTML = origLabel; return; }
+
+        // Allowed + excluded
+        const allowedIds = Array.from(document.querySelectorAll('.bundle-var-allowed'))
+          .filter(cb => cb.checked)
+          .map(cb => cb.getAttribute('data-vid'));
+        const excludedIds = Array.from(_bundleExcludedSet);
+        if (allowedIds.length === 0) { alert('Debes marcar al menos una variante como permitida'); btn.disabled = false; btn.innerHTML = origLabel; return; }
+
+        // Plans validation
+        if (_bundlePlans.length === 0) { alert('Debes agregar al menos un plan'); btn.disabled = false; btn.innerHTML = origLabel; return; }
+        for (const p of _bundlePlans) {
+          if (!p.price || p.price <= 0) { alert('Todos los planes deben tener un precio mayor a 0'); btn.disabled = false; btn.innerHTML = origLabel; return; }
+          if (!p.perm_months || p.perm_months < 1) { alert('La permanencia mínima es 1 mes'); btn.disabled = false; btn.innerHTML = origLabel; return; }
+        }
+
+        const payload = {
+          name,
+          description: document.getElementById('bundle-description').value.trim(),
+          bundle_product_id: bundleProductId,
+          bundle_product_handle: bundleProductHandle,
+          source_product_id: sourceProductId,
+          source_product_handle: sourceProductHandle,
+          source_product_title: sourceProductTitle,
+          target_quantity: targetQty,
+          min_stock_threshold: minStock,
+          allowed_variant_ids: allowedIds,
+          excluded_variant_ids: excludedIds,
+          validate_stock: validateStock,
+          hide_stock_from_ui: hideStock,
+          active,
+          plans: _bundlePlans,
+          widget_copy: {
+            title: document.getElementById('bundle-copy-title').value.trim(),
+            subtitle: document.getElementById('bundle-copy-subtitle').value.trim(),
+            counter_label: document.getElementById('bundle-copy-counter').value.trim(),
+            error_incomplete: document.getElementById('bundle-copy-error').value.trim()
+          }
+        };
+
+        const isEdit = !!_bundleEditingId;
+        const url = isEdit ? '/api/admin/bundles/' + encodeURIComponent(_bundleEditingId) : '/api/admin/bundles';
+        const method = isEdit ? 'PUT' : 'POST';
+        const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        closeBundleModal();
+        await loadBundles();
+      } catch (e) {
+        alert('Error al guardar bundle: ' + e.message);
+      } finally {
+        btn.disabled = false; btn.innerHTML = origLabel;
+      }
+    }
+
+    async function deleteBundle(id, name) {
+      if (!confirm(`¿Eliminar el bundle "${name}"?\n\nEsto NO elimina productos ni suscripciones existentes. Las suscripciones ya activas seguirán repitiendo el mismo mix cada ciclo.\n\nSolo se borra la configuración para que no aparezca en el widget.`)) return;
+      try {
+        const r = await fetch('/api/admin/bundles/' + encodeURIComponent(id), { method: 'DELETE' });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        await loadBundles();
+      } catch (e) {
+        alert('Error al eliminar: ' + e.message);
+      }
+    }
 
     // INIT
     loadDash();

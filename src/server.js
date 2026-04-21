@@ -607,7 +607,20 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
                     invalid_variants: invalidVariants.map(it => String(it?.variant_id || ''))
                 });
             }
-            // Validar stock si el bundle lo requiere
+            // Validar stock si el bundle lo requiere.
+            // Regla: cada variante pedida debe tener stock >= min_stock_threshold (default 100).
+            // Bloquea ventas de sabores con stock bajo para evitar backorders masivos.
+            const minStock = Number(bundleConfig.min_stock_threshold) || 100;
+            const excludedSetC = new Set((bundleConfig.excluded_variant_ids || []).map(String));
+            // Pre-check: ningún item pedido puede estar en excluded
+            const excludedUsed = bundleItemsIn.filter(it => excludedSetC.has(String(it.variant_id)));
+            if (excludedUsed.length > 0) {
+                return res.status(400).json({
+                    error: 'Uno de los sabores elegidos está fuera de stock permanentemente.',
+                    code: 'BUNDLE_EXCLUDED_VARIANT',
+                    excluded: excludedUsed.map(it => String(it.variant_id))
+                });
+            }
             if (bundleConfig.validate_stock !== false) {
                 try {
                     const url = `https://${process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com'}/admin/api/2026-01/products/${encodeURIComponent(bundleConfig.source_product_id)}.json?fields=variants`;
@@ -616,12 +629,13 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
                         const sData = await sr.json();
                         const variants = (sData.product?.variants || []);
                         const stockMap = new Map(variants.map(v => [String(v.id), parseInt(v.inventory_quantity, 10) || 0]));
-                        const outOfStock = bundleItemsIn.filter(it => (stockMap.get(String(it.variant_id)) || 0) < (parseInt(it.quantity, 10) || 0));
-                        if (outOfStock.length > 0) {
+                        const insufficient = bundleItemsIn.filter(it => (stockMap.get(String(it.variant_id)) || 0) < minStock);
+                        if (insufficient.length > 0) {
                             return res.status(409).json({
-                                error: 'Algunos sabores no tienen stock suficiente. Actualiza tu selección.',
-                                code: 'BUNDLE_OUT_OF_STOCK',
-                                out_of_stock: outOfStock.map(it => ({ variant_id: String(it.variant_id), requested: it.quantity, available: stockMap.get(String(it.variant_id)) || 0 }))
+                                error: `Algunos sabores tienen stock bajo (mínimo ${minStock} unidades). Actualiza tu selección.`,
+                                code: 'BUNDLE_LOW_STOCK',
+                                min_stock: minStock,
+                                low_stock: insufficient.map(it => ({ variant_id: String(it.variant_id), requested: it.quantity, available: stockMap.get(String(it.variant_id)) || 0 }))
                             });
                         }
                     }
@@ -4533,7 +4547,56 @@ app.get('/api/shopify/products', async (req, res) => {
         if (!token) {
             return res.json({ products: [], error: 'SHOPIFY_ACCESS_TOKEN not set. Visit /auth?shop=' + shop + ' to authorize.' });
         }
-        const url = `https://${shop}/admin/api/2026-01/products.json?limit=250&fields=id,title,images,variants,status`;
+        // 2026-04-21 — ADITIVO: soporte opcional de `query` y `limit` sin romper consumidores existentes.
+        // Si hay ?query=..., usamos el endpoint GraphQL de búsqueda (más rápido y relevante).
+        const q = (req.query.query || '').toString().trim();
+        const limit = Math.min(250, Math.max(1, parseInt(req.query.limit, 10) || 250));
+        if (q) {
+            const gql = `query SearchProducts($q: String!, $first: Int!) {
+                products(first: $first, query: $q) {
+                    edges { node { id title handle status
+                        featuredImage { url }
+                        variants(first: 50) { edges { node { id title price sku inventoryQuantity } } }
+                    } }
+                }
+            }`;
+            const variables = { q: q, first: limit };
+            const r = await fetch(`https://${shop}/admin/api/2026-01/graphql.json`, {
+                method: 'POST',
+                headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: gql, variables })
+            });
+            if (!r.ok) {
+                const errText = await r.text();
+                return res.json({ products: [], error: `Shopify GraphQL ${r.status}: ${errText.slice(0, 200)}` });
+            }
+            const gqlData = await r.json();
+            const edges = gqlData?.data?.products?.edges || [];
+            return res.json({
+                products: edges.map(e => {
+                    const n = e.node;
+                    const numId = String(n.id).split('/').pop();
+                    const vEdges = n.variants?.edges || [];
+                    return {
+                        id: numId,
+                        title: n.title,
+                        handle: n.handle,
+                        image: n.featuredImage?.url || null,
+                        price: vEdges[0]?.node?.price || '0',
+                        status: n.status,
+                        variants_count: vEdges.length,
+                        variants: vEdges.map(ve => ({
+                            id: String(ve.node.id).split('/').pop(),
+                            title: ve.node.title,
+                            price: ve.node.price,
+                            sku: ve.node.sku || ''
+                        }))
+                    };
+                })
+            });
+        }
+        // Legacy (sin query) — mantiene 100% compatibilidad con consumidores previos
+        const url = `https://${shop}/admin/api/2026-01/products.json?limit=${limit}&fields=id,title,handle,images,variants,status`;
         const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } });
         if (!r.ok) {
             const errText = await r.text();
@@ -4544,9 +4607,11 @@ app.get('/api/shopify/products', async (req, res) => {
             products: (data.products || []).map(p => ({
                 id: p.id,
                 title: p.title,
+                handle: p.handle,
                 image: p.images?.[0]?.src || null,
                 price: p.variants?.[0]?.price || '0',
                 status: p.status,
+                variants_count: (p.variants || []).length,
                 variants: (p.variants || []).map(v => ({
                     id: v.id,
                     title: v.title,
@@ -4556,6 +4621,43 @@ app.get('/api/shopify/products', async (req, res) => {
             }))
         });
     } catch (e) { res.json({ products: [], error: e.message }) }
+});
+
+/**
+ * 2026-04-21 — ADITIVO: endpoint para listar variantes de un producto con stock e imagen.
+ * Usado por el admin panel de bundles para mostrar sabores disponibles.
+ * No afecta productos ni órdenes existentes (solo lectura).
+ */
+app.get('/api/shopify/products/:id/variants', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'SHOPIFY_ACCESS_TOKEN not set' });
+
+        const productId = String(req.params.id).trim();
+        const url = `https://${shop}/admin/api/2026-01/products/${encodeURIComponent(productId)}.json?fields=id,title,images,variants`;
+        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } });
+        if (!r.ok) {
+            const errText = await r.text();
+            return res.status(r.status).json({ error: `Shopify ${r.status}: ${errText.slice(0, 200)}` });
+        }
+        const data = await r.json();
+        const product = data.product;
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+        const imagesById = new Map((product.images || []).map(img => [img.id, img.src]));
+        res.json({
+            product_id: product.id,
+            product_title: product.title,
+            variants: (product.variants || []).map(v => ({
+                id: v.id,
+                title: v.title,
+                price: v.price,
+                sku: v.sku || '',
+                inventory_quantity: (typeof v.inventory_quantity === 'number') ? v.inventory_quantity : null,
+                image: v.image_id ? (imagesById.get(v.image_id) || null) : (product.images?.[0]?.src || null)
+            }))
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ═══════════════════════════════════════════════
@@ -4961,6 +5063,12 @@ app.post('/api/admin/bundles', async (req, res) => {
             source_product_title: body.source_product_title ? String(body.source_product_title) : '',
             target_quantity: Number(body.target_quantity),
             allowed_variant_ids: body.allowed_variant_ids.map(String),
+            // 2026-04-21 — Excluidos EXPLICITOS (variantes que NUNCA se muestran, ni siquiera bloqueadas).
+            // Útil para sabores descatalogados o pendientes de reposición.
+            excluded_variant_ids: Array.isArray(body.excluded_variant_ids) ? body.excluded_variant_ids.map(String) : [],
+            // 2026-04-21 — Stock mínimo por variante para considerarla "disponible" (no solo >0).
+            // Regla de negocio: si una variante tiene <100 unidades se bloquea (se muestra sombreada).
+            min_stock_threshold: Number(body.min_stock_threshold) || 100,
             plans: body.plans.map(p => ({
                 freq_months: Number(p.freq_months) || 1,
                 perm_months: Number(p.perm_months) || 3,
@@ -4985,7 +5093,7 @@ app.put('/api/admin/bundles/:id', async (req, res) => {
         // Solo update de campos explícitos (evitar inyección de _gid, id, created_at)
         const updatable = ['name', 'description', 'bundle_product_id', 'bundle_product_handle',
             'source_product_id', 'source_product_handle', 'source_product_title',
-            'target_quantity', 'allowed_variant_ids', 'plans',
+            'target_quantity', 'allowed_variant_ids', 'excluded_variant_ids', 'min_stock_threshold', 'plans',
             'validate_stock', 'hide_stock_from_ui', 'widget_copy', 'active'];
         const updates = {};
         for (const k of updatable) if (k in body) updates[k] = body[k];
@@ -5032,14 +5140,19 @@ app.get('/api/bundles/product/:bundleProductId/config', async (req, res) => {
         if (!product) return res.status(502).json({ error: 'Product not found in Shopify' });
 
         const allowedSet = new Set((bundle.allowed_variant_ids || []).map(String));
+        const excludedSet = new Set((bundle.excluded_variant_ids || []).map(String));
         const imagesById = new Map((product.images || []).map(img => [img.id, img.src]));
+        const minStock = Number(bundle.min_stock_threshold) || 0;
 
         // Map de variantes con estado de stock
+        // Reglas: allowed AND NOT excluded. Disponibilidad = stock >= min_stock_threshold.
+        // "excluded_variant_ids" NO aparece en el widget (ni sombreado). "allowed" con stock bajo → sombreado.
         const flavors = (product.variants || [])
-            .filter(v => allowedSet.has(String(v.id)))
+            .filter(v => allowedSet.has(String(v.id)) && !excludedSet.has(String(v.id)))
             .map(v => {
                 const stock = parseInt(v.inventory_quantity, 10);
-                const hasStock = Number.isFinite(stock) && stock > 0;
+                const numStock = Number.isFinite(stock) ? stock : 0;
+                const hasStock = numStock >= minStock;
                 // Respeta hide_stock_from_ui: si true, NO exponer inventory_quantity
                 const out = {
                     variant_id: String(v.id),
@@ -5049,7 +5162,7 @@ app.get('/api/bundles/product/:bundleProductId/config', async (req, res) => {
                     image: v.image_id && imagesById.get(v.image_id) ? imagesById.get(v.image_id) : (product.images?.[0]?.src || null),
                     available: hasStock,
                 };
-                if (bundle.hide_stock_from_ui !== true) out.stock = stock;
+                if (bundle.hide_stock_from_ui !== true) out.stock = numStock;
                 return out;
             });
 
