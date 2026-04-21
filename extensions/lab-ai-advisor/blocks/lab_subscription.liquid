@@ -8,6 +8,13 @@
     --lab-tab-text: {{ block.settings.color_tab_text | default: '#6b7280' }};
     --lab-tab-act-text: {{ block.settings.color_tab_act_text | default: '#9d2a23' }};
     --lab-tab-size: {{ block.settings.font_size_tabs | default: 13 }}px;
+    --lab-gift-bg-from: {{ block.settings.gift_bg_from | default: '#fff8e1' }};
+    --lab-gift-bg-to: {{ block.settings.gift_bg_to | default: '#fff1c7' }};
+    --lab-gift-border: {{ block.settings.gift_border | default: '#f2c94c' }};
+    --lab-gift-badge-bg: {{ block.settings.gift_badge_bg | default: '#E30613' }};
+    --lab-gift-badge-text: {{ block.settings.gift_badge_text | default: '#ffffff' }};
+    --lab-gift-title: {{ block.settings.gift_title_color | default: '#4A3100' }};
+    --lab-gift-label: {{ block.settings.gift_label_color | default: '#8B6914' }};
   }
   /* Ocultar selector nativo de selling plans del tema — usamos nuestro widget */
   .product-form__input--selling-plan,
@@ -18,7 +25,6 @@
   purchase-options-radio-component,
   .purchase-options-radio { display: none !important; }
 </style>
-
 
 {%- liquid
   assign variant      = product.selected_or_first_available_variant
@@ -75,7 +81,7 @@
   <!-- ONE-TIME PANEL -->
   <div class="lab-sub__panel lab-sub__panel--active" data-panel="once">
     {% if free_ship %}
-    <div class="lab-sub__free-ship">🚚 Envío gratis incluido</div>
+    <div class="lab-sub__free-ship">Envío gratis incluido</div>
     {% endif %}
   </div>
 
@@ -90,9 +96,7 @@
     <div id="sub-content-{{ block.id }}">
 
     {% comment %}Selling plans nativo deshabilitado — usamos MP PreApproval{% endcomment %}
-    {% if false %}{% else %}
-      <!-- ── FALLBACK: planes cargados desde backend ──── -->
-      <!-- Note: actual plans are loaded dynamically from backend via loadConfig() -->
+    {% if false %}{% else %}      <!-- Note: actual plans are loaded dynamically from backend via loadConfig() -->
       <div class="lab-sub__group">
         <p class="lab-sub__label">Elige tu plan</p>
         <div class="lab-sub__chips" id="plan-chips-{{ block.id }}">
@@ -101,9 +105,9 @@
         </div>
       </div>
       <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:12px;color:#166534;text-align:center;line-height:1.5">
-        📦 <strong>Recibes 1 Creatina Monohidratada 500g cada mes</strong><br>
+        <strong>Recibes 1 Creatina Monohidratada 500g cada mes</strong><br>
         <span style="font-size:11px;color:#15803d">Se cobra automáticamente a tu tarjeta cada mes + S/10 de envío</span><br>
-        <span style="font-size:10px;color:#16a34a;font-weight:600">✓ Todos los precios incluyen IGV</span>
+        <span style="font-size:10px;color:#16a34a;font-weight:600">Todos los precios incluyen IGV</span>
       </div>
 
       {% if block.settings.show_benefit_box %}
@@ -151,7 +155,7 @@
 
   <!-- CHECKOUT MODAL (solo para fallback sin selling plans) -->
   {% unless has_plans %}
-  <div id="lab-modal-{{ block.id }}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;padding:16px">
+  <div id="lab-modal-{{ block.id }}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483647;align-items:center;justify-content:center;padding:16px">
     <div style="background:#fff;border-radius:12px;width:100%;max-width:460px;max-height:90vh;overflow-y:auto;position:relative">
       <button onclick="document.getElementById('lab-modal-{{ block.id }}').style.display='none'" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:#666">×</button>
       <div style="padding:28px">
@@ -201,7 +205,7 @@
             </div>
           </div>
           <div style="border-top:1px solid #f0f0f0;padding-top:12px;margin-top:4px">
-            <div style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#9d2a23;margin-bottom:10px">📦 Dirección de envío</div>
+            <div style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#9d2a23;margin-bottom:10px">Dirección de envío</div>
           </div>
           <div>
             <label style="font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#888;display:block;margin-bottom:5px">Dirección</label>
@@ -227,7 +231,7 @@
             <span>Términos y Condiciones de Suscripción</span>
           </div>
           <div id="lab-tc-body-{{ block.id }}" style="display:none;background:#fafafa;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;font-size:11px;color:#555;line-height:1.6;max-height:200px;overflow-y:auto">
-            {% if block.settings.tc_text != blank and block.settings.tc_text != 'Ver términos completos en labnutrition.pe' %}{{ block.settings.tc_text | newline_to_br }}{% else %}<strong>TÉRMINOS Y CONDICIONES — CLUB BLACK DIAMOND (LAB NUTRITION)</strong><br><span style="color:#999;font-size:10px">Versión 1.0 · Vigente desde abril 2026 · Ley 29571 Perú</span><br><br><strong>1. SERVICIO.</strong> Club Black Diamond es un programa de suscripción de LAB NUTRITION. Recibes 1 unidad del producto cada mes en tu domicilio. El cobro es AUTOMÁTICO y RECURRENTE cada mes mediante Mercado Pago PreApproval. No es un pago único.<br><br><strong>2. PRECIOS E IGV.</strong> Todos los precios mostrados INCLUYEN IGV (Ley 29571 Art. 5.4). El cobro mensual es: precio del producto con descuento + S/10 de envío. En Soles peruanos (PEN).<br><br><strong>3. PLANES Y DESCUENTOS.</strong><br>• <strong>Plan 3 meses (40% OFF):</strong> compromiso de permanencia mínima 3 cobros mensuales.<br>• <strong>Plan 6 meses (50% OFF):</strong> compromiso de permanencia mínima 6 cobros mensuales.<br>El descuento es EXCLUSIVO por tu compromiso de permanencia. Sin permanencia no hay descuento.<br><br><strong>4. DERECHO DE RETRACTO (Art. 58 Ley 29571).</strong> Tienes 7 días calendario desde el primer cobro para cancelar sin penalidad, SIEMPRE que el producto no haya sido abierto ni consumido. Escribe a <strong>club@labnutrition.pe</strong> dentro de los 7 días.<br><br><strong>5. CANCELACIÓN ANTICIPADA (durante permanencia).</strong> Si cancelas antes de cumplir los meses comprometidos, se aplica un reintegro del descuento ya otorgado, calculado así:<br>• Plan 40%: reintegro = (precio regular − precio suscripción) × meses entregados<br>• Plan 50%: igual fórmula<br>El reintegro NUNCA excede el descuento recibido. Se cobra vía Mercado Pago al confirmar la cancelación. Esto NO es una multa: es la devolución del beneficio otorgado por un compromiso que no se cumplió.<br><br><strong>6. CANCELACIÓN TRAS CUMPLIR PERMANENCIA.</strong> Libre y sin penalidad desde tu portal de cliente o escribiendo a club@labnutrition.pe. Efectiva antes del siguiente ciclo de cobro.<br><br><strong>7. VENTANA DE CANCELACIÓN.</strong> Por logística, la cancelación se procesa entre 30 y 15 días ANTES de cada cobro mensual. Fuera de esa ventana se aplica al siguiente ciclo.<br><br><strong>8. PAUSA.</strong> Puedes pausar hasta 2 meses consecutivos desde tu portal. La permanencia se congela durante la pausa.<br><br><strong>9. ENVÍOS.</strong> Despacho vía Urbaner (Lima) o courier correspondiente (provincias). 1-3 días hábiles desde el cobro. Cambios de dirección: solicitar mínimo 5 días antes del próximo cobro.<br><br><strong>10. STOCK.</strong> Si el producto está agotado, notificaremos y podrás: (a) esperar, (b) sustituir por equivalente, (c) cancelar ese ciclo sin penalidad.<br><br><strong>11. MODIFICACIÓN DE PRECIOS.</strong> Con aviso mínimo de 30 días. Si no aceptas el nuevo precio, puedes cancelar sin penalidad en ese plazo.<br><br><strong>12. PAGOS Y DATOS DE TARJETA.</strong> Procesados 100% por Mercado Pago. LAB NUTRITION NO almacena ni tiene acceso a tu número de tarjeta.<br><br><strong>13. DATOS PERSONALES (Ley 29733).</strong> Recopilamos: nombre, DNI, email, dirección, teléfono, historial de compra. Uso exclusivo para gestionar tu suscripción. No se comparten con terceros.<br><br><strong>14. RESOLUCIÓN DE CONTROVERSIAS.</strong> Contacto: club@labnutrition.pe · Libro de Reclamaciones en labnutrition.pe/reclamaciones · INDECOPI: consumidor.gob.pe<br><br><strong>15. JURISDICCIÓN.</strong> Ley peruana. Tribunales de Lima competentes.<br><br><span style="color:#999;font-size:10px">Al marcar la casilla de aceptación, declaras haber leído y aceptado estos términos. Se registrará la fecha, hora y versión del documento aceptado como evidencia legal.</span>{% endif %}
+            {% if block.settings.tc_text != blank and block.settings.tc_text != 'Ver términos completos en labnutrition.pe' %}{{ block.settings.tc_text | newline_to_br }}{% else %}<strong>Términos y Condiciones — Club Black Diamond</strong><br><br>Programa de suscripción mensual con cobro automático vía Mercado Pago. Precios incluyen IGV (Ley 29571). Descuento exclusivo por permanencia (3 o 6 cobros). Cancelación libre tras cumplir permanencia; anticipada aplica reintegro proporcional del descuento recibido. Retracto 7 días si producto no se abrió. Pausa hasta 2 meses. Envío vía Urbaner/courier 1-3 días. Datos protegidos Ley 29733. Contacto: club@labnutrition.pe · Libro de Reclamaciones en labnutrition.pe/reclamaciones.<br><br>Ver términos completos: <a href="/pages/terminos-suscripcion" style="color:#9d2a23">labnutrition.com/pages/terminos-suscripcion</a>{% endif %}
           </div>
           <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;cursor:pointer">
             <input type="checkbox" id="lab-tc-check-{{ block.id }}" style="margin-top:2px;accent-color:#9d2a23;width:16px;height:16px;flex-shrink:0">
@@ -252,10 +256,7 @@
 (function() {
   var blkId = '{{ block.id }}';
   var wrap = document.getElementById('lab-sub-' + blkId);
-  var hasNativePlans = {{ has_plans | json }};
-
-  // ── TAB SWITCHING ──────────────────────────────────────────────
-  wrap.querySelectorAll('.lab-sub__tab').forEach(function(tab) {
+  var hasNativePlans = {{ has_plans | json }};  wrap.querySelectorAll('.lab-sub__tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
       wrap.querySelectorAll('.lab-sub__tab').forEach(function(t) { t.classList.remove('lab-sub__tab--active'); });
       wrap.querySelectorAll('.lab-sub__panel').forEach(function(p) { p.classList.remove('lab-sub__panel--active'); });
@@ -263,10 +264,7 @@
       var panel = wrap.querySelector('[data-panel="' + tab.dataset.tab + '"]');
       if (panel) panel.classList.add('lab-sub__panel--active');
     });
-  });
-
-  // ── HELPER: actualización instantánea del carrito ────────────────
-  function labCartUpdate() {
+  });  function labCartUpdate() {
     // 1. Leer carrito actualizado
     fetch('/cart.js').then(function(r) { return r.json(); }).then(function(cart) {
       var count = cart.item_count;
@@ -316,10 +314,7 @@
     // 5. Disparar eventos personalizados para que el tema reaccione
     document.dispatchEvent(new CustomEvent('cart:refresh'));
     document.dispatchEvent(new CustomEvent('cart:updated'));
-  }
-
-  // ── COMPRA ÚNICA: añadir al carrito sin selling_plan ───────────
-  window.labSubAddOnce = function(id) {
+  }  window.labSubAddOnce = function(id) {
     if (id !== blkId) return;
     var variantId = parseInt(wrap.dataset.variant);
     if (!variantId) return;
@@ -333,7 +328,7 @@
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.id) {
-        if (btn) { btn.querySelector('.lab-sub__cta-text').textContent = '✓ Añadido al carrito'; btn.style.background = '#2E7D49'; }
+        if (btn) { btn.querySelector('.lab-sub__cta-text').textContent = 'Añadido al carrito'; btn.style.background = '#2E7D49'; }
         labCartUpdate();
         setTimeout(function() {
           if (btn) { btn.disabled = false; btn.querySelector('.lab-sub__cta-text').textContent = 'Agregar al carrito'; btn.style.background = ''; }
@@ -343,33 +338,35 @@
     .catch(function() {
       if (btn) { btn.disabled = false; btn.querySelector('.lab-sub__cta-text').textContent = 'Agregar al carrito'; }
     });
-  };
-
-  // ── Abrir modal MP ────
-  window.labSubOpenModal = function(id) {
+  };  window.labSubOpenModal = function(id) {
     if (id !== blkId) return;
     var modal = document.getElementById('lab-modal-' + id);
     if (modal) modal.style.display = 'flex';
-  };
+  };  var productHandle = '{{ product.handle }}';
 
-  // ── VARIANT-AWARE: actualizar precio cuando cambia variante ───
-  var productHandle = '{{ product.handle }}';
-
-  // ── VARIANT RESTRICTION: subscriptions only for specific variants ──
-  var eligibleVariantsRaw = '{{ block.settings.eligible_variant_ids | default: "" }}';
-  var eligibleVariants = eligibleVariantsRaw ? eligibleVariantsRaw.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+  // 🔒 Variant allowlist (hardcoded baseline + admin setting). Fail-safe: si no hay config, tab Suscripción se oculta.
+  var HARDCODED_ELIGIBLE = ['58307532587089'];
+  var eligibleRaw = '{{ block.settings.eligible_variant_ids | default: "" }}';
+  var eligibleVariants = HARDCODED_ELIGIBLE.slice();
+  (eligibleRaw ? eligibleRaw.split(',') : []).forEach(function(s){ s = (s||'').trim(); if (s && eligibleVariants.indexOf(s)===-1) eligibleVariants.push(s); });
   var noticeEl = document.getElementById('variant-notice-' + blkId);
   var subContentEl = document.getElementById('sub-content-' + blkId);
-
+  var subTabBtn = wrap.querySelector('.lab-sub__tab[data-tab="sub"]');
+  var onceTabBtn = wrap.querySelector('.lab-sub__tab[data-tab="once"]');
+  var subPanel = wrap.querySelector('.lab-sub__panel[data-panel="sub"]');
+  var oncePanel = wrap.querySelector('.lab-sub__panel[data-panel="once"]');
   function checkVariantEligibility(variantId) {
-    // If no restriction configured, all variants are eligible
-    if (!eligibleVariants.length) return;
-    var isEligible = eligibleVariants.indexOf(String(variantId)) !== -1;
-    if (noticeEl) noticeEl.style.display = isEligible ? 'none' : 'block';
-    if (subContentEl) subContentEl.style.display = isEligible ? '' : 'none';
+    var ok = eligibleVariants.length > 0 && eligibleVariants.indexOf(String(variantId)) !== -1;
+    if (noticeEl) noticeEl.style.display = ok ? 'none' : 'block';
+    if (subContentEl) subContentEl.style.display = ok ? '' : 'none';
+    if (subTabBtn) { subTabBtn.style.display = ok ? '' : 'none'; subTabBtn.disabled = !ok; subTabBtn.setAttribute('aria-disabled', String(!ok)); }
+    if (!ok && subTabBtn && subTabBtn.classList.contains('lab-sub__tab--active')) {
+      subTabBtn.classList.remove('lab-sub__tab--active');
+      if (subPanel) subPanel.classList.remove('lab-sub__panel--active');
+      if (onceTabBtn) onceTabBtn.classList.add('lab-sub__tab--active');
+      if (oncePanel) oncePanel.classList.add('lab-sub__panel--active');
+    }
   }
-
-  // Check on load
   checkVariantEligibility(wrap.dataset.variant);
 
   function updateForVariant(v) {
@@ -420,10 +417,7 @@
 
   var urlParams = new URLSearchParams(window.location.search);
   var urlVariant = urlParams.get('variant');
-  if (urlVariant && urlVariant !== wrap.dataset.variant) fetchVariant(urlVariant);
-
-  // ── SOCIAL PROOF ───────────────────────────────────────────────
-  var socialEl = document.getElementById('social-text-' + blkId);
+  if (urlVariant && urlVariant !== wrap.dataset.variant) fetchVariant(urlVariant);  var socialEl = document.getElementById('social-text-' + blkId);
   if (socialEl) {
     var backend = wrap.dataset.backend || 'https://pixel-suite-pro-production.up.railway.app';
     fetch(backend + '/api/metrics')
@@ -433,10 +427,7 @@
         else socialEl.parentElement.style.display = 'none';
       })
       .catch(function() { if (socialEl && socialEl.parentElement) socialEl.parentElement.style.display = 'none'; });
-  }
-
-  // ── FALLBACK: planes cargados desde backend ─────────────────────
-  if (!hasNativePlans) {
+  }  if (!hasNativePlans) {
     var config = {};
     var activePlans = []; // planes asignados y habilitados para este producto
     var selectedPlanKey = null;
@@ -455,9 +446,9 @@
       enabledPlans.forEach(function(plan, i) {
         var key = plan.key;
         var label = plan.label || ((plan.frequency === 1 ? 'Mensual' : 'Cada ' + plan.frequency + 'm') + ' · ' + plan.permanence + ' meses');
-        // 🎁 Badge si este plan trae regalo para este producto
+        // Badge si este plan trae regalo para este producto (sin emoji — renderiza inconsistente a 10px)
         var hasGift = plan.gifts && plan.gifts.enabled && plan.gifts.summary && plan.gifts.summary.length > 0;
-        var giftBadge = hasGift ? '<span style="display:inline-block;margin-left:6px;background:#E30613;color:#fff;font-size:9px;font-weight:900;padding:2px 6px;border-radius:10px;letter-spacing:.5px;vertical-align:middle">🎁 REGALO</span>' : '';
+        var giftBadge = hasGift ? '<span style="display:inline-block;margin-left:6px;background:var(--lab-gift-badge-bg,#E30613);color:var(--lab-gift-badge-text,#fff);font-size:10px;font-weight:800;padding:3px 8px;border-radius:12px;letter-spacing:.5px;vertical-align:middle;line-height:1.3;white-space:nowrap;flex-shrink:0">REGALO</span>' : '';
         chipsHtml += '<button class="lab-sub__chip' + (i === 0 ? ' lab-sub__chip--active' : '') + '" data-plan-key="' + key + '">' + label + giftBadge + '</button>';
       });
       chipsHtml += '</div></div>';
@@ -471,15 +462,13 @@
         '</div><div class="lab-sub__saving" id="saving-' + blkId + '"></div></div>';
       {% endif %}
 
-      // 🎁 Gift box (si el plan seleccionado trae regalo). Escondido por default; renderSelectedPlan lo llena.
-      chipsHtml += '<div id="gift-' + blkId + '" style="display:none;margin:10px 0;padding:12px 14px;background:linear-gradient(135deg,#fff8e1,#fff1c7);border:1.5px solid #f2c94c;border-radius:10px;position:relative;overflow:hidden">' +
-        '<div style="position:absolute;top:-8px;right:-8px;background:#E30613;color:#fff;font-size:10px;font-weight:900;padding:3px 10px;border-radius:0 0 0 8px;letter-spacing:1px">REGALO</div>' +
-        '<div style="display:flex;gap:10px;align-items:center">' +
-        '<div id="gift-img-' + blkId + '" style="width:48px;height:48px;border-radius:8px;background:#fff;flex-shrink:0;border:1px solid #e8d88c;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:22px">🎁</div>' +
-        '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:11px;font-weight:800;color:#8B6914;letter-spacing:.8px;text-transform:uppercase;margin-bottom:2px">Tu primer envío incluye</div>' +
-        '<div id="gift-title-' + blkId + '" style="font-size:13px;font-weight:700;color:#4A3100;line-height:1.3">—</div>' +
-        '</div></div></div>';
+      // Gift box (si el plan seleccionado trae regalo). Escondido por default; renderSelectedPlan lo llena.
+      // Soporta 1 o N regalos. Cada item es clickeable si tiene product_handle.
+      chipsHtml += '<div id="gift-' + blkId + '" style="display:none;margin:10px 0;padding:30px 14px 12px 14px;background:linear-gradient(135deg,var(--lab-gift-bg-from,#fff8e1),var(--lab-gift-bg-to,#fff1c7));border:1.5px solid var(--lab-gift-border,#f2c94c);border-radius:10px;position:relative">' +
+        '<div style="position:absolute;top:0;right:0;background:var(--lab-gift-badge-bg,#E30613);color:var(--lab-gift-badge-text,#fff);font-size:10px;font-weight:900;padding:4px 10px;border-radius:0 8px 0 8px;letter-spacing:1px;z-index:2;line-height:1.2;white-space:nowrap">REGALO</div>' +
+        '<div style="font-size:11px;font-weight:800;color:var(--lab-gift-label,#8B6914);letter-spacing:.8px;text-transform:uppercase;margin-bottom:8px">Tu primer envío incluye</div>' +
+        '<div id="gift-items-' + blkId + '" style="display:flex;flex-direction:column;gap:8px"></div>' +
+        '</div>';
 
       // Perks
       {% if block.settings.show_perks %}
@@ -547,26 +536,38 @@
       if (savEl) savEl.textContent = rawDisc > 0 ? 'Ahorras ' + cur + ' ' + saving + ' cada mes (1 unidad)' : '';
       if (ctaTxt) ctaTxt.textContent = 'Suscribirme — ' + displayDisc + '% OFF →';
 
-      // 🎁 Render gift box if plan has gift
+      // Render gift box si el plan trae regalos. Soporta 1 o N items, cada uno clickeable si tiene handle.
       var giftBox = document.getElementById('gift-' + blkId);
-      var giftTitle = document.getElementById('gift-title-' + blkId);
-      var giftImg = document.getElementById('gift-img-' + blkId);
-      if (giftBox && plan && plan.gifts && plan.gifts.enabled && plan.gifts.summary && plan.gifts.summary.length) {
+      var giftItems = document.getElementById('gift-items-' + blkId);
+      if (giftBox && giftItems && plan && plan.gifts && plan.gifts.enabled && plan.gifts.summary && plan.gifts.summary.length) {
         var items = plan.gifts.summary;
-        // Texto: "Shaker Black Diamond" o "Shaker + Shirt" si hay varios
-        var txt = items.map(function(it) {
-          var q = it.quantity > 1 ? (it.quantity + '× ') : '';
+        var itemsHtml = items.map(function(it) {
+          var q = it.quantity > 1 ? (it.quantity + 'x ') : '';
           var vt = it.variant_title && it.variant_title !== 'Default Title' ? ' (' + it.variant_title + ')' : '';
-          return q + it.title + vt;
-        }).join(' + ');
-        giftTitle.textContent = txt;
-        // Primer imagen si tiene
-        var img = items[0].image;
-        if (img) {
-          giftImg.innerHTML = '<img src="' + img + '" alt="regalo" style="width:100%;height:100%;object-fit:cover">';
-        } else {
-          giftImg.innerHTML = '🎁';
-        }
+          var title = q + (it.title || 'Regalo') + vt;
+          var hasLink = !!it.product_handle;
+          var imgHtml = it.image
+            ? '<img src="' + it.image + '" alt="" style="width:100%;height:100%;object-fit:cover">'
+            : '<span style="font-size:9px;font-weight:800;color:var(--lab-gift-badge-bg,#E30613);letter-spacing:.5px">GIFT</span>';
+          var titleStyle = 'font-size:13px;font-weight:700;color:var(--lab-gift-title,#4A3100);line-height:1.3;overflow:hidden;text-overflow:ellipsis' + (hasLink ? ';text-decoration:underline;text-decoration-color:rgba(74,49,0,.3);text-underline-offset:3px' : '');
+          var hintHtml = hasLink ? '<div style="font-size:10px;color:var(--lab-gift-label,#8B6914);margin-top:2px;font-weight:600">Ver producto →</div>' : '';
+          var wrapStart, wrapEnd;
+          if (hasLink) {
+            wrapStart = '<a href="/products/' + it.product_handle + '" target="_blank" rel="noopener" style="display:flex;gap:10px;align-items:center;text-decoration:none;color:inherit;cursor:pointer">';
+            wrapEnd = '</a>';
+          } else {
+            wrapStart = '<div style="display:flex;gap:10px;align-items:center">';
+            wrapEnd = '</div>';
+          }
+          return wrapStart +
+            '<div style="width:44px;height:44px;border-radius:8px;background:#fff;flex-shrink:0;border:1px solid #e8d88c;overflow:hidden;display:flex;align-items:center;justify-content:center">' + imgHtml + '</div>' +
+            '<div style="flex:1;min-width:0">' +
+            '<div style="' + titleStyle + '">' + title + '</div>' +
+            hintHtml +
+            '</div>' +
+            wrapEnd;
+        }).join('');
+        giftItems.innerHTML = itemsHtml;
         giftBox.style.display = 'block';
       } else if (giftBox) {
         giftBox.style.display = 'none';
@@ -581,6 +582,17 @@
         .then(function(r) { return r.ok ? r.json() : {}; })
         .then(function(cfg) {
           config = cfg || {};
+          // Auto-sync variants desde backend: si el admin configuró variantes elegibles
+          //    para este producto, se agregan al allowlist local y se re-chequea la variante actual.
+          //    Esto evita tener que actualizar manualmente `eligible_variant_ids` en el tema
+          //    cada vez que se activa la suscripción en un nuevo producto. (Aditivo — nunca remueve).
+          if (cfg && Array.isArray(cfg.eligible_variant_ids) && cfg.eligible_variant_ids.length) {
+            cfg.eligible_variant_ids.forEach(function(v) {
+              v = String(v || '').trim();
+              if (v && eligibleVariants.indexOf(v) === -1) eligibleVariants.push(v);
+            });
+            checkVariantEligibility(wrap.dataset.variant);
+          }
           // New format: config.plans = { planKey: { enabled, discount, frequency, permanence, label } }
           if (cfg && cfg.plans && Object.keys(cfg.plans).length) {
             activePlans = Object.keys(cfg.plans)
@@ -613,10 +625,7 @@
           }
         })
         .catch(function() {});
-    }
-
-    // ── FALLBACK CTA: abrir modal MP ────────────────────────────────
-    window.labSubOpenModal = function(id) {
+    }    window.labSubOpenModal = function(id) {
       if (id !== blkId) return;
       var modal = document.getElementById('lab-modal-' + id);
       if (modal) modal.style.display = 'flex';
@@ -732,7 +741,7 @@
         .then(function(r) { return r.json(); })
         .then(function(d) {
           if (d.init_point || d.url) {
-            mBtn.textContent = '✓ Redirigiendo a Mercado Pago...';
+            mBtn.textContent = 'Redirigiendo a Mercado Pago...';
             mBtn.style.background = '#2E7D49';
             setTimeout(function() { window.location.href = d.init_point || d.url; }, 500);
           } else {
@@ -751,51 +760,8 @@
   }
 })();
 
-
 </script>
 
-
-
 {% schema %}
-{
-  "name": "LAB Subscription Widget",
-  "target": "section",
-  "settings": [
-    { "type": "text", "id": "backend_url", "label": "URL del backend (Railway)", "default": "https://pixel-suite-pro-production.up.railway.app" },
-    { "type": "text", "id": "text_btn_once", "label": "Botón — Compra única", "default": "Compra única" },
-    { "type": "text", "id": "text_btn_sub", "label": "Botón — Suscripción", "default": "Suscripción" },
-    { "type": "text", "id": "badge_text", "label": "Badge de descuento", "default": "HASTA -30%" },
-    { "type": "color", "id": "primary_color", "label": "Color primario", "default": "#9d2a23" },
-    { "type": "checkbox", "id": "free_shipping", "label": "Activar envío gratis en suscripciones", "default": false },
-    { "type": "textarea", "id": "text_legal", "label": "Aviso legal general", "default": "Cancelación disponible entre los días 30 y 15 antes de cada envío, una vez completada la permanencia." },
-    { "type": "color", "id": "color_bg", "label": "Color de Fondo General", "default": "#ffffff" },
-    { "type": "color", "id": "color_benefit", "label": "Color Fondo Ahorros (Caja)", "default": "#fdf2f2" },
-    { "type": "text", "id": "currency_sym", "label": "Símbolo de Moneda Visual", "default": "S/ ", "info": "Útil para esconder el default del sistema (PEN)." },
-    { "type": "text", "id": "plan_1_price", "label": "Precio Final - Plan #1 (S/)", "info": "Sobreescribe el precio del plan en la 1ra posición visual (Ej: 90.00)." },
-    { "type": "text", "id": "plan_2_price", "label": "Precio Final - Plan #2 (S/)", "info": "Sobreescribe el precio del plan en la 2da posición visual (Ej: 85.00)." },
-    { "type": "text", "id": "plan_3_price", "label": "Precio Final - Plan #3 (S/)", "info": "Sobreescribe el precio del plan en la 3ra posición visual." },
-    { "type": "text", "id": "plan_4_price", "label": "Precio Final - Plan #4 (S/)", "info": "Sobreescribe el precio del plan en la 4ta posición visual." },
-    { "type": "color", "id": "color_tab_bg", "label": "Color de Fondo Selector (Gris)", "default": "#f9fafb" },
-    { "type": "color", "id": "color_tab_act", "label": "Color Botón Selección (Activo)", "default": "#ffffff" },
-    { "type": "color", "id": "color_tab_text", "label": "Color Texto Apagado", "default": "#6b7280" },
-    { "type": "color", "id": "color_tab_act_text", "label": "Color Texto Encendido", "default": "#9d2a23" },
-    { "type": "range", "id": "font_size_tabs", "min": 10, "max": 24, "step": 1, "unit": "px", "label": "Tamaño Letra (Selector)", "default": 13 },
-    { "type": "header", "content": "Visibilidad de Bloques" },
-    { "type": "checkbox", "id": "show_badge", "label": "Mostrar badge de descuento en tab", "default": true },
-    { "type": "checkbox", "id": "show_benefit_box", "label": "Mostrar caja M principal (precio + ahorro)", "default": true },
-    { "type": "checkbox", "id": "show_social", "label": "Mostrar prueba social (suscriptores)", "default": true },
-    { "type": "checkbox", "id": "show_legal", "label": "Mostrar aviso legal local", "default": true },
-    { "type": "checkbox", "id": "show_perks", "label": "Mostrar Bloque Beneficios", "default": true },
-    { "type": "header", "content": "Textos de Beneficios" },
-    { "type": "text", "id": "perk_1", "label": "Beneficio 1", "default": "Descuento exclusivo por permanencia" },
-    { "type": "text", "id": "perk_2", "label": "Beneficio 2 (Salto)", "default": "Salta 1 envío" },
-    { "type": "text", "id": "perk_3", "label": "Beneficio 3 (Envío)", "default": "Envío gratis" },
-    { "type": "text", "id": "perk_4", "label": "Beneficio 4 (Extras)", "default": "Cancela sin costo" },
-    { "type": "header", "content": "Restricción de Variante" },
-    { "type": "text", "id": "eligible_variant_ids", "label": "IDs de variantes elegibles (separados por coma)", "default": "58307532587089", "info": "Solo estas variantes mostrarán las opciones de suscripción. Dejar vacío para permitir todas." },
-    { "type": "text", "id": "variant_notice_text", "label": "Mensaje variante no elegible", "default": "Suscripción disponible solo para la presentación de 500g" },
-    { "type": "header", "content": "Términos y Condiciones" },
-    { "type": "textarea", "id": "tc_text", "label": "Texto de T&C (editable)", "default": "Ver términos completos en labnutrition.pe" }
-  ]
-}
+{"name":"LAB Subscription Widget","target":"section","settings":[{"type":"text","id":"text_btn_once","label":"Botón — Compra única","default":"Compra única"},{"type":"text","id":"text_btn_sub","label":"Botón — Suscripción","default":"Suscripción"},{"type":"text","id":"badge_text","label":"Badge de descuento","default":"HASTA -30%"},{"type":"color","id":"primary_color","label":"Color primario","default":"#9d2a23"},{"type":"checkbox","id":"free_shipping","label":"Activar envío gratis en suscripciones","default":false},{"type":"textarea","id":"text_legal","label":"Aviso legal general","default":"Cancelación disponible entre los días 30 y 15 antes de cada envío, una vez completada la permanencia."},{"type":"color","id":"color_bg","label":"Color de Fondo General","default":"#ffffff"},{"type":"color","id":"color_benefit","label":"Color Fondo Ahorros (Caja)","default":"#fdf2f2"},{"type":"text","id":"currency_sym","label":"Símbolo de Moneda Visual","default":"S/ ","info":"Útil para esconder el default del sistema (PEN)."},{"type":"text","id":"plan_1_price","label":"Precio Final - Plan #1 (S/)","info":"Sobreescribe el precio del plan en la 1ra posición visual (Ej: 90.00)."},{"type":"text","id":"plan_2_price","label":"Precio Final - Plan #2 (S/)","info":"Sobreescribe el precio del plan en la 2da posición visual (Ej: 85.00)."},{"type":"text","id":"plan_3_price","label":"Precio Final - Plan #3 (S/)","info":"Sobreescribe el precio del plan en la 3ra posición visual."},{"type":"text","id":"plan_4_price","label":"Precio Final - Plan #4 (S/)","info":"Sobreescribe el precio del plan en la 4ta posición visual."},{"type":"color","id":"color_tab_bg","label":"Color de Fondo Selector (Gris)","default":"#f9fafb"},{"type":"color","id":"color_tab_act","label":"Color Botón Selección (Activo)","default":"#ffffff"},{"type":"color","id":"color_tab_text","label":"Color Texto Apagado","default":"#6b7280"},{"type":"color","id":"color_tab_act_text","label":"Color Texto Encendido","default":"#9d2a23"},{"type":"range","id":"font_size_tabs","min":10,"max":24,"step":1,"unit":"px","label":"Tamaño Letra (Selector)","default":13},{"type":"header","content":"Visibilidad de Bloques"},{"type":"checkbox","id":"show_badge","label":"Mostrar badge de descuento en tab","default":true},{"type":"checkbox","id":"show_benefit_box","label":"Mostrar caja M principal (precio + ahorro)","default":true},{"type":"checkbox","id":"show_social","label":"Mostrar prueba social (suscriptores)","default":true},{"type":"checkbox","id":"show_legal","label":"Mostrar aviso legal local","default":true},{"type":"checkbox","id":"show_perks","label":"Mostrar Bloque Beneficios","default":true},{"type":"header","content":"Textos de Beneficios"},{"type":"text","id":"perk_1","label":"Beneficio 1","default":"Descuento exclusivo por permanencia"},{"type":"text","id":"perk_2","label":"Beneficio 2 (Salto)","default":"Salta 1 envío"},{"type":"text","id":"perk_3","label":"Beneficio 3 (Envío)","default":"Envío gratis"},{"type":"text","id":"perk_4","label":"Beneficio 4 (Extras)","default":"Cancela sin costo"},{"type":"header","content":"Restricción de Variante"},{"type":"text","id":"eligible_variant_ids","label":"IDs de variantes elegibles (separados por coma)","default":"58307532587089","info":"Solo estas variantes mostrarán las opciones de suscripción. Dejar vacío para permitir todas."},{"type":"text","id":"variant_notice_text","label":"Mensaje variante no elegible","default":"Suscripción disponible solo para la presentación de 500g"},{"type":"header","content":"Caja Regalo (Gift)"},{"type":"color","id":"gift_bg_from","label":"Fondo Regalo — Color Inicio","default":"#fff8e1"},{"type":"color","id":"gift_bg_to","label":"Fondo Regalo — Color Fin","default":"#fff1c7"},{"type":"color","id":"gift_border","label":"Borde Regalo","default":"#f2c94c"},{"type":"color","id":"gift_badge_bg","label":"Badge REGALO — Fondo","default":"#E30613"},{"type":"color","id":"gift_badge_text","label":"Badge REGALO — Texto","default":"#ffffff"},{"type":"color","id":"gift_title_color","label":"Título Regalo — Color","default":"#4A3100"},{"type":"color","id":"gift_label_color","label":"Etiqueta 'Tu primer envío incluye' — Color","default":"#8B6914"},{"type":"header","content":"Términos y Condiciones"},{"type":"textarea","id":"tc_text","label":"Texto de T&C (editable)","default":"Ver términos completos en labnutrition.pe"}]}
 {% endschema %}
