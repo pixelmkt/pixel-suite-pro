@@ -309,6 +309,10 @@
           }
           _bundleConfig = cfg;
           _bundleSelected = {};
+          // 🏷️ Marca modo bundle — el CSS oculta el selector de variantes nativo
+          // (en bundles las variantes SON los planes, el widget ya los maneja)
+          wrap.classList.add('lab-sub--bundle');
+          try { document.documentElement.classList.add('lab-sub--bundle-page'); } catch(e){}
           // Pre-llenar selección para combos fijos (no hay picker)
           if (isCombo) {
             cfg.combo_items.forEach(function (it) {
