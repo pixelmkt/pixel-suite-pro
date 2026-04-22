@@ -1185,11 +1185,19 @@
         </div>
       </div>
       <div class="content">
-        <div class="info-box">💡 Los planes definen la <strong>frecuencia de envío</strong> y la <strong>permanencia
-            mínima</strong>. Cada producto puede heredar estos descuentos o tener los suyos propios en la sección
-          Productos.</div>
+        <div class="info-box">💡 Cada plan aplica a <strong>un solo producto</strong>. Tienen descuentos y regalos <strong>independientes</strong>. Los regalos se entregan solo en el <strong>primer pedido</strong>. Puedes crear cuantos planes quieras por producto.</div>
+
+        <!-- ADITIVO 2026-04-22: Vista principal por producto -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head">
+            <span class="card-title">🎯 Planes por Producto</span>
+            <span id="plans-by-product-count" style="font-size:11px;color:var(--mut)"></span>
+          </div>
+          <div id="plans-by-product" style="padding:12px 16px 16px"></div>
+        </div>
+
         <div class="card">
-          <div class="card-head"><span class="card-title">Planes configurados</span><span id="plans-count"
+          <div class="card-head"><span class="card-title">Planes configurados (lista plana)</span><span id="plans-count"
               style="font-size:11px;color:var(--mut)"></span></div>
           <table>
             <thead>
@@ -1231,6 +1239,18 @@
       <div style="background:#fff;border-radius:12px;width:560px;max-width:92vw;max-height:92vh;overflow-y:auto;padding:28px;position:relative">
         <div style="font-size:15px;font-weight:800;text-transform:uppercase;margin-bottom:20px" id="plan-modal-title">
           Nuevo Plan</div>
+
+        <!-- ADITIVO 2026-04-22: Producto destino (obligatorio). Separa planes por producto. -->
+        <div class="frow">
+          <div class="fg" style="flex:1">
+            <label class="fl">Producto destino <span style="color:#dc2626">*</span></label>
+            <select class="fsl" id="plan-product">
+              <option value="">— Selecciona un producto —</option>
+            </select>
+            <div class="fin">Este plan aplicará <strong>solamente</strong> a este producto. Para tener planes iguales en otro producto, crea uno nuevo.</div>
+          </div>
+        </div>
+
         <div class="frow">
           <div class="fg"><label class="fl">Frecuencia de envío</label>
             <select class="fsl" id="plan-freq">
@@ -3142,14 +3162,104 @@
 
     async function loadPlans() {
       document.getElementById('plans-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--mut)">Cargando...</td></tr>';
+      const byProd = document.getElementById('plans-by-product');
+      if (byProd) byProd.innerHTML = '<div style="padding:16px;text-align:center;color:var(--mut);font-size:13px">Cargando planes por producto...</div>';
       try {
         const data = await api('/api/plans').catch(() => []);
         _plans = Array.isArray(data) ? data : [];
         renderPlans();
+        renderPlansByProduct();
         // ── ADITIVO 2026-04-21 ── carga en paralelo la matriz "planes × productos"
         // para el panel expandible "Aplica a" sin bloquear el render inicial.
-        loadPlanAssignments().then(renderPlans).catch(() => {});
+        loadPlanAssignments().then(() => { renderPlans(); renderPlansByProduct(); }).catch(() => {});
       } catch (e) { toast('Error cargando planes', 'err'); }
+    }
+
+    // ── ADITIVO 2026-04-22 ── Vista agrupada por producto.
+    // Cada producto suscribible muestra sus planes (filtrados por plan.applies_to.product_ids).
+    // Incluye botón "+ Nuevo plan para este producto" que preselecciona el producto en el modal.
+    async function renderPlansByProduct() {
+      const container = document.getElementById('plans-by-product');
+      if (!container) return;
+      try {
+        if (!_shopifyProds || !_shopifyProds.length) {
+          const data = await api('/api/products').catch(() => []);
+          _shopifyProds = Array.isArray(data) ? data : [];
+        }
+      } catch (e) {}
+      const eligibles = (_shopifyProds || []).filter(p => p.subscription_enabled);
+      const countEl = document.getElementById('plans-by-product-count');
+      if (countEl) countEl.textContent = eligibles.length + ' productos con suscripción';
+      if (!eligibles.length) {
+        container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--mut);font-size:13px">No hay productos con suscripción activa. Activa la suscripción en la pestaña <strong>Productos</strong>.</div>';
+        return;
+      }
+
+      container.innerHTML = eligibles.map(prod => {
+        const pid = String(prod.shopify_id);
+        // Planes que aplican a este producto (por plan.applies_to.product_ids).
+        // Compat: planes viejos sin applies_to se consideran GLOBALES (aplican a todos).
+        const myPlans = (_plans || []).filter(p => {
+          const mode = p.applies_to?.mode || 'all_products';
+          if (mode === 'all_products') return true;
+          return (p.applies_to?.product_ids || []).map(String).includes(pid);
+        });
+        const noImg = '<div style="width:48px;height:48px;border-radius:10px;background:#f3f4f6;flex:0 0 48px"></div>';
+        const img = prod.image
+          ? `<img src="${prod.image}" style="width:48px;height:48px;border-radius:10px;object-fit:cover;border:1px solid var(--bdr);flex:0 0 48px">`
+          : noImg;
+        const plansHtml = myPlans.length
+          ? `<table style="width:100%;border-collapse:collapse;margin-top:10px">
+              <thead><tr style="font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px">
+                <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Plan</th>
+                <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Perm.</th>
+                <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Desc.</th>
+                <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Regalo 1er pedido</th>
+                <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Activo</th>
+                <th style="text-align:right;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">&nbsp;</th>
+              </tr></thead>
+              <tbody>${myPlans.map(p => {
+                const idx = _plans.findIndex(x => x.id === p.id);
+                const freq = p.frequency || p.freq_months;
+                const perm = p.permanence || p.permanence_months || 0;
+                const disc = p.discount !== undefined ? p.discount : (p.discount_pct || 0);
+                const freqLabel = FREQ_LABELS[String(freq)] || (freq + ' meses');
+                const giftsCount = (p.gifts && p.gifts.enabled && Array.isArray(p.gifts.items)) ? p.gifts.items.length : 0;
+                const giftCell = giftsCount > 0
+                  ? `🎁 ${giftsCount} regalo${giftsCount > 1 ? 's' : ''}`
+                  : '<span style="color:var(--mut)">—</span>';
+                const appliesBadge = (p.applies_to?.mode === 'specific_products')
+                  ? ''
+                  : '<span title="Plan legacy sin producto específico — usa ✏️ Editar para asignarlo" style="display:inline-block;margin-left:6px;padding:1px 6px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:999px;font-size:10px;font-weight:700">⚠ legacy</span>';
+                return `<tr>
+                  <td style="padding:8px;vertical-align:middle"><strong>${freqLabel}</strong>${appliesBadge}<div style="font-size:11px;color:var(--mut)">${p.description || ''}</div></td>
+                  <td style="padding:8px;vertical-align:middle">${perm} m</td>
+                  <td style="padding:8px;vertical-align:middle"><strong style="color:${disc>0?'var(--grn)':'var(--mut)'}">${disc}%</strong></td>
+                  <td style="padding:8px;vertical-align:middle;font-size:12px">${giftCell}</td>
+                  <td style="padding:8px;vertical-align:middle">
+                    <label class="toggle-wrap" style="margin:0"><span class="toggle"><input type="checkbox" ${p.active !== false ? 'checked':''} onchange="togglePlanActive(${idx}, this.checked)"><span class="tslide"></span></span></label>
+                  </td>
+                  <td style="padding:8px;vertical-align:middle;text-align:right;white-space:nowrap">
+                    <button class="btn btn-g btn-sm" onclick="editPlan(${idx})">✏️</button>
+                    <button class="btn btn-sm" style="background:#fee2e2;color:#991b1b;margin-left:4px" onclick="deletePlan(${idx})">🗑</button>
+                  </td>
+                </tr>`;
+              }).join('')}</tbody>
+            </table>`
+          : `<div style="padding:14px 0;color:var(--mut);font-size:12.5px">Sin planes. Usa el botón <em>+ Nuevo plan</em> abajo.</div>`;
+        const titleEsc = (prod.title || '').replace(/"/g,'&quot;');
+        return `<div style="border:1px solid var(--bdr);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff">
+          <div style="display:flex;align-items:center;gap:12px">
+            ${img}
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:14px">${titleEsc}</div>
+              <div style="font-size:11px;color:var(--mut)">ID ${pid} · ${myPlans.length} plan${myPlans.length===1?'':'es'}</div>
+            </div>
+            <button class="btn btn-r btn-sm" onclick="openNewPlanModal('${pid}')" title="Crear un plan específico para este producto">+ Nuevo plan</button>
+          </div>
+          ${plansHtml}
+        </div>`;
+      }).join('');
     }
 
     // ── ADITIVO 2026-04-21 ──
@@ -3217,10 +3327,24 @@
         const applyBadge = prodList.length
           ? `<span style="display:inline-block;margin-left:6px;padding:2px 7px;background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;border-radius:999px;font-size:10px;font-weight:700" title="Productos que usan este plan">🛒 ${enabledCount}/${prodList.length}</span>`
           : `<span style="display:inline-block;margin-left:6px;padding:2px 7px;background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;border-radius:999px;font-size:10px;font-weight:700" title="Sin productos asignados">🛒 0</span>`;
+        // ── ADITIVO 2026-04-22 ── Badge del PRODUCTO DUEÑO (applies_to nivel plan).
+        //   Muestra a qué producto está asignado el plan. Si no tiene → legacy (amarillo).
+        const ownerMode = p.applies_to?.mode || 'all_products';
+        const ownerIds = (p.applies_to?.product_ids || []).map(String);
+        let ownerBadge = '';
+        if (ownerMode === 'specific_products' && ownerIds.length) {
+          const firstId = ownerIds[0];
+          const prodHit = (_shopifyProds || []).find(sp => String(sp.shopify_id) === firstId);
+          const prodName = prodHit ? (prodHit.title || 'Producto ' + firstId) : ('Producto ' + firstId);
+          const shortName = prodName.length > 28 ? prodName.slice(0,25) + '…' : prodName;
+          ownerBadge = `<span title="Plan asignado a: ${prodName.replace(/"/g,'&quot;')}" style="display:inline-block;margin-left:6px;padding:2px 7px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:999px;font-size:10px;font-weight:700">📦 ${shortName}</span>`;
+        } else {
+          ownerBadge = `<span title="Plan legacy sin producto específico — edítalo para asignarlo" style="display:inline-block;margin-left:6px;padding:2px 7px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:999px;font-size:10px;font-weight:700">⚠ legacy</span>`;
+        }
         const rowId = `plan-row-main-${planKey}`;
         const expandId = `plan-expand-${planKey}`;
         return `<tr id="${rowId}">
-        <td><strong>${freqLabel}</strong>${giftBadge}${applyBadge}</td>
+        <td><strong>${freqLabel}</strong>${ownerBadge}${giftBadge}${applyBadge}</td>
         <td>${permLabel}</td>
         <td><span style="font-size:15px;font-weight:800;color:${disc > 0 ? 'var(--grn)' : 'var(--mut)'}">${disc}%</span></td>
         <td style="color:var(--mut);font-size:12px">${p.description || p.desc || '—'}</td>
@@ -3346,13 +3470,30 @@
       }
     }
 
-    function openNewPlanModal() {
+    // ── ADITIVO 2026-04-22 ── Puebla el selector de producto destino del modal.
+    // Llenar siempre que se abre el modal, así siempre refleja productos con suscripción activa.
+    async function populatePlanProductSelect(selectedId) {
+      const sel = document.getElementById('plan-product');
+      if (!sel) return;
+      try {
+        if (!_shopifyProds || !_shopifyProds.length) {
+          const data = await api('/api/products').catch(() => []);
+          _shopifyProds = Array.isArray(data) ? data : [];
+        }
+        const eligibles = (_shopifyProds || []).filter(p => p.subscription_enabled);
+        sel.innerHTML = '<option value="">— Selecciona un producto —</option>' +
+          eligibles.map(p => `<option value="${p.shopify_id}" ${String(p.shopify_id) === String(selectedId || '') ? 'selected' : ''}>${(p.title || '').replace(/"/g,'&quot;')}</option>`).join('');
+      } catch (e) { /* silent */ }
+    }
+
+    function openNewPlanModal(preselectProductId) {
       _editingPlanId = null;
       document.getElementById('plan-modal-title').textContent = 'Nuevo Plan';
       document.getElementById('plan-freq').value = '1';
       document.getElementById('plan-perm').value = '3';
       document.getElementById('plan-disc').value = '10';
       document.getElementById('plan-desc').value = '';
+      populatePlanProductSelect(preselectProductId || '');
       resetGiftsUI();
       document.getElementById('plan-modal').style.display = 'flex';
     }
@@ -3365,6 +3506,9 @@
       document.getElementById('plan-perm').value = p.permanence;
       document.getElementById('plan-disc').value = p.discount || 0;
       document.getElementById('plan-desc').value = p.description || '';
+      // ── ADITIVO 2026-04-22 ── preselecciona el producto destino según applies_to (nivel plan)
+      const pid = (p.applies_to?.product_ids || [])[0] || '';
+      populatePlanProductSelect(pid);
       loadGiftsUI(p);
       document.getElementById('plan-modal').style.display = 'flex';
     }
@@ -3372,17 +3516,36 @@
     function closePlanModal() { document.getElementById('plan-modal').style.display = 'none'; _editingPlanId = null; }
 
     async function savePlan() {
+      // ── ADITIVO 2026-04-22 ── producto destino obligatorio
+      const productId = document.getElementById('plan-product').value;
+      if (!productId) {
+        toast('Selecciona el producto destino. Cada plan aplica a un solo producto.', 'err');
+        return;
+      }
+      const prodInfo = (_shopifyProds || []).find(p => String(p.shopify_id) === String(productId));
+      const prodTitle = prodInfo?.title || '';
+
       const gifts = collectGiftsFromUI();
       // Validación: si activaste regalos pero no agregaste ninguno, avisar
       if (gifts.enabled && !gifts.items.length) {
         toast('Activaste regalos pero no agregaste ninguno. Agrega al menos 1 o desactiva la opción.', 'err');
         return;
       }
-      // Validación: si elegiste "Solo productos específicos" pero no agregaste productos,
-      // el regalo nunca aplicaría a nadie → bloquea el guardado con mensaje claro.
-      if (gifts.enabled && gifts.applies_to?.mode === 'specific_products' && !(gifts.applies_to.product_ids || []).length) {
-        toast('Elegiste "Solo productos específicos" pero no agregaste ninguno. Agrega productos que reciban el regalo, o cambiá a "Todos los productos".', 'err');
-        return;
+      // ── ADITIVO 2026-04-22 ── Los regalos siempre se atan al producto destino del plan.
+      //   Así el regalo se entrega solo en la PRIMERA orden del producto correcto
+      //   (resolveGiftsForNewSub filtra por applies_to del plan + gifts.applies_to).
+      if (gifts.enabled) {
+        gifts.applies_to = gifts.applies_to || {};
+        gifts.applies_to.mode = 'specific_products';
+        const pids = Array.isArray(gifts.applies_to.product_ids) ? gifts.applies_to.product_ids.map(String) : [];
+        if (!pids.includes(String(productId))) pids.push(String(productId));
+        // si el admin había marcado otros productos, los dejamos en la lista (no pisamos),
+        // pero al menos el producto destino siempre está incluido.
+        gifts.applies_to.product_ids = pids;
+        if (!Array.isArray(gifts.applies_to.products) || !gifts.applies_to.products.find(x => String(x.shopify_id) === String(productId))) {
+          gifts.applies_to.products = (gifts.applies_to.products || []);
+          gifts.applies_to.products.push({ shopify_id: String(productId), title: prodTitle, image: prodInfo?.image || '' });
+        }
       }
       const plan = {
         id: _editingPlanId !== null ? _plans[_editingPlanId].id : Date.now().toString(),
@@ -3391,6 +3554,12 @@
         discount: parseInt(document.getElementById('plan-disc').value) || 0,
         description: document.getElementById('plan-desc').value,
         active: true,
+        // ── ADITIVO 2026-04-22 ── plan.applies_to a nivel de plan (separación por producto)
+        applies_to: {
+          mode: 'specific_products',
+          product_ids: [String(productId)],
+          products: [{ shopify_id: String(productId), title: prodTitle, image: prodInfo?.image || '' }]
+        },
         gifts: gifts
       };
       if (_editingPlanId !== null) _plans[_editingPlanId] = plan;

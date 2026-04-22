@@ -298,16 +298,33 @@ async function checkSubscriptionCustomerLimits(email, variantId) {
  * Devuelve un array snapshot (foto congelada) de items de regalo, o null si no aplica.
  * No modifica nada, solo lee. Si falla por cualquier razón, devuelve null (no bloquea la venta).
  */
+// ── ADITIVO 2026-04-22 ── Helper: verifica si un plan aplica a un producto.
+// Respeta el NUEVO campo `plan.applies_to` ({ mode, product_ids }) a nivel de plan,
+// además del filtro existente por `plan.gifts.applies_to` (para regalos).
+// Si `plan.applies_to` no existe, asume 'all_products' (compatibilidad hacia atrás).
+function planAppliesToProduct(plan, productId) {
+    if (!plan) return false;
+    const mode = plan.applies_to?.mode || 'all_products';
+    if (mode === 'all_products') return true;
+    const ids = (plan.applies_to?.product_ids || []).map(String);
+    return ids.includes(String(productId));
+}
+
 async function resolveGiftsForNewSub(frequencyMonths, permanenceMonths, productId) {
     try {
         const data = await readFromShopify().catch(() => null);
         const plans = Array.isArray(data?.plans_config) ? data.plans_config : [];
         const freq = Number(frequencyMonths);
         const perm = Number(permanenceMonths);
+        // 🔧 FIX 2026-04-22: ANTES buscaba el PRIMER plan con freq+perm matcheados,
+        //   incluso si ese plan era de OTRO producto. Causaba que los regalos no se
+        //   asignaran a la suscripción correcta cuando dos productos tenían mismos
+        //   freq+perm (ej. Creatina 3m y Premium 3m). Ahora filtra por producto.
         const plan = plans.find(p =>
             p && p.active !== false &&
             Number(p.frequency || p.freq_months) === freq &&
-            Number(p.permanence || p.permanence_months) === perm
+            Number(p.permanence || p.permanence_months) === perm &&
+            planAppliesToProduct(p, productId)
         );
         if (!plan || !plan.gifts || !plan.gifts.enabled) return null;
         const items = Array.isArray(plan.gifts.items) ? plan.gifts.items : [];
@@ -1711,9 +1728,15 @@ app.post('/api/admin/subscriptions/:id/retry-order', async (req, res) => {
 app.get('/api/plans', async (req, res) => {
     try {
         const data = await readFromShopify() || readFromFile() || {};
-        const saved = data.plans_config;
-        console.log('[PLANS] Read', Array.isArray(saved) ? saved.length : 0, 'plans from settings metafield');
-        res.json(Array.isArray(saved) ? saved : []);
+        const saved = Array.isArray(data.plans_config) ? data.plans_config : [];
+        // ── ADITIVO 2026-04-22 ── filtro opcional ?product_id=X
+        // Devuelve sólo los planes cuyo `applies_to` incluye el producto (o todos si applies_to='all_products').
+        // Usado por la nueva vista "Planes por Producto" del admin y por el widget cuando necesita
+        // listar planes específicos de un producto.
+        const pid = req.query.product_id ? String(req.query.product_id) : null;
+        const out = pid ? saved.filter(p => planAppliesToProduct(p, pid)) : saved;
+        console.log('[PLANS] Read', saved.length, 'plans' + (pid ? ` · filtered to ${out.length} for product ${pid}` : ''));
+        res.json(out);
     } catch (e) {
         console.error('[PLANS] Error reading plans:', e.message);
         res.json([]);
@@ -1881,14 +1904,17 @@ app.get('/api/products/:id/config', async (req, res) => {
                     const p = cfg.plans[key] || {};
                     const freq = Number(p.frequency || p.freq_months);
                     const perm = Number(p.permanence || p.permanence_months);
-                    // 1) match exacto por plan id
-                    let match = plansCfg.find(pc => pc && pc.active !== false && String(pc.id) === String(key));
+                    // 1) match exacto por plan id — PERO ADEMÁS debe aplicar a este producto
+                    let match = plansCfg.find(pc => pc && pc.active !== false && String(pc.id) === String(key) && planAppliesToProduct(pc, id));
                     // 2) fallback: match por freq+perm QUE APLIQUE A ESTE PRODUCTO
+                    //    Se respeta el nuevo plan.applies_to (nivel plan) además del filtro
+                    //    legacy de gifts.applies_to (para regalos específicos por producto).
                     if (!match) {
                         match = plansCfg.find(pc => {
                             if (!pc || pc.active === false) return false;
                             if (Number(pc.frequency || pc.freq_months) !== freq) return false;
                             if (Number(pc.permanence || pc.permanence_months) !== perm) return false;
+                            if (!planAppliesToProduct(pc, id)) return false;
                             const mode = pc.gifts?.applies_to?.mode || 'all_products';
                             const ids = (pc.gifts?.applies_to?.product_ids || []).map(String);
                             return mode === 'all_products' || ids.includes(String(id));
@@ -2123,12 +2149,22 @@ app.post('/api/selling-plans/sync', async (req, res) => {
             const variantGids = Array.isArray(pCfg.eligible_variant_ids) && pCfg.eligible_variant_ids.length
                 ? pCfg.eligible_variant_ids.map(vid => `gid://shopify/ProductVariant/${vid}`)
                 : null;
+            // ── ADITIVO 2026-04-22 ── Filtra planes por producto (separación por plan.applies_to).
+            //   Antes: todos los productos recibían TODOS los planes activos → contaminación.
+            //   Ahora: cada producto recibe sólo los planes que lo tienen en applies_to.product_ids
+            //   (o planes legacy con mode='all_products' que aún aplican a todos).
+            const plansForThisProduct = normalizedPlans.filter(p => planAppliesToProduct(p, prod.shopify_id));
+            if (!plansForThisProduct.length) {
+                console.log('[SELLING_PLANS] ⏭  Skip ' + prod.product_title + ' — 0 planes aplicables (applies_to)');
+                results.push({ product: prod.product_title, productId: prod.shopify_id, synced: false, skipped: true, reason: 'No plans matched applies_to' });
+                continue;
+            }
             try {
                 const result = await sellingPlans.syncProductPlans({
                     productId: prod.shopify_id,
                     productGid,
                     productTitle: prod.product_title || '',
-                    plans: normalizedPlans,
+                    plans: plansForThisProduct,
                     variantGids
                 });
                 results.push({ product: prod.product_title, productId: prod.shopify_id, ...result });
