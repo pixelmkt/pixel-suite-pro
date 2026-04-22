@@ -1933,6 +1933,16 @@ app.get('/api/products/:id/config', async (req, res) => {
                             return mode === 'all_products' || ids.includes(String(id));
                         });
                     }
+                    // 🔄 FIX 2026-04-22: Auto-sync del discount desde MASTER plan.
+                    //   Antes: si el admin editaba % en master (p.ej. Creatina 45→40),
+                    //   el widget seguía mostrando 45% porque product_configs[id].plans
+                    //   guardaba una COPIA vieja que no se actualizaba solo.
+                    //   Ahora: al leer per-product, sobreescribe .discount desde master
+                    //   (el match ya valida que el plan aplique al producto).
+                    //   Solo lectura — no modifica saving flow ni MP ni orders.
+                    if (match && typeof match.discount === 'number' && Number.isFinite(match.discount)) {
+                        cfg.plans[key].discount = match.discount;
+                    }
                     if (match && match.gifts && match.gifts.enabled) {
                         const mode = match.gifts.applies_to?.mode || 'all_products';
                         const ids = (match.gifts.applies_to?.product_ids || []).map(String);
