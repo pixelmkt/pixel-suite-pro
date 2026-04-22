@@ -60,6 +60,19 @@ app.use((req, res, next) => {
     if (req.path.startsWith('/webhooks/shopify/')) return next();
     return express.urlencoded({ extended: true })(req, res, next);
 });
+// 2026-04-22 — ADITIVO: /widget/* con cache corto + CORS abierto.
+// Esto sirve el JS del widget (lab-bundle.js) desde Railway para evitar depender
+// del CDN de Shopify al propagar theme app extension updates. Cambios al widget
+// se reflejan en segundos tras git push (vs 10-15 min del CDN Shopify).
+app.use('/widget', express.static(path.join(__dirname, 'public/widget'), {
+    index: false,
+    maxAge: '60s',
+    setHeaders: (res) => {
+        res.set('Cache-Control', 'public, max-age=60, s-maxage=60');
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    }
+}));
 // Static assets (CSS, JS, etc) but NOT index fallback
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
