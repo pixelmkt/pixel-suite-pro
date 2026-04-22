@@ -500,30 +500,6 @@
 .lab-sub .lab-bundle__cta:disabled { opacity: 0.5; cursor: not-allowed; background: #9ca3af !important; }
 
 /* ═══════════════════════════════════════════════════════════
-   BUNDLE PRODUCTS — ocultar selector de variantes nativo
-   En bundles (C4 15u, C4 30u, combos) las "variantes" SON los
-   planes (Plan 3 meses / Plan 6 meses). El widget ya los maneja
-   con chips — el selector nativo del tema es redundante.
-   Aplica solo cuando lab-bundle.js marca <html class="lab-sub--bundle-page">.
-   2026-04-22 · v128
-   ═══════════════════════════════════════════════════════════ */
-html.lab-sub--bundle-page variant-radios,
-html.lab-sub--bundle-page variant-selects,
-html.lab-sub--bundle-page variant-swatches,
-html.lab-sub--bundle-page fieldset.product-form__input,
-html.lab-sub--bundle-page .product-form__input--pill,
-html.lab-sub--bundle-page .product-form__input--dropdown,
-html.lab-sub--bundle-page .product-form__input--variant,
-html.lab-sub--bundle-page .product-form__input--swatch,
-html.lab-sub--bundle-page .product-form__input[class*="variant"],
-html.lab-sub--bundle-page .product-form__variants,
-html.lab-sub--bundle-page [data-variant-selects],
-html.lab-sub--bundle-page .variant-picker,
-html.lab-sub--bundle-page .product__variants,
-html.lab-sub--bundle-page form[action*="/cart/add"] fieldset legend,
-html.lab-sub--bundle-page .product-form__input.product-form__input--pill { display: none !important; }
-
-/* ═══════════════════════════════════════════════════════════
    LANDING C4 — secciones full-width sin bordes blancos
    Rompe el contenedor padre (.section-wrapper / .page-width)
    Aplica solo a .c4sec (landing del bundle C4) sin afectar otros productos
