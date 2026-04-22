@@ -108,7 +108,7 @@
         </div>
       </div>
       <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:12px;color:#166534;text-align:center;line-height:1.5">
-        <strong>Recibes 1 Creatina Monohidratada 500g cada mes</strong><br>
+        <strong>Recibes 1 {{ product.title | escape }} cada mes</strong><br>
         <span style="font-size:11px;color:#15803d">Se cobra automáticamente a tu tarjeta cada mes + S/10 de envío</span><br>
         <span style="font-size:10px;color:#16a34a;font-weight:600">Todos los precios incluyen IGV</span>
       </div>
@@ -164,9 +164,9 @@
       <div style="padding:28px">
         <div style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#9d2a23;margin-bottom:6px">LAB NUTRITION</div>
         <div style="font-size:19px;font-weight:900;margin-bottom:4px" id="modal-title-{{ block.id }}">Suscripción mensual</div>
-        <div style="font-size:13px;color:#666;margin-bottom:6px">{{ product.title }} — 500g</div>
+        <div style="font-size:13px;color:#666;margin-bottom:6px">{{ product.title }}{% if variant.title and variant.title != 'Default Title' %} — {{ variant.title }}{% endif %}</div>
         <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:11px;color:#9a3412;line-height:1.5;text-align:center">
-          <strong>Cada mes</strong> se cobra automáticamente a tu tarjeta y recibes <strong>1 unidad</strong> de {{ product.title }} 500g en tu dirección. El precio mostrado es <strong>por unidad mensual</strong> + S/10 de envío. <strong>Todos los precios incluyen IGV.</strong>
+          <strong>Cada mes</strong> se cobra automáticamente a tu tarjeta y recibes <strong>1 unidad</strong> de {{ product.title }}{% if variant.title and variant.title != 'Default Title' %} ({{ variant.title }}){% endif %} en tu dirección. El precio mostrado es <strong>por unidad mensual</strong> + S/10 de envío. <strong>Todos los precios incluyen IGV.</strong>
         </div>
         <div style="background:#f8f8f8;border-radius:8px;padding:14px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
           <div>
