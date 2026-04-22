@@ -500,6 +500,37 @@
 .lab-sub .lab-bundle__cta:disabled { opacity: 0.5; cursor: not-allowed; background: #9ca3af !important; }
 
 /* ═══════════════════════════════════════════════════════════
+   PRODUCTO SOLO-SUSCRIPCIÓN — opt-in via block setting
+   Se activa con checkbox "hide_native_on_bundle" en theme editor.
+   Oculta COMPLETAMENTE el form nativo del tema (selector variantes,
+   cantidad, botón Añadir al carrito, Buy it now, etc.) solo cuando:
+     1. El block setting está en ON
+     2. lab-bundle.js detectó bundle y añadió la clase al <html>
+   Aplica por-producto (por block). No afecta productos con compra única.
+   2026-04-22 · v130
+   ═══════════════════════════════════════════════════════════ */
+html.lab-sub--hide-native-form variant-radios,
+html.lab-sub--hide-native-form variant-selects,
+html.lab-sub--hide-native-form variant-swatches,
+html.lab-sub--hide-native-form quantity-input,
+html.lab-sub--hide-native-form fieldset.product-form__input,
+html.lab-sub--hide-native-form .product-form__input,
+html.lab-sub--hide-native-form .product-form__buttons,
+html.lab-sub--hide-native-form .product-form__submit,
+html.lab-sub--hide-native-form .product-form__quantity,
+html.lab-sub--hide-native-form .product-form__quantity-label,
+html.lab-sub--hide-native-form .product-form__input--quantity,
+html.lab-sub--hide-native-form .product-form__variants,
+html.lab-sub--hide-native-form .product__variants,
+html.lab-sub--hide-native-form .variant-picker,
+html.lab-sub--hide-native-form [data-variant-selects],
+html.lab-sub--hide-native-form .shopify-payment-button,
+html.lab-sub--hide-native-form button[name="add"],
+html.lab-sub--hide-native-form .product-form__cart-submit,
+html.lab-sub--hide-native-form [data-shopify="payment-button"],
+html.lab-sub--hide-native-form product-form > form > *:not(.lab-sub):not(script):not(style) { display: none !important; }
+
+/* ═══════════════════════════════════════════════════════════
    LANDING C4 — secciones full-width sin bordes blancos
    Rompe el contenedor padre (.section-wrapper / .page-width)
    Aplica solo a .c4sec (landing del bundle C4) sin afectar otros productos

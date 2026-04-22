@@ -309,6 +309,14 @@
           }
           _bundleConfig = cfg;
           _bundleSelected = {};
+          // 🏷️ OPCIONAL: solo si el theme editor activó "hide_native_on_bundle"
+          // Oculta form nativo (selector variante + cantidad + Añadir al carrito)
+          // porque el producto es exclusivamente suscripción.
+          try {
+            if (wrap.dataset.hideNative === '1') {
+              document.documentElement.classList.add('lab-sub--hide-native-form');
+            }
+          } catch(e){}
           // Pre-llenar selección para combos fijos (no hay picker)
           if (isCombo) {
             cfg.combo_items.forEach(function (it) {
