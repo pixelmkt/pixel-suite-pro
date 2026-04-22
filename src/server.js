@@ -5330,31 +5330,45 @@ app.post('/api/admin/bundles/create-product', async (req, res) => {
         if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
 
         const b = req.body || {};
-        if (!b.title) return res.status(400).json({ error: 'title is required' });
-        if (!Array.isArray(b.plans) || b.plans.length === 0) {
-            return res.status(400).json({ error: 'plans must be a non-empty array' });
+        // 2026-04-22 — ADITIVO: aceptar alias `name` y fallback a single variant
+        // para combos fijos (no necesitan múltiples planes como opciones de Shopify).
+        const title = b.title || b.name;
+        if (!title) return res.status(400).json({ error: 'title (or name) is required' });
+
+        let variants;
+        let options;
+        if (Array.isArray(b.plans) && b.plans.length > 0) {
+            variants = b.plans.map(p => ({
+                option1: String(p.name || `${p.permanence || 1} meses`),
+                price: String(Number(p.price || 0).toFixed(2)),
+                requires_shipping: true,
+                inventory_management: null,
+                taxable: true
+            }));
+            options = [{ name: 'Plan' }];
+        } else {
+            // Combo simple: un solo variant, precio referencial (el real lo cobra MP)
+            const price = Number(b.price || 1);
+            variants = [{
+                option1: 'Default',
+                price: String(price.toFixed(2)),
+                requires_shipping: true,
+                inventory_management: null,
+                taxable: true
+            }];
+            options = [{ name: 'Title' }];
         }
-        const variants = b.plans.map(p => ({
-            option1: String(p.name || `${p.permanence || 1} meses`),
-            price: String(Number(p.price || 0).toFixed(2)),
-            // requires_shipping=true (suscripciones llegan a domicilio)
-            requires_shipping: true,
-            // inventory_management null → Shopify no trackea stock (bundle virtual)
-            inventory_management: null,
-            // taxable → estándar (se mantiene configuración base de Shopify)
-            taxable: true
-        }));
 
         const productPayload = {
             product: {
-                title: String(b.title),
+                title: String(title),
                 body_html: b.description ? String(b.description) : '',
                 vendor: b.vendor ? String(b.vendor) : 'Lab Nutrition',
                 product_type: b.product_type ? String(b.product_type) : 'Suscripción',
                 tags: Array.isArray(b.tags) ? b.tags.join(', ') : 'suscripcion,bundle',
                 status: b.status ? String(b.status) : 'active',
                 published: b.published !== false,
-                options: [{ name: 'Plan' }],
+                options,
                 variants
             }
         };

@@ -1396,8 +1396,11 @@
           </div>
 
           <hr style="margin:14px 0;border:none;border-top:1px solid var(--bdr)">
-          <div style="font-weight:700;font-size:13px;margin-bottom:8px">1) Producto Shopify del combo *</div>
-          <div class="info-box" style="font-size:11px;margin-bottom:8px">Necesitas crear en Shopify un producto contenedor "PACK X + Y" (precio referencial — lo real lo cobra MP). Busca ese producto aquí:</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-weight:700;font-size:13px">1) Producto Shopify del combo *</div>
+            <button class="btn btn-g btn-sm" onclick="createComboShopifyProduct()" id="combo-create-prod-btn" title="Crea automáticamente el producto contenedor en Shopify">⚡ Crear producto contenedor</button>
+          </div>
+          <div class="info-box" style="font-size:11px;margin-bottom:8px">O si ya existe, búscalo aquí. El botón "⚡ Crear producto contenedor" lo crea automáticamente en Shopify (precio S/1 referencial, oculto de colecciones).</div>
           <div class="fr">
             <div class="fg" style="flex:1;position:relative">
               <input class="fsi" id="combo-product-search" placeholder="Busca por nombre (ej. 'Pack Creatina Whey')" oninput="debouncedSearchComboProduct(this.value)">
@@ -5602,6 +5605,37 @@
       document.getElementById('combo-product-search').value = product.title;
       document.getElementById('combo-product-results').style.display = 'none';
       document.getElementById('combo-product-selected').innerHTML = `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:12px"><strong>✓ Producto combo:</strong> ${escapeHtml(product.title)} · <code>${product.id}</code></div>`;
+    }
+
+    async function createComboShopifyProduct() {
+      const btn = document.getElementById('combo-create-prod-btn');
+      const comboName = document.getElementById('combo-name').value.trim();
+      if (!comboName) {
+        alert('Primero escribe el nombre del combo (campo de arriba).');
+        document.getElementById('combo-name').focus();
+        return;
+      }
+      if (!confirm(`Se creará en Shopify el producto contenedor "${comboName}" (precio S/1, oculto de colecciones). ¿Continuar?`)) return;
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = 'Creando...';
+      try {
+        const res = await fetch('/api/admin/bundles/create-product', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: comboName, price: 1, hidden: true })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo crear el producto');
+        // Auto-seleccionar el producto recién creado
+        selectComboProduct({ id: data.product_id, handle: data.handle || '', title: data.title || comboName });
+        btn.textContent = '✓ Creado';
+        setTimeout(() => { btn.disabled = false; btn.textContent = originalText; }, 2000);
+      } catch (e) {
+        alert('Error creando producto: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
     }
 
     function addComboItem() {
