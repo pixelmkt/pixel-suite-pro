@@ -192,9 +192,7 @@ async function removeProductsFromGroup(groupGid, productGids) {
             }
         }
     `;
-    const { data } = await client.query({
-        data: { query: mutation, variables: { id: groupGid, productIds: productGids } }
-    });
+    const data = await gql(mutation, { id: groupGid, productIds: productGids });
     const errs = data.sellingPlanGroupRemoveProducts.userErrors || [];
     if (errs.length) throw new Error(errs.map(e => e.message).join(' | '));
     return data.sellingPlanGroupRemoveProducts.removedProductIds;
