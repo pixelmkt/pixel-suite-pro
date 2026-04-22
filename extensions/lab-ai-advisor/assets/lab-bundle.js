@@ -48,10 +48,20 @@
     function bundleRenderHeader() {
       var plan = bundleCurrentPlan();
       if (!plan) return '';
+      var copy = _bundleConfig.widget_copy || {};
+      // ── COMBO FIJO: header simple, sin barra de progreso ──
+      if (isComboType()) {
+        var cTitle = copy.title || _bundleConfig.name || 'Suscripción combo';
+        var cSubtitle = copy.subtitle || (_bundleConfig.description || 'Elige tu plan y suscríbete');
+        return '' +
+          '<div class="lab-bundle__header">' +
+            '<div class="lab-bundle__title">' + escapeHtml(cTitle) + '</div>' +
+            '<div class="lab-bundle__subtitle">' + escapeHtml(cSubtitle) + '</div>' +
+          '</div>';
+      }
       var total = bundleTotalSelected();
       var target = _bundleConfig.target_quantity;
       var percent = Math.min(100, Math.round((total / target) * 100));
-      var copy = _bundleConfig.widget_copy || {};
       var title = copy.title || 'Arma tu mix';
       var subtitle = copy.subtitle || 'Elige tus sabores';
       var counterLbl = copy.counter_label || 'Unidades seleccionadas';
@@ -88,8 +98,38 @@
       return html;
     }
 
+    function isComboType() {
+      return _bundleConfig && _bundleConfig.type === 'fixed_combo';
+    }
+
     function bundleRenderFlavors() {
-      if (!_bundleConfig || !_bundleConfig.flavors) return '';
+      if (!_bundleConfig) return '';
+      // ── COMBO FIJO: no hay selector de sabores, mostrar los items tal cual ──
+      if (isComboType()) {
+        var items = _bundleConfig.combo_items || [];
+        if (!items.length) return '';
+        var html = '<div class="lab-bundle__flavors-head"><span class="lab-bundle__flavors-title">Cada caja incluye</span></div>';
+        html += '<div class="lab-bundle__combo-items" style="display:grid;grid-template-columns:1fr;gap:10px;margin:8px 0 16px">';
+        items.forEach(function (it) {
+          var qty = Number(it.quantity) || 1;
+          html += '<div class="lab-bundle__combo-item" style="display:flex;gap:12px;align-items:center;padding:10px 12px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px">';
+          if (it.image) {
+            html += '<img src="' + it.image + '" alt="' + escapeHtml(it.title || '') + '" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex:0 0 52px" loading="lazy">';
+          } else {
+            html += '<div style="width:52px;height:52px;background:#d1fae5;border-radius:8px;flex:0 0 52px"></div>';
+          }
+          html += '<div style="flex:1;min-width:0">';
+          html += '<div style="font-weight:700;font-size:13.5px;color:#064e3b">' + escapeHtml(it.title || 'Producto') + '</div>';
+          if (it.variant_title) html += '<div style="font-size:11.5px;color:#065f46">' + escapeHtml(it.variant_title) + '</div>';
+          html += '</div>';
+          html += '<div style="flex:0 0 auto;background:#16a34a;color:#fff;padding:4px 12px;border-radius:999px;font-weight:800;font-size:13px">' + qty + '×</div>';
+          html += '</div>';
+        });
+        html += '</div>';
+        return html;
+      }
+      // ── MIX & MATCH (original) ──
+      if (!_bundleConfig.flavors) return '';
       var target = _bundleConfig.target_quantity;
       var total = bundleTotalSelected();
       var remaining = target - total;
@@ -123,6 +163,10 @@
     }
 
     function bundleRenderSummary() {
+      // Combo fijo: no hay status "incompleto" ni "Tu mix" — está pre-armado
+      if (isComboType()) {
+        return '<div class="lab-bundle__status lab-bundle__status--ok">✓ Combo listo — elige tu plan y suscríbete</div>';
+      }
       var target = _bundleConfig.target_quantity;
       var total = bundleTotalSelected();
       var remaining = target - total;
@@ -149,6 +193,11 @@
 
     function bundleRenderCTA() {
       var plan = bundleCurrentPlan();
+      // Combo fijo: CTA siempre habilitado (el cliente solo elige el plan)
+      if (isComboType()) {
+        var lbl = 'Suscribirme — ' + bundleFormatPrice(plan.price) + '/mes';
+        return '<button class="lab-sub__cta lab-bundle__cta" id="bundle-cta-' + blkId + '" onclick="window.__bundleOpenModal_' + blkId + '()"><span class="lab-sub__cta-text">' + lbl + '</span></button>';
+      }
       var total = bundleTotalSelected();
       var target = _bundleConfig.target_quantity;
       var isComplete = total === target;
@@ -200,9 +249,11 @@
       bundleRender();
     };
     window['__bundleOpenModal_' + blkId] = function () {
-      if (bundleTotalSelected() !== _bundleConfig.target_quantity) return;
+      var isCombo = _bundleConfig && _bundleConfig.type === 'fixed_combo';
+      if (!isCombo && bundleTotalSelected() !== _bundleConfig.target_quantity) return;
       var plan = bundleCurrentPlan();
-      var modal = document.getElementById('lab-modal-' + blkId);
+      // FIX 2026-04-21: teleport modal a document.body para escapar overflow:hidden del .lab-sub
+      var modal = (window.__labSubTeleportModal ? window.__labSubTeleportModal(blkId) : document.getElementById('lab-modal-' + blkId));
       if (!modal) return;
       var title = document.getElementById('modal-title-' + blkId);
       var priceEl = document.getElementById('modal-price-' + blkId);
@@ -234,9 +285,18 @@
           return r.json();
         })
         .then(function (cfg) {
-          if (!cfg || !cfg.bundle_id || !cfg.flavors) return false;
+          if (!cfg || !cfg.bundle_id) return false;
+          var isCombo = cfg.type === 'fixed_combo';
+          if (!isCombo && !cfg.flavors) return false;
+          if (isCombo && (!cfg.combo_items || !cfg.combo_items.length)) return false;
           _bundleConfig = cfg;
           _bundleSelected = {};
+          // Pre-llenar selección para combos fijos (no hay picker)
+          if (isCombo) {
+            cfg.combo_items.forEach(function (it) {
+              _bundleSelected[it.variant_id] = Number(it.quantity) || 1;
+            });
+          }
           var onceTab = wrap.querySelector('.lab-sub__tab[data-tab="once"]');
           if (onceTab) onceTab.style.display = 'none';
           var subTab = wrap.querySelector('.lab-sub__tab[data-tab="sub"]');
@@ -289,16 +349,29 @@
         if (tcCheck && !tcCheck.checked) {
           return showErr('Debes aceptar los Términos y Condiciones para continuar.');
         }
-        if (bundleTotalSelected() !== _bundleConfig.target_quantity) {
+        var isCombo = _bundleConfig.type === 'fixed_combo';
+        if (!isCombo && bundleTotalSelected() !== _bundleConfig.target_quantity) {
           return showErr('Tu mix está incompleto. Ajusta las cantidades.');
         }
 
         var plan = bundleCurrentPlan();
         var bundleItems = [];
-        _bundleConfig.flavors.forEach(function (f) {
-          var q = Number(_bundleSelected[f.variant_id] || 0);
-          if (q > 0) bundleItems.push({ variant_id: String(f.variant_id), quantity: q, title: f.title, variant_title: f.full_title || f.title });
-        });
+        if (isCombo) {
+          (_bundleConfig.combo_items || []).forEach(function (it) {
+            var q = Number(it.quantity) || 1;
+            bundleItems.push({
+              variant_id: String(it.variant_id),
+              quantity: q,
+              title: it.title || '',
+              variant_title: it.variant_title || it.title || ''
+            });
+          });
+        } else {
+          _bundleConfig.flavors.forEach(function (f) {
+            var q = Number(_bundleSelected[f.variant_id] || 0);
+            if (q > 0) bundleItems.push({ variant_id: String(f.variant_id), quantity: q, title: f.title, variant_title: f.full_title || f.title });
+          });
+        }
         var subVariantId = plan.variant_id_perm || wrap.dataset.variant;
         var backendUrl = wrap.dataset.backend || 'https://pixel-suite-pro-production.up.railway.app';
         mBtnBundle.disabled = true; mBtnBundle.textContent = 'Procesando...';
