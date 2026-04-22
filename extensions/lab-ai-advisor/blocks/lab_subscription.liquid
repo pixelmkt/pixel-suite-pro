@@ -92,8 +92,8 @@
 
     <!-- Variant restriction notice — only shows when non-eligible variant is selected -->
     <div class="lab-sub__variant-notice" id="variant-notice-{{ block.id }}" style="display:none;background:#fffbeb;border:1px solid #f59e0b;border-radius:10px;padding:14px 16px;margin-bottom:16px;text-align:center">
-      <div style="font-size:13px;font-weight:700;color:#92400e">{{ block.settings.variant_notice_text | default: 'Suscripción disponible solo para la presentación de 500g' }}</div>
-      <div style="font-size:12px;color:#78716c;margin-top:4px">Selecciona la variante de <strong>500g</strong> para acceder a los planes de suscripción con descuento.</div>
+      <div style="font-size:13px;font-weight:700;color:#92400e">{{ block.settings.variant_notice_text | default: 'Suscripción no disponible para esta variante' }}</div>
+      <div style="font-size:12px;color:#78716c;margin-top:4px">Selecciona otra presentación para acceder a los planes de suscripción con descuento.</div>
     </div>
     <div id="sub-content-{{ block.id }}">
 
@@ -373,7 +373,35 @@
       if (oncePanel) oncePanel.classList.add('lab-sub__panel--active');
     }
   }
+  // 🔍 Auto-detect eligible variants from Shopify storefront (selling_plan_allocations).
+  // Esto hace que CUALQUIER producto con planes adjuntos en Shopify muestre suscripción
+  // sin necesidad de config manual. Fuente de verdad: Shopify admin.
+  function autoDetectEligibleFromStorefront() {
+    try {
+      fetch('/products/' + productHandle + '.js', { headers: { 'Accept': 'application/json' } })
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(prod){
+          if (!prod || !Array.isArray(prod.variants)) return;
+          var added = 0;
+          prod.variants.forEach(function(v){
+            var allocs = v.selling_plan_allocations;
+            if (allocs && allocs.length > 0) {
+              var vid = String(v.id);
+              if (eligibleVariants.indexOf(vid) === -1) {
+                eligibleVariants.push(vid);
+                added++;
+              }
+            }
+          });
+          if (added > 0) {
+            checkVariantEligibility(wrap.dataset.variant);
+          }
+        })
+        .catch(function(){});
+    } catch(e) {}
+  }
   checkVariantEligibility(wrap.dataset.variant);
+  autoDetectEligibleFromStorefront();
 
   function updateForVariant(v) {
     if (!v || !v.id) return;

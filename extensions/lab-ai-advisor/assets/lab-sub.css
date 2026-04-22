@@ -498,3 +498,36 @@
 .lab-sub .lab-bundle__summary-list li { font-size: 13px; color: #18181b; display: flex; gap: 6px; }
 .lab-sub .lab-bundle__summary-qty { font-weight: 800; color: var(--lab-primary, #9d2a23); min-width: 24px; }
 .lab-sub .lab-bundle__cta:disabled { opacity: 0.5; cursor: not-allowed; background: #9ca3af !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   LANDING C4 — secciones full-width sin bordes blancos
+   Rompe el contenedor padre (.section-wrapper / .page-width)
+   Aplica solo a .c4sec (landing del bundle C4) sin afectar otros productos
+   2026-04-22
+   ═══════════════════════════════════════════════════════════ */
+.c4sec,
+.c4-hero-pro,
+.c4-benefits-pro,
+.c4-savings,
+.c4-how,
+.c4-flavors,
+.c4-compare,
+.c4-testimonials,
+.c4-faq,
+.c4-final {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  margin-left: calc(50% - 50vw) !important;
+  margin-right: calc(50% - 50vw) !important;
+  box-sizing: border-box;
+}
+/* Anular padding/margin del wrapper padre del tema solo para estas secciones */
+.shopify-section:has(> * > * > * .c4sec),
+.shopify-section:has(.c4-hero-pro),
+.shopify-section:has(.c4-benefits-pro),
+.shopify-section:has(.c4-savings),
+.shopify-section:has(.c4-how) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  max-width: 100vw !important;
+}
