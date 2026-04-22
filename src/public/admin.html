@@ -3176,8 +3176,10 @@
     }
 
     // ── ADITIVO 2026-04-22 ── Vista agrupada por producto.
-    // Cada producto suscribible muestra sus planes (filtrados por plan.applies_to.product_ids).
-    // Incluye botón "+ Nuevo plan para este producto" que preselecciona el producto en el modal.
+    // Cada producto suscribible muestra sus planes:
+    //   - Productos simples (Creatina, Whey, etc.) → planes de plans_config filtrados por applies_to.product_ids
+    //   - Productos bundle (C4 Mix & Match Bundle 15/30) → planes de bundle_configs (otro sistema aparte)
+    // Así el admin refleja la verdad: TODOS los planes que un producto proyecta en el widget.
     async function renderPlansByProduct() {
       const container = document.getElementById('plans-by-product');
       if (!container) return;
@@ -3187,27 +3189,109 @@
           _shopifyProds = Array.isArray(data) ? data : [];
         }
       } catch (e) {}
-      const eligibles = (_shopifyProds || []).filter(p => p.subscription_enabled);
+      // Carga bundles si no están en caché (vive en /api/admin/bundles; tab "Bundles" la popula)
+      if (!_bundlesCache || !_bundlesCache.length) {
+        try {
+          const r = await fetch('/api/admin/bundles');
+          if (r.ok) {
+            const d = await r.json();
+            _bundlesCache = d.bundles || [];
+          }
+        } catch (e) { /* no-blocking */ }
+      }
+
+      const bundleByProductId = new Map(
+        (_bundlesCache || [])
+          .filter(b => b.bundle_product_id && b.active !== false)
+          .map(b => [String(b.bundle_product_id), b])
+      );
+
+      // Eligibles = productos suscribibles + productos bundle (aunque no tengan subscription_enabled)
+      const subscribable = (_shopifyProds || []).filter(p => p.subscription_enabled);
+      const subscribableIds = new Set(subscribable.map(p => String(p.shopify_id)));
+      // Añade productos bundle que NO estén ya listados
+      const bundleOnlyRows = [];
+      for (const [bpid, b] of bundleByProductId.entries()) {
+        if (subscribableIds.has(bpid)) continue;
+        // Intenta obtener título/imagen desde _shopifyProds; si no, usa el del bundle
+        const prodInfo = (_shopifyProds || []).find(pp => String(pp.shopify_id) === bpid);
+        bundleOnlyRows.push({
+          shopify_id: bpid,
+          title: prodInfo?.title || b.name || ('Bundle ' + bpid),
+          image: prodInfo?.image || null,
+          subscription_enabled: false,
+          _bundleOnly: true
+        });
+      }
+      const eligibles = [...subscribable, ...bundleOnlyRows];
+
       const countEl = document.getElementById('plans-by-product-count');
-      if (countEl) countEl.textContent = eligibles.length + ' productos con suscripción';
+      const simpleCount = eligibles.filter(p => !bundleByProductId.has(String(p.shopify_id))).length;
+      const bundleCount = bundleByProductId.size;
+      if (countEl) countEl.textContent = `${eligibles.length} productos · ${simpleCount} con planes simples · ${bundleCount} bundle${bundleCount===1?'':'s'}`;
       if (!eligibles.length) {
-        container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--mut);font-size:13px">No hay productos con suscripción activa. Activa la suscripción en la pestaña <strong>Productos</strong>.</div>';
+        container.innerHTML = '<div style="padding:16px;text-align:center;color:var(--mut);font-size:13px">No hay productos con suscripción activa. Activa la suscripción en la pestaña <strong>Productos</strong> o crea un bundle en la pestaña <strong>Bundles</strong>.</div>';
         return;
       }
 
       container.innerHTML = eligibles.map(prod => {
         const pid = String(prod.shopify_id);
-        // Planes que aplican a este producto (por plan.applies_to.product_ids).
-        // Compat: planes viejos sin applies_to se consideran GLOBALES (aplican a todos).
+        const bundle = bundleByProductId.get(pid);
+        const isBundle = !!bundle;
+
+        const noImg = '<div style="width:48px;height:48px;border-radius:10px;background:#f3f4f6;flex:0 0 48px"></div>';
+        const img = prod.image
+          ? `<img src="${prod.image}" style="width:48px;height:48px;border-radius:10px;object-fit:cover;border:1px solid var(--bdr);flex:0 0 48px">`
+          : noImg;
+        const titleEsc = (prod.title || '').replace(/"/g,'&quot;');
+
+        if (isBundle) {
+          // ── Bundle (C4 Mix & Match): planes viven en bundle_configs ──
+          const bPlans = Array.isArray(bundle.plans) ? bundle.plans : [];
+          const plansHtml = bPlans.length
+            ? `<table style="width:100%;border-collapse:collapse;margin-top:10px">
+                <thead><tr style="font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px">
+                  <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Plan</th>
+                  <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Perm.</th>
+                  <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Precio</th>
+                  <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Descuento</th>
+                  <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Cantidad pack</th>
+                </tr></thead>
+                <tbody>${bPlans.map(p => {
+                  const freq = p.freq_months || 1;
+                  const perm = p.perm_months || 0;
+                  const price = p.price != null ? ('S/ ' + Number(p.price).toFixed(2)) : '—';
+                  const disc = p.discount_pct != null ? p.discount_pct : 0;
+                  const freqLabel = FREQ_LABELS[String(freq)] || (freq + ' meses');
+                  return `<tr>
+                    <td style="padding:8px;vertical-align:middle"><strong>${freqLabel}</strong></td>
+                    <td style="padding:8px;vertical-align:middle">${perm} m</td>
+                    <td style="padding:8px;vertical-align:middle"><strong>${price}</strong></td>
+                    <td style="padding:8px;vertical-align:middle"><strong style="color:${disc>0?'var(--grn)':'var(--mut)'}">${disc}%</strong></td>
+                    <td style="padding:8px;vertical-align:middle">${bundle.target_quantity || '—'} u</td>
+                  </tr>`;
+                }).join('')}</tbody>
+              </table>`
+            : `<div style="padding:14px 0;color:var(--mut);font-size:12.5px">Este bundle no tiene planes. Edítalo desde la pestaña <strong>Bundles</strong>.</div>`;
+          return `<div style="border:1px solid #c7d2fe;border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#eef2ff">
+            <div style="display:flex;align-items:center;gap:12px">
+              ${img}
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:700;font-size:14px">${titleEsc} <span style="display:inline-block;margin-left:6px;padding:1px 7px;background:#4f46e5;color:#fff;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.3px">BUNDLE MIX &amp; MATCH</span></div>
+                <div style="font-size:11px;color:var(--mut)">ID ${pid} · ${bPlans.length} plan${bPlans.length===1?'':'es'} de bundle · ${bundle.target_quantity || 0} unidades</div>
+              </div>
+              <button class="btn btn-g btn-sm" onclick="openEditBundle('${bundle.id}')" title="Los planes de bundle se editan en su propio modal (mix & match tiene lógica especial de cantidades + precio fijo)">✏️ Editar bundle</button>
+            </div>
+            ${plansHtml}
+          </div>`;
+        }
+
+        // ── Producto simple: planes de plans_config filtrados por applies_to ──
         const myPlans = (_plans || []).filter(p => {
           const mode = p.applies_to?.mode || 'all_products';
           if (mode === 'all_products') return true;
           return (p.applies_to?.product_ids || []).map(String).includes(pid);
         });
-        const noImg = '<div style="width:48px;height:48px;border-radius:10px;background:#f3f4f6;flex:0 0 48px"></div>';
-        const img = prod.image
-          ? `<img src="${prod.image}" style="width:48px;height:48px;border-radius:10px;object-fit:cover;border:1px solid var(--bdr);flex:0 0 48px">`
-          : noImg;
         const plansHtml = myPlans.length
           ? `<table style="width:100%;border-collapse:collapse;margin-top:10px">
               <thead><tr style="font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px">
@@ -3247,7 +3331,6 @@
               }).join('')}</tbody>
             </table>`
           : `<div style="padding:14px 0;color:var(--mut);font-size:12.5px">Sin planes. Usa el botón <em>+ Nuevo plan</em> abajo.</div>`;
-        const titleEsc = (prod.title || '').replace(/"/g,'&quot;');
         return `<div style="border:1px solid var(--bdr);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff">
           <div style="display:flex;align-items:center;gap:12px">
             ${img}
