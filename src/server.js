@@ -5535,7 +5535,7 @@ app.post('/api/admin/products/:id/bust-cache', async (req, res) => {
  */
 app.post('/api/admin/bust-cache-all-bundles', async (req, res) => {
     try {
-        const bundles = await db.listBundleConfigs();
+        const bundles = await db.getBundleConfigs({ active: true });
         const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
         const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
         if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
