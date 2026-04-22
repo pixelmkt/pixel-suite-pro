@@ -1330,6 +1330,7 @@
           <div class="ps">Mix &amp; Match (el cliente elige sabores) + Combos fijos (2+ productos diferentes predefinidos por ti).</div>
         </div>
         <div style="display:flex;gap:8px">
+          <button class="btn btn-g btn-sm" onclick="bustCacheAllBundles()" id="btn-bust-cache" title="Fuerza a Shopify a regenerar el HTML de todas las páginas de bundles (útil tras cambios al widget)">🔄 Refrescar widget en tienda</button>
           <button class="btn btn-g" onclick="openNewComboModal()">+ Nuevo combo fijo</button>
           <button class="btn btn-r" onclick="openNewBundleModal()">+ Nuevo bundle mix&amp;match</button>
         </div>
@@ -5605,6 +5606,27 @@
       document.getElementById('combo-product-search').value = product.title;
       document.getElementById('combo-product-results').style.display = 'none';
       document.getElementById('combo-product-selected').innerHTML = `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:12px"><strong>✓ Producto combo:</strong> ${escapeHtml(product.title)} · <code>${product.id}</code></div>`;
+    }
+
+    async function bustCacheAllBundles() {
+      const btn = document.getElementById('btn-bust-cache');
+      if (!confirm('Esto forzará a Shopify a regenerar el HTML de todas las páginas de bundles/combos activos para que carguen el widget más reciente. ¿Continuar?')) return;
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = 'Refrescando...';
+      try {
+        const res = await fetch('/api/admin/bust-cache-all-bundles', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error');
+        const ok = (data.results || []).filter(r => r.ok).length;
+        btn.textContent = `✓ ${ok}/${data.total} refrescados`;
+        alert(`✓ Cache invalidado en ${ok}/${data.total} productos con bundle/combo.\n\nEl storefront regenera el HTML en ~5-30 segundos.\n\nAbre una página de bundle en ventana incógnito para verificar (el navegador normal puede tener cache propio).`);
+        setTimeout(() => { btn.disabled = false; btn.textContent = original; }, 4000);
+      } catch (e) {
+        alert('Error: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = original;
+      }
     }
 
     async function createComboShopifyProduct() {

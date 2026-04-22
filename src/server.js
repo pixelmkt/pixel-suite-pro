@@ -5466,6 +5466,119 @@ app.post('/api/admin/products/:id/status', async (req, res) => {
 });
 
 /**
+ * POST /api/admin/products/:id/bust-cache
+ * 2026-04-22 — ADITIVO
+ * Fuerza invalidación del cache del storefront de Shopify tocando el producto.
+ * Shopify cachea el HTML del product page 5-15 min; cualquier update al product
+ * dispara invalidation. Esto es útil tras deploys de theme app extension para
+ * que los assets nuevos (lab-bundle.js v119+) se carguen inmediatamente.
+ *
+ * Estrategia: agregar un tag temporal "_cache_bust_<timestamp>" y quitarlo 2s después.
+ */
+app.post('/api/admin/products/:id/bust-cache', async (req, res) => {
+    try {
+        const productId = String(req.params.id || '').trim();
+        if (!productId) return res.status(400).json({ error: 'productId required' });
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+
+        // 1. GET tags actuales
+        const getUrl = `https://${shop}/admin/api/2026-01/products/${encodeURIComponent(productId)}.json?fields=id,tags,handle,title`;
+        const r1 = await fetch(getUrl, { headers: { 'X-Shopify-Access-Token': token } });
+        if (!r1.ok) return res.status(r1.status).json({ error: `Shopify GET ${r1.status}` });
+        const cur = (await r1.json()).product || {};
+        const originalTags = (cur.tags || '').trim();
+
+        // 2. PUT con tag cache-bust temporal
+        const ts = Date.now();
+        const bustTag = `_cache_bust_${ts}`;
+        const newTags = originalTags ? `${originalTags}, ${bustTag}` : bustTag;
+        const putUrl = `https://${shop}/admin/api/2026-01/products/${encodeURIComponent(productId)}.json`;
+        const r2 = await fetch(putUrl, {
+            method: 'PUT',
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product: { id: productId, tags: newTags } })
+        });
+        if (!r2.ok) {
+            const t = await r2.text();
+            return res.status(r2.status).json({ error: `Shopify PUT ${r2.status}`, detail: t.slice(0, 300) });
+        }
+
+        // 3. Revertir tag original en background (2s delay) para dejar el producto limpio
+        setTimeout(() => {
+            fetch(putUrl, {
+                method: 'PUT',
+                headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ product: { id: productId, tags: originalTags } })
+            }).catch(e => console.warn('[bust-cache] revert tag failed:', e.message));
+        }, 2500);
+
+        res.json({
+            ok: true,
+            product_id: productId,
+            handle: cur.handle,
+            title: cur.title,
+            storefront_url: `https://${shop.replace('.myshopify.com', '')}/products/${cur.handle}`,
+            bust_tag: bustTag,
+            message: 'Cache invalidation triggered. Storefront HTML se actualiza en ~5-30s.'
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
+ * POST /api/admin/bust-cache-all-bundles
+ * 2026-04-22 — ADITIVO
+ * Invalida cache de TODOS los productos con bundles/combos activos.
+ * Útil tras un deploy de theme app extension: toca cada producto bundle
+ * para que Shopify regenere su HTML con los asset_url más recientes.
+ */
+app.post('/api/admin/bust-cache-all-bundles', async (req, res) => {
+    try {
+        const bundles = await db.listBundleConfigs();
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+
+        const targets = (bundles || []).filter(b => b.active !== false && b.bundle_product_id);
+        const results = [];
+        for (const b of targets) {
+            try {
+                const getUrl = `https://${shop}/admin/api/2026-01/products/${encodeURIComponent(b.bundle_product_id)}.json?fields=id,tags,handle`;
+                const r1 = await fetch(getUrl, { headers: { 'X-Shopify-Access-Token': token } });
+                if (!r1.ok) { results.push({ id: b.bundle_product_id, ok: false, error: `GET ${r1.status}` }); continue; }
+                const cur = (await r1.json()).product || {};
+                const originalTags = (cur.tags || '').trim();
+                const bustTag = `_cache_bust_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+                const newTags = originalTags ? `${originalTags}, ${bustTag}` : bustTag;
+                const putUrl = `https://${shop}/admin/api/2026-01/products/${encodeURIComponent(b.bundle_product_id)}.json`;
+                const r2 = await fetch(putUrl, {
+                    method: 'PUT',
+                    headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product: { id: b.bundle_product_id, tags: newTags } })
+                });
+                results.push({ id: b.bundle_product_id, handle: cur.handle, ok: r2.ok, bustTag });
+                // Revertir tags en 3s (no await — fire and forget)
+                const currentTags = originalTags;
+                const pid = b.bundle_product_id;
+                setTimeout(() => {
+                    fetch(putUrl, {
+                        method: 'PUT',
+                        headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ product: { id: pid, tags: currentTags } })
+                    }).catch(() => { });
+                }, 3000);
+                // Pausa pequeña entre productos para no saturar Shopify
+                await new Promise(r => setTimeout(r, 350));
+            } catch (e) {
+                results.push({ id: b.bundle_product_id, ok: false, error: e.message });
+            }
+        }
+        res.json({ ok: true, total: targets.length, results });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
  * POST /api/admin/products/:id/template-suffix
  * 2026-04-21 — ADITIVO
  * Asigna template_suffix a un producto. Requiere write_products (ya lo tenemos).
