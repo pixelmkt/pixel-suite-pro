@@ -278,6 +278,15 @@
       var productId = wrap.dataset.product;
       var backendUrl = wrap.dataset.backend || 'https://pixel-suite-pro-production.up.railway.app';
       if (!productId) return Promise.resolve(false);
+      // ── DEFENSIVO 2026-04-22: ocultar chips pre-renderizadas del Liquid mientras
+      //    esperamos la respuesta del backend. Así evitamos el flash de "Mensual · 3 meses"
+      //    en bundles. Si NO es bundle, el fallback loadConfig() las re-muestra.
+      var subPanelEarly = wrap.querySelector('.lab-sub__panel[data-panel="sub"]');
+      if (subPanelEarly && !subPanelEarly.dataset.labLoading) {
+        subPanelEarly.dataset.labLoading = '1';
+        subPanelEarly.dataset.originalHtml = subPanelEarly.innerHTML;
+        subPanelEarly.innerHTML = '<div style="padding:40px 20px;text-align:center;color:#9ca3af;font-size:13px">Cargando configuración…</div>';
+      }
       return fetch(backendUrl + '/api/bundles/product/' + encodeURIComponent(productId) + '/config')
         .then(function (r) {
           if (r.status === 404 || r.status === 410) return null;
@@ -285,10 +294,19 @@
           return r.json();
         })
         .then(function (cfg) {
-          if (!cfg || !cfg.bundle_id) return false;
-          var isCombo = cfg.type === 'fixed_combo';
-          if (!isCombo && !cfg.flavors) return false;
-          if (isCombo && (!cfg.combo_items || !cfg.combo_items.length)) return false;
+          var isBundle = !!(cfg && cfg.bundle_id);
+          var isCombo = isBundle && cfg.type === 'fixed_combo';
+          if (isBundle && !isCombo && !cfg.flavors) isBundle = false;
+          if (isBundle && isCombo && (!cfg.combo_items || !cfg.combo_items.length)) isBundle = false;
+          if (!isBundle) {
+            // Restaurar HTML original del Liquid para que loadConfig() del tema funcione normal
+            if (subPanelEarly && subPanelEarly.dataset.originalHtml !== undefined) {
+              subPanelEarly.innerHTML = subPanelEarly.dataset.originalHtml;
+              delete subPanelEarly.dataset.originalHtml;
+              delete subPanelEarly.dataset.labLoading;
+            }
+            return false;
+          }
           _bundleConfig = cfg;
           _bundleSelected = {};
           // Pre-llenar selección para combos fijos (no hay picker)
@@ -314,10 +332,23 @@
           if (notice) notice.style.display = 'none';
           var subContent = document.getElementById('sub-content-' + blkId);
           if (subContent) subContent.style.display = '';
+          // Clear loading flag so bundleRender puede hacer innerHTML limpio
+          if (subPanel) {
+            delete subPanel.dataset.labLoading;
+            delete subPanel.dataset.originalHtml;
+          }
           bundleRender();
           return true;
         })
-        .catch(function () { return false; });
+        .catch(function () {
+          // En error, restaurar HTML original para no dejar pantalla en blanco
+          if (subPanelEarly && subPanelEarly.dataset.originalHtml !== undefined) {
+            subPanelEarly.innerHTML = subPanelEarly.dataset.originalHtml;
+            delete subPanelEarly.dataset.originalHtml;
+            delete subPanelEarly.dataset.labLoading;
+          }
+          return false;
+        });
     }
 
     // Hook submit del modal para enviar bundle_items si hay bundle activo
