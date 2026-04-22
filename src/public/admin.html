@@ -1178,7 +1178,7 @@
           <div class="ps">Crea, edita y activa los planes disponibles para tus clientes</div>
         </div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-r" onclick="openNewPlanModal()">+ Nuevo plan</button>
+          <button class="btn btn-r" onclick="openPlanTypeSelector()" title="Elige qué tipo de plan quieres crear">+ Crear plan</button>
           <button class="btn" style="background:#18181b;color:#fff;border:none" onclick="syncSellingPlans()" id="sync-btn" title="Sincroniza los planes con Shopify para que aparezcan nativamente en la página del producto">
             <span id="sync-btn-label">⬆ Sync Shopify</span>
           </button>
@@ -1232,6 +1232,53 @@
         </div>
       </div>
     </div>
+
+    <!-- MODAL SELECTOR DE TIPO DE PLAN (unified entry) 2026-04-22 -->
+    <div id="plan-type-selector"
+      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1200;align-items:center;justify-content:center;padding:20px">
+      <div style="background:#fff;border-radius:16px;width:780px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:32px;position:relative;box-shadow:0 30px 60px rgba(0,0,0,.35)">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:22px">
+          <div>
+            <div style="font-size:17px;font-weight:900;text-transform:uppercase;letter-spacing:.5px">¿Qué tipo de plan quieres crear?</div>
+            <div style="font-size:12.5px;color:var(--mut);margin-top:4px">Elige el formato adecuado para este producto</div>
+          </div>
+          <button onclick="document.getElementById('plan-type-selector').style.display='none'" style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--mut);padding:0;line-height:1">&times;</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+          <!-- Opción 1: Plan Simple -->
+          <button onclick="pickPlanType('simple')" class="plan-type-card" style="background:#fafafa;border:2px solid #e5e7eb;border-radius:14px;padding:20px 18px;text-align:left;cursor:pointer;transition:all .18s ease;font-family:inherit">
+            <div style="font-size:24px;margin-bottom:8px">📦</div>
+            <div style="font-size:14.5px;font-weight:800;color:#18181b;margin-bottom:6px">Plan Simple</div>
+            <div style="font-size:11.5px;color:var(--mut);line-height:1.5;margin-bottom:10px">Suscripción a <strong>un solo producto</strong>. El cliente recibe la misma unidad cada ciclo.</div>
+            <div style="font-size:10.5px;color:#059669;font-weight:700">Ej: Creatina · Whey · Pre-workout</div>
+          </button>
+          <!-- Opción 2: Mix & Match -->
+          <button onclick="pickPlanType('mixmatch')" class="plan-type-card" style="background:#fafafa;border:2px solid #e5e7eb;border-radius:14px;padding:20px 18px;text-align:left;cursor:pointer;transition:all .18s ease;font-family:inherit">
+            <div style="font-size:24px;margin-bottom:8px">🎨</div>
+            <div style="font-size:14.5px;font-weight:800;color:#18181b;margin-bottom:6px">Mix &amp; Match</div>
+            <div style="font-size:11.5px;color:var(--mut);line-height:1.5;margin-bottom:10px">El cliente <strong>elige N sabores</strong> del mismo producto. Tú fijas el total.</div>
+            <div style="font-size:10.5px;color:#059669;font-weight:700">Ej: C4 Energy 15 latas mix</div>
+          </button>
+          <!-- Opción 3: Combo Fijo -->
+          <button onclick="pickPlanType('combo')" class="plan-type-card" style="background:#fafafa;border:2px solid #e5e7eb;border-radius:14px;padding:20px 18px;text-align:left;cursor:pointer;transition:all .18s ease;font-family:inherit">
+            <div style="font-size:24px;margin-bottom:8px">🎁</div>
+            <div style="font-size:14.5px;font-weight:800;color:#18181b;margin-bottom:6px">Combo Fijo</div>
+            <div style="font-size:11.5px;color:var(--mut);line-height:1.5;margin-bottom:10px"><strong>Tú defines</strong> qué productos van en la caja. El cliente solo elige el plan.</div>
+            <div style="font-size:10.5px;color:#059669;font-weight:700">Ej: 1 Creatina + 1 Whey</div>
+          </button>
+        </div>
+        <div class="info-box" style="margin-top:20px;font-size:12px">💡 Los 3 tipos usan el mismo motor de cobros Mercado Pago y se sincronizan con Shopify al guardar. Los precios y descuentos se configuran dentro de cada formulario.</div>
+      </div>
+    </div>
+
+    <style>
+      .plan-type-card:hover {
+        border-color: #9d2a23 !important;
+        background: #fff !important;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(157,42,35,.12);
+      }
+    </style>
 
     <!-- MODAL NUEVO PLAN -->
     <div id="plan-modal"
@@ -3661,6 +3708,34 @@
       populatePlanProductSelect(preselectProductId || '');
       resetGiftsUI();
       document.getElementById('plan-modal').style.display = 'flex';
+    }
+
+    // Selector unificado de tipo de plan (2026-04-22)
+    function openPlanTypeSelector() {
+      var el = document.getElementById('plan-type-selector');
+      if (el) el.style.display = 'flex';
+    }
+    function pickPlanType(type) {
+      var sel = document.getElementById('plan-type-selector');
+      if (sel) sel.style.display = 'none';
+      if (type === 'simple') {
+        openNewPlanModal();
+      } else if (type === 'mixmatch') {
+        if (typeof openNewBundleModal === 'function') {
+          openNewBundleModal();
+        } else {
+          // Si la función vive en otro scope, navega al panel Bundles
+          var tab = document.querySelector('[data-tab="bundles"], [onclick*="bundles"]');
+          if (tab) tab.click();
+        }
+      } else if (type === 'combo') {
+        if (typeof openNewComboModal === 'function') {
+          openNewComboModal();
+        } else {
+          var tab2 = document.querySelector('[data-tab="bundles"], [onclick*="bundles"]');
+          if (tab2) tab2.click();
+        }
+      }
     }
 
     function editPlan(i) {
