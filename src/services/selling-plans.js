@@ -180,4 +180,24 @@ async function syncProductPlans({ productId, productGid, productTitle, plans, va
     return { synced: true, group, variantGids: variantGids || [] };
 }
 
-module.exports = { createSellingPlanGroup, getProductSellingPlans, deleteSellingPlanGroup, syncProductPlans };
+/* Remove a product from a selling plan group (desasocia sin borrar el grupo).
+ * Útil cuando el grupo es fantasma (sellingPlanGroupDelete devuelve "does not exist"
+ * pero productSellingPlanGroups.nodes sigue listando el grupo). */
+async function removeProductsFromGroup(groupGid, productGids) {
+    const mutation = `
+        mutation RemoveProductsFromGroup($id: ID!, $productIds: [ID!]!) {
+            sellingPlanGroupRemoveProducts(id: $id, productIds: $productIds) {
+                removedProductIds
+                userErrors { field message }
+            }
+        }
+    `;
+    const { data } = await client.query({
+        data: { query: mutation, variables: { id: groupGid, productIds: productGids } }
+    });
+    const errs = data.sellingPlanGroupRemoveProducts.userErrors || [];
+    if (errs.length) throw new Error(errs.map(e => e.message).join(' | '));
+    return data.sellingPlanGroupRemoveProducts.removedProductIds;
+}
+
+module.exports = { createSellingPlanGroup, getProductSellingPlans, deleteSellingPlanGroup, removeProductsFromGroup, syncProductPlans };

@@ -2241,6 +2241,23 @@ app.delete('/api/selling-plan-groups/:groupGidB64', async (req, res) => {
     }
 });
 
+/* Desasocia un producto de un selling plan group (sin borrar el grupo).
+ * Usado para grupos fantasma: sellingPlanGroupDelete devuelve "does not exist" pero
+ * el producto sigue viendo el grupo en getProductSellingPlans. Desasociando elimina
+ * los selling plans residuales del storefront de ese producto. */
+app.post('/api/selling-plan-groups/detach', async (req, res) => {
+    if (!sellingPlans.removeProductsFromGroup) return res.status(503).json({ error: 'service unavailable' });
+    try {
+        const { groupGid, productIds } = req.body || {};
+        if (!groupGid || !Array.isArray(productIds) || !productIds.length) return res.status(400).json({ error: 'Expected { groupGid, productIds: [] }' });
+        const productGids = productIds.map(id => id.startsWith('gid://') ? id : `gid://shopify/Product/${id}`);
+        const removed = await sellingPlans.removeProductsFromGroup(groupGid, productGids);
+        res.json({ detached: true, removed });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 /* ═══════════════════════════════════════════════════════════════
    🛒 SHOPIFY WEBHOOK — orders/paid
    When a customer completes checkout with a Selling Plan:
