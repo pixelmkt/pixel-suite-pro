@@ -2196,21 +2196,46 @@ app.get('/api/selling-plans/:productId', async (req, res) => {
     }
 });
 
-/* Remove selling plans from a product */
+/* Remove selling plans from a product.
+ * ?force=1 → borra TODOS los grupos sin filtro de nombre (útil para limpiar residuales).
+ * Reporta success/error por cada grupo en el response.
+ * ADITIVO 2026-04-22: antes silenciaba errores con .catch(() => {}) lo que causaba
+ *   que grupos legacy "PRUEBA" quedaran colgados incluso tras DELETE + sync.
+ */
 app.delete('/api/selling-plans/:productId', async (req, res) => {
     if (!sellingPlans.getProductSellingPlans || !sellingPlans.deleteSellingPlanGroup) return res.json({ deleted: 0 });
     try {
+        const force = req.query.force === '1' || req.query.force === 'true';
         const productGid = `gid://shopify/Product/${req.params.productId}`;
         const product = await sellingPlans.getProductSellingPlans(productGid);
         const groups = product && product.sellingPlanGroups ? product.sellingPlanGroups.nodes : [];
-        let deleted = 0;
+        const results = [];
         for (const g of groups) {
-            if (g.name && (g.name.includes('LAB') || g.name.includes('PRUEBA') || g.name.includes('Suscripción'))) {
-                await sellingPlans.deleteSellingPlanGroup(g.id).catch(() => {});
-                deleted++;
+            const matchesFilter = g.name && (g.name.includes('LAB') || g.name.includes('PRUEBA') || g.name.includes('Suscripción'));
+            if (!force && !matchesFilter) { results.push({ id: g.id, name: g.name, skipped: true, reason: 'name filter' }); continue; }
+            try {
+                await sellingPlans.deleteSellingPlanGroup(g.id);
+                results.push({ id: g.id, name: g.name, deleted: true });
+            } catch (e) {
+                results.push({ id: g.id, name: g.name, deleted: false, error: e.message });
             }
         }
-        res.json({ deleted });
+        const deleted = results.filter(r => r.deleted).length;
+        res.json({ deleted, total: groups.length, results });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/* DELETE por group-id exacto (fallback para casos donde el DELETE por producto no alcanza) */
+app.delete('/api/selling-plan-groups/:groupGidB64', async (req, res) => {
+    if (!sellingPlans.deleteSellingPlanGroup) return res.status(503).json({ error: 'service unavailable' });
+    try {
+        // el group GID se pasa base64-encoded para evitar problemas con slashes en URLs
+        const groupGid = Buffer.from(req.params.groupGidB64, 'base64').toString('utf8');
+        if (!/^gid:\/\/shopify\/SellingPlanGroup\//.test(groupGid)) return res.status(400).json({ error: 'invalid group gid' });
+        const id = await sellingPlans.deleteSellingPlanGroup(groupGid);
+        res.json({ deleted: true, id });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
