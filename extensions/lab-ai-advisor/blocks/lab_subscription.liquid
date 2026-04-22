@@ -91,8 +91,8 @@
   <div class="lab-sub__panel" data-panel="sub">
 
     <!-- Variant restriction notice — only shows when non-eligible variant is selected -->
-    <div class="lab-sub__variant-notice" id="variant-notice-{{ block.id }}" style="display:none;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:10px;padding:14px 16px;margin-bottom:16px;text-align:center">
-      <div style="font-size:13px;font-weight:700;color:#92400e">⚠️ {{ block.settings.variant_notice_text | default: 'Suscripción disponible solo para la presentación de 500g' }}</div>
+    <div class="lab-sub__variant-notice" id="variant-notice-{{ block.id }}" style="display:none;background:#fffbeb;border:1px solid #f59e0b;border-radius:10px;padding:14px 16px;margin-bottom:16px;text-align:left">
+      <div style="font-size:13px;font-weight:700;color:#92400e">{{ block.settings.variant_notice_text | default: 'Suscripción disponible solo para la presentación de 500g' }}</div>
       <div style="font-size:12px;color:#78716c;margin-top:4px">Selecciona la variante de <strong>500g</strong> para acceder a los planes de suscripción con descuento.</div>
     </div>
     <div id="sub-content-{{ block.id }}">
@@ -107,10 +107,9 @@
           <button class="lab-sub__chip" data-plan-key="m1_p6">Mensual · 6 meses</button>
         </div>
       </div>
-      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:12px;color:#166534;text-align:center;line-height:1.5">
-        <strong>Recibes 1 {{ product.title | escape }} cada mes</strong><br>
-        <span style="font-size:11px;color:#15803d">Se cobra automáticamente a tu tarjeta cada mes + S/10 de envío</span><br>
-        <span style="font-size:10px;color:#16a34a;font-weight:600">Todos los precios incluyen IGV</span>
+      <div style="background:#f8faf9;border:1px solid #e3ebe7;border-radius:10px;padding:14px 16px;margin-bottom:14px;font-size:12.5px;color:#1f2937;text-align:left;line-height:1.55">
+        <div style="font-weight:700;color:#111;letter-spacing:-.1px">Recibes 1 {{ product.title | escape }} cada mes</div>
+        <div style="font-size:11.5px;color:#6b7280;margin-top:3px">Cobro automático mensual · envío S/10 · IGV incluido</div>
       </div>
 
       {% if block.settings.show_benefit_box %}
@@ -165,8 +164,8 @@
         <div style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#9d2a23;margin-bottom:6px">LAB NUTRITION</div>
         <div style="font-size:19px;font-weight:900;margin-bottom:4px" id="modal-title-{{ block.id }}">Suscripción mensual</div>
         <div style="font-size:13px;color:#666;margin-bottom:6px">{{ product.title }}{% if variant.title and variant.title != 'Default Title' %} — {{ variant.title }}{% endif %}</div>
-        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:11px;color:#9a3412;line-height:1.5;text-align:center">
-          <strong>Cada mes</strong> se cobra automáticamente a tu tarjeta y recibes <strong>1 unidad</strong> de {{ product.title }}{% if variant.title and variant.title != 'Default Title' %} ({{ variant.title }}){% endif %} en tu dirección. El precio mostrado es <strong>por unidad mensual</strong> + S/10 de envío. <strong>Todos los precios incluyen IGV.</strong>
+        <div style="background:#fafafa;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:11.5px;color:#4b5563;line-height:1.55;text-align:left">
+          Cada mes se cobra automáticamente a tu tarjeta y recibes <strong style="color:#111">1 unidad</strong> de {{ product.title }}{% if variant.title and variant.title != 'Default Title' %} ({{ variant.title }}){% endif %}. Precio por unidad mensual + S/10 de envío. IGV incluido.
         </div>
         <div style="background:#f8f8f8;border-radius:8px;padding:14px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
           <div>
@@ -245,7 +244,7 @@
         <button id="m-btn-{{ block.id }}" style="width:100%;background:#9d2a23;color:#fff;border:none;border-radius:8px;padding:15px;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:.3px">
           Continuar al pago →
         </button>
-        <div style="text-align:center;font-size:11px;color:#999;margin-top:10px">
+        <div style="text-align:left;font-size:11px;color:#9ca3af;margin-top:10px;padding-left:2px">
           Serás redirigido a Mercado Pago para autorizar tu suscripción.
         </div>
       </div>
