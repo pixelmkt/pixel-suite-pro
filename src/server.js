@@ -5159,43 +5159,80 @@ app.get('/api/admin/bundles/:id', async (req, res) => {
 app.post('/api/admin/bundles', async (req, res) => {
     try {
         const body = req.body || {};
-        // Validación básica
+        // 2026-04-22 — soporte de tipo 'fixed_combo' (2+ productos DIFERENTES en la misma caja).
+        // Si type === 'fixed_combo': cliente NO elige variantes, el admin fija la lista (combo_items).
+        // Si type === 'mix_match' (default, back-compat): cliente arma mix de sabores del source_product.
+        const type = (body.type === 'fixed_combo') ? 'fixed_combo' : 'mix_match';
+
+        // Validación común
         if (!body.name) return res.status(400).json({ error: 'name is required' });
-        if (!body.bundle_product_id) return res.status(400).json({ error: 'bundle_product_id is required (product Shopify del bundle)' });
-        if (!body.source_product_id) return res.status(400).json({ error: 'source_product_id is required (product master de sabores)' });
-        if (!body.target_quantity || !Number.isFinite(Number(body.target_quantity)) || Number(body.target_quantity) <= 0) {
-            return res.status(400).json({ error: 'target_quantity must be a positive number' });
-        }
-        if (!Array.isArray(body.allowed_variant_ids) || body.allowed_variant_ids.length === 0) {
-            return res.status(400).json({ error: 'allowed_variant_ids must be a non-empty array' });
-        }
+        if (!body.bundle_product_id) return res.status(400).json({ error: 'bundle_product_id is required (product Shopify del combo/bundle)' });
         if (!Array.isArray(body.plans) || body.plans.length === 0) {
             return res.status(400).json({ error: 'plans must be a non-empty array' });
         }
+
+        // Validación por tipo
+        let comboItemsNormalized = [];
+        if (type === 'fixed_combo') {
+            if (!Array.isArray(body.combo_items) || body.combo_items.length === 0) {
+                return res.status(400).json({ error: 'combo_items must be a non-empty array when type=fixed_combo' });
+            }
+            for (const it of body.combo_items) {
+                if (!it || !it.product_id || !it.variant_id) {
+                    return res.status(400).json({ error: 'Each combo_items entry requires product_id and variant_id' });
+                }
+            }
+            comboItemsNormalized = body.combo_items.map(it => ({
+                product_id: String(it.product_id),
+                variant_id: String(it.variant_id),
+                quantity: Number(it.quantity) || 1,
+                title: it.title ? String(it.title) : '',
+                variant_title: it.variant_title ? String(it.variant_title) : '',
+                image: it.image ? String(it.image) : '',
+                sku: it.sku ? String(it.sku) : ''
+            }));
+        } else {
+            if (!body.source_product_id) return res.status(400).json({ error: 'source_product_id is required (product master de sabores)' });
+            if (!body.target_quantity || !Number.isFinite(Number(body.target_quantity)) || Number(body.target_quantity) <= 0) {
+                return res.status(400).json({ error: 'target_quantity must be a positive number' });
+            }
+            if (!Array.isArray(body.allowed_variant_ids) || body.allowed_variant_ids.length === 0) {
+                return res.status(400).json({ error: 'allowed_variant_ids must be a non-empty array' });
+            }
+        }
+
         // Normalizar
         const record = {
+            type,
             name: String(body.name),
             description: body.description ? String(body.description) : '',
             bundle_product_id: String(body.bundle_product_id),
             bundle_product_handle: body.bundle_product_handle ? String(body.bundle_product_handle) : '',
-            source_product_id: String(body.source_product_id),
+            source_product_id: body.source_product_id ? String(body.source_product_id) : '',
             source_product_handle: body.source_product_handle ? String(body.source_product_handle) : '',
             source_product_title: body.source_product_title ? String(body.source_product_title) : '',
-            target_quantity: Number(body.target_quantity),
-            allowed_variant_ids: body.allowed_variant_ids.map(String),
-            // 2026-04-21 — Excluidos EXPLICITOS (variantes que NUNCA se muestran, ni siquiera bloqueadas).
-            // Útil para sabores descatalogados o pendientes de reposición.
+            target_quantity: type === 'fixed_combo'
+                ? comboItemsNormalized.reduce((s, it) => s + (Number(it.quantity) || 1), 0)
+                : Number(body.target_quantity),
+            allowed_variant_ids: type === 'fixed_combo'
+                ? comboItemsNormalized.map(it => it.variant_id)
+                : (body.allowed_variant_ids || []).map(String),
             excluded_variant_ids: Array.isArray(body.excluded_variant_ids) ? body.excluded_variant_ids.map(String) : [],
-            // 2026-04-21 — Stock mínimo por variante para considerarla "disponible" (no solo >0).
-            // Regla de negocio: si una variante tiene <100 unidades se bloquea (se muestra sombreada).
             min_stock_threshold: Number(body.min_stock_threshold) || 100,
+            // 2026-04-22 — Items FIJOS del combo (solo cuando type=fixed_combo)
+            combo_items: comboItemsNormalized,
             plans: body.plans.map(p => ({
                 freq_months: Number(p.freq_months) || 1,
                 perm_months: Number(p.perm_months) || 3,
                 price: Number(p.price),
                 discount_pct: Number(p.discount_pct) || 0,
                 plan_id: p.plan_id ? String(p.plan_id) : '',
-                variant_id_perm: p.variant_id_perm ? String(p.variant_id_perm) : ''
+                variant_id_perm: p.variant_id_perm ? String(p.variant_id_perm) : '',
+                // Regalos primer pedido (compat con plans_config.gifts)
+                gifts: (p.gifts && typeof p.gifts === 'object') ? {
+                    enabled: !!p.gifts.enabled,
+                    items: Array.isArray(p.gifts.items) ? p.gifts.items : []
+                } : { enabled: false, items: [] }
             })),
             validate_stock: body.validate_stock !== false,
             hide_stock_from_ui: body.hide_stock_from_ui !== false,
@@ -5211,14 +5248,46 @@ app.put('/api/admin/bundles/:id', async (req, res) => {
     try {
         const body = req.body || {};
         // Solo update de campos explícitos (evitar inyección de _gid, id, created_at)
-        const updatable = ['name', 'description', 'bundle_product_id', 'bundle_product_handle',
+        // 2026-04-22 — agregados: type, combo_items (para combos fijos de 2+ productos).
+        const updatable = ['type', 'name', 'description', 'bundle_product_id', 'bundle_product_handle',
             'source_product_id', 'source_product_handle', 'source_product_title',
             'target_quantity', 'allowed_variant_ids', 'excluded_variant_ids', 'min_stock_threshold', 'plans',
+            'combo_items',
             'validate_stock', 'hide_stock_from_ui', 'widget_copy', 'active'];
         const updates = {};
         for (const k of updatable) if (k in body) updates[k] = body[k];
         if (updates.target_quantity !== undefined) updates.target_quantity = Number(updates.target_quantity);
         if (Array.isArray(updates.allowed_variant_ids)) updates.allowed_variant_ids = updates.allowed_variant_ids.map(String);
+        if (Array.isArray(updates.combo_items)) {
+            updates.combo_items = updates.combo_items.map(it => ({
+                product_id: String(it.product_id),
+                variant_id: String(it.variant_id),
+                quantity: Number(it.quantity) || 1,
+                title: it.title ? String(it.title) : '',
+                variant_title: it.variant_title ? String(it.variant_title) : '',
+                image: it.image ? String(it.image) : '',
+                sku: it.sku ? String(it.sku) : ''
+            }));
+            // Si es fixed_combo, sincroniza target_quantity + allowed_variant_ids
+            if (updates.type === 'fixed_combo' || body.type === 'fixed_combo') {
+                updates.target_quantity = updates.combo_items.reduce((s, it) => s + (Number(it.quantity) || 1), 0);
+                updates.allowed_variant_ids = updates.combo_items.map(it => it.variant_id);
+            }
+        }
+        if (Array.isArray(updates.plans)) {
+            updates.plans = updates.plans.map(p => ({
+                freq_months: Number(p.freq_months) || 1,
+                perm_months: Number(p.perm_months) || 3,
+                price: Number(p.price),
+                discount_pct: Number(p.discount_pct) || 0,
+                plan_id: p.plan_id ? String(p.plan_id) : '',
+                variant_id_perm: p.variant_id_perm ? String(p.variant_id_perm) : '',
+                gifts: (p.gifts && typeof p.gifts === 'object') ? {
+                    enabled: !!p.gifts.enabled,
+                    items: Array.isArray(p.gifts.items) ? p.gifts.items : []
+                } : { enabled: false, items: [] }
+            }));
+        }
         const updated = await db.updateBundleConfig(req.params.id, updates);
         res.json({ ok: true, bundle: updated });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -6048,10 +6117,34 @@ app.get('/api/bundles/product/:bundleProductId/config', async (req, res) => {
         if (!bundle) return res.status(404).json({ error: 'No bundle config found for this product' });
         if (bundle.active === false) return res.status(410).json({ error: 'Bundle is not active' });
 
-        // Fetch source product from Shopify to get variant details + stock
         const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
         const token = process.env.SHOPIFY_ACCESS_TOKEN;
         if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+
+        // 2026-04-22 — Combo fijo: retorna items predefinidos (no hay selector de sabores).
+        // El widget debe renderizar la lista de items como "Este combo incluye: X + Y"
+        // y dejar al cliente elegir solo el PLAN (permanencia/precio).
+        if (bundle.type === 'fixed_combo') {
+            return res.json({
+                bundle_id: bundle.id,
+                type: 'fixed_combo',
+                name: bundle.name,
+                description: bundle.description || '',
+                bundle_product_id: bundle.bundle_product_id,
+                target_quantity: bundle.target_quantity,
+                combo_items: (bundle.combo_items || []).map(it => ({
+                    product_id: it.product_id,
+                    variant_id: it.variant_id,
+                    quantity: it.quantity,
+                    title: it.title,
+                    variant_title: it.variant_title,
+                    image: it.image,
+                    sku: it.sku
+                })),
+                plans: bundle.plans || [],
+                widget_copy: bundle.widget_copy || {},
+            });
+        }
 
         const url = `https://${shop}/admin/api/2026-01/products/${encodeURIComponent(bundle.source_product_id)}.json?fields=id,title,handle,images,variants`;
         const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
@@ -6090,6 +6183,7 @@ app.get('/api/bundles/product/:bundleProductId/config', async (req, res) => {
         // Respuesta al widget — no incluye fields internos del bundle
         res.json({
             bundle_id: bundle.id,
+            type: bundle.type || 'mix_match',
             name: bundle.name,
             description: bundle.description || '',
             bundle_product_id: bundle.bundle_product_id,

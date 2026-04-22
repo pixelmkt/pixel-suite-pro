@@ -1326,43 +1326,108 @@
     <div id="p-bundles" class="panel">
       <div class="ph">
         <div>
-          <div class="pt">Bundles (Mix &amp; Match)</div>
-          <div class="ps">Packs configurables donde el cliente elige los sabores/variantes. Ideal para C4, pre-entrenos, proteínas, snacks, etc.</div>
+          <div class="pt">Bundles &amp; Combos</div>
+          <div class="ps">Mix &amp; Match (el cliente elige sabores) + Combos fijos (2+ productos diferentes predefinidos por ti).</div>
         </div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-r" onclick="openNewBundleModal()">+ Nuevo bundle</button>
+          <button class="btn btn-g" onclick="openNewComboModal()">+ Nuevo combo fijo</button>
+          <button class="btn btn-r" onclick="openNewBundleModal()">+ Nuevo bundle mix&amp;match</button>
         </div>
       </div>
       <div class="content">
-        <div class="info-box">💡 Un <strong>bundle</strong> es un producto Shopify (el "contenedor") al que el cliente asigna sabores/variantes de otro producto <strong>fuente</strong>. El mix queda guardado en la suscripción y se repite idéntico cada ciclo. Puedes crear bundles para cualquier producto de tu catálogo.</div>
+        <div class="info-box">💡 <strong>Bundle mix &amp; match:</strong> el cliente elige N sabores/variantes de un producto (ej. C4 Bundle 15 latas). <strong>Combo fijo:</strong> TÚ fijas qué productos+cantidades van en la caja (ej. 1 Creatina + 1 Whey), el cliente solo elige el plan. Ambos usan el mismo motor de cobros MP + creación de órdenes Shopify multi-item.</div>
 
         <div class="card">
           <div class="card-head">
-            <span class="card-title">Bundles configurados</span>
+            <span class="card-title">Bundles &amp; Combos configurados</span>
             <span id="bundles-count" style="font-size:11px;color:var(--mut)"></span>
           </div>
           <table>
             <thead>
               <tr>
+                <th>Tipo</th>
                 <th>Nombre</th>
                 <th>Producto bundle</th>
-                <th>Fuente de sabores</th>
+                <th>Contenido</th>
                 <th>Unidades</th>
                 <th>Planes</th>
-                <th>Stock mín.</th>
                 <th>Activo</th>
                 <th>Acciones</th>
               </tr>
             </thead>
             <tbody id="bundles-tbody">
               <tr>
-                <td colspan="8" style="text-align:center;padding:28px;color:var(--mut)">Cargando bundles...</td>
+                <td colspan="8" style="text-align:center;padding:28px;color:var(--mut)">Cargando...</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <div class="info-box warn">⚠️ Las variantes con stock por debajo del umbral mínimo se muestran <strong>sombreadas</strong> en el widget (no seleccionables). Las variantes <strong>excluidas permanentemente</strong> no se muestran. El mix se guarda en la suscripción — si un cliente elige 5 Frozen Bombsicle + 5 Orange Mango + 5 Strawberry Watermelon, cada mes recibirá esa misma combinación.</div>
+        <div class="info-box warn">⚠️ Bundle mix &amp; match: variantes con stock bajo se sombrean. Combo fijo: el cliente NO elige, siempre recibe los items que definiste. En ambos, la composición queda guardada en la suscripción y se repite idéntica cada ciclo.</div>
+      </div>
+    </div>
+
+    <!-- MODAL NUEVO/EDITAR COMBO FIJO (2+ productos diferentes) -->
+    <div class="modal-backdrop" id="combo-modal" style="display:none">
+      <div class="modal" style="max-width:720px">
+        <div class="modal-head">
+          <div style="font-size:16px;font-weight:800;text-transform:uppercase" id="combo-modal-title">Nuevo combo fijo</div>
+          <button class="btn btn-g btn-sm" onclick="document.getElementById('combo-modal').style.display='none'">✕</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="combo-id">
+
+          <div class="fr">
+            <div class="fg" style="flex:2">
+              <label class="fl">Nombre del combo *</label>
+              <input class="fsi" id="combo-name" placeholder="Ej: Pack Fuerza — Creatina + Whey">
+            </div>
+            <div class="fg" style="flex:1">
+              <label class="fl">Estado</label>
+              <select class="fsl" id="combo-active"><option value="true">Activo</option><option value="false">Inactivo</option></select>
+            </div>
+          </div>
+
+          <div class="fr">
+            <div class="fg" style="flex:1">
+              <label class="fl">Descripción (opcional)</label>
+              <textarea class="fsi" id="combo-description" rows="2" placeholder="Texto corto que verá el cliente en la página del combo"></textarea>
+            </div>
+          </div>
+
+          <hr style="margin:14px 0;border:none;border-top:1px solid var(--bdr)">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px">1) Producto Shopify del combo *</div>
+          <div class="info-box" style="font-size:11px;margin-bottom:8px">Necesitas crear en Shopify un producto contenedor "PACK X + Y" (precio referencial — lo real lo cobra MP). Busca ese producto aquí:</div>
+          <div class="fr">
+            <div class="fg" style="flex:1;position:relative">
+              <input class="fsi" id="combo-product-search" placeholder="Busca por nombre (ej. 'Pack Creatina Whey')" oninput="debouncedSearchComboProduct(this.value)">
+              <input type="hidden" id="combo-product-id">
+              <input type="hidden" id="combo-product-handle">
+              <div id="combo-product-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--bdr);border-radius:8px;max-height:280px;overflow:auto;z-index:100;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+              <div id="combo-product-selected" style="margin-top:8px"></div>
+            </div>
+          </div>
+
+          <hr style="margin:14px 0;border:none;border-top:1px solid var(--bdr)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-weight:700;font-size:13px">2) Items que lleva la caja *</div>
+            <button class="btn btn-g btn-sm" onclick="addComboItem()">+ Agregar item</button>
+          </div>
+          <div class="info-box" style="font-size:11px;margin-bottom:8px">Define exactamente qué se envía cada mes. Ejemplo: 1× Creatina 300g + 1× Whey 2kg. El cliente NO elige — se envía siempre esta combinación.</div>
+          <div id="combo-items-list" style="display:flex;flex-direction:column;gap:8px"></div>
+
+          <hr style="margin:14px 0;border:none;border-top:1px solid var(--bdr)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-weight:700;font-size:13px">3) Planes de suscripción *</div>
+            <button class="btn btn-g btn-sm" onclick="addComboPlan()">+ Agregar plan</button>
+          </div>
+          <div class="info-box" style="font-size:11px;margin-bottom:8px">Cada plan define permanencia (meses), precio fijo del combo, descuento mostrado al cliente y regalos opcionales del 1er pedido.</div>
+          <div id="combo-plans-list" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-g" onclick="document.getElementById('combo-modal').style.display='none'">Cancelar</button>
+          <button class="btn btn-r" onclick="saveCombo()" id="combo-save-btn">Guardar combo</button>
+        </div>
       </div>
     </div>
 
@@ -3246,7 +3311,7 @@
         const titleEsc = (prod.title || '').replace(/"/g,'&quot;');
 
         if (isBundle) {
-          // ── Bundle (C4 Mix & Match): planes viven en bundle_configs ──
+          const isCombo = bundle.type === 'fixed_combo';
           const bPlans = Array.isArray(bundle.plans) ? bundle.plans : [];
           const plansHtml = bPlans.length
             ? `<table style="width:100%;border-collapse:collapse;margin-top:10px">
@@ -3255,7 +3320,7 @@
                   <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Perm.</th>
                   <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Precio</th>
                   <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Descuento</th>
-                  <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">Cantidad pack</th>
+                  <th style="text-align:left;padding:6px 8px;font-weight:700;border-bottom:1px solid var(--bdr)">${isCombo ? 'Regalo 1er pedido' : 'Cantidad pack'}</th>
                 </tr></thead>
                 <tbody>${bPlans.map(p => {
                   const freq = p.freq_months || 1;
@@ -3263,25 +3328,38 @@
                   const price = p.price != null ? ('S/ ' + Number(p.price).toFixed(2)) : '—';
                   const disc = p.discount_pct != null ? p.discount_pct : 0;
                   const freqLabel = FREQ_LABELS[String(freq)] || (freq + ' meses');
+                  const lastCell = isCombo
+                    ? (p.gifts?.enabled && (p.gifts.items || []).length ? `🎁 ${p.gifts.items.length} regalo${p.gifts.items.length>1?'s':''}` : '<span style="color:var(--mut)">—</span>')
+                    : ((bundle.target_quantity || '—') + ' u');
                   return `<tr>
                     <td style="padding:8px;vertical-align:middle"><strong>${freqLabel}</strong></td>
                     <td style="padding:8px;vertical-align:middle">${perm} m</td>
                     <td style="padding:8px;vertical-align:middle"><strong>${price}</strong></td>
                     <td style="padding:8px;vertical-align:middle"><strong style="color:${disc>0?'var(--grn)':'var(--mut)'}">${disc}%</strong></td>
-                    <td style="padding:8px;vertical-align:middle">${bundle.target_quantity || '—'} u</td>
+                    <td style="padding:8px;vertical-align:middle;font-size:12px">${lastCell}</td>
                   </tr>`;
                 }).join('')}</tbody>
               </table>`
-            : `<div style="padding:14px 0;color:var(--mut);font-size:12.5px">Este bundle no tiene planes. Edítalo desde la pestaña <strong>Bundles</strong>.</div>`;
-          return `<div style="border:1px solid #c7d2fe;border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#eef2ff">
+            : `<div style="padding:14px 0;color:var(--mut);font-size:12.5px">Sin planes. Edítalo desde la pestaña <strong>Bundles</strong>.</div>`;
+          const itemsHtml = isCombo && (bundle.combo_items || []).length
+            ? `<div style="margin-top:8px;padding:8px 10px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:11.5px"><strong>Cada caja incluye:</strong> ${(bundle.combo_items || []).map(it => `${it.quantity}× ${escapeHtml(it.title || it.variant_id)}${it.variant_title ? ' ('+escapeHtml(it.variant_title)+')' : ''}`).join(' + ')}</div>`
+            : '';
+          const borderCol = isCombo ? '#86efac' : '#c7d2fe';
+          const bgCol = isCombo ? '#f0fdf4' : '#eef2ff';
+          const badgeBg = isCombo ? '#16a34a' : '#4f46e5';
+          const badgeText = isCombo ? 'COMBO FIJO' : 'BUNDLE MIX &amp; MATCH';
+          const editFn = isCombo ? `openEditCombo('${bundle.id}')` : `openEditBundle('${bundle.id}')`;
+          const editLabel = isCombo ? '✏️ Editar combo' : '✏️ Editar bundle';
+          return `<div style="border:1px solid ${borderCol};border-radius:10px;padding:12px 14px;margin-bottom:10px;background:${bgCol}">
             <div style="display:flex;align-items:center;gap:12px">
               ${img}
               <div style="flex:1;min-width:0">
-                <div style="font-weight:700;font-size:14px">${titleEsc} <span style="display:inline-block;margin-left:6px;padding:1px 7px;background:#4f46e5;color:#fff;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.3px">BUNDLE MIX &amp; MATCH</span></div>
-                <div style="font-size:11px;color:var(--mut)">ID ${pid} · ${bPlans.length} plan${bPlans.length===1?'':'es'} de bundle · ${bundle.target_quantity || 0} unidades</div>
+                <div style="font-weight:700;font-size:14px">${titleEsc} <span style="display:inline-block;margin-left:6px;padding:1px 7px;background:${badgeBg};color:#fff;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.3px">${badgeText}</span></div>
+                <div style="font-size:11px;color:var(--mut)">ID ${pid} · ${bPlans.length} plan${bPlans.length===1?'':'es'}${isCombo ? ' · ' + (bundle.combo_items || []).length + ' items fijos' : ' · ' + (bundle.target_quantity || 0) + ' unidades'}</div>
               </div>
-              <button class="btn btn-g btn-sm" onclick="openEditBundle('${bundle.id}')" title="Los planes de bundle se editan en su propio modal (mix & match tiene lógica especial de cantidades + precio fijo)">✏️ Editar bundle</button>
+              <button class="btn btn-g btn-sm" onclick="${editFn}">${editLabel}</button>
             </div>
+            ${itemsHtml}
             ${plansHtml}
           </div>`;
         }
@@ -5030,22 +5108,30 @@
           return;
         }
         tbody.innerHTML = _bundlesCache.map(b => {
+          const isCombo = b.type === 'fixed_combo';
           const plansLabel = (b.plans || []).map(p => `${p.perm_months}m · S/${p.price}`).join(' / ');
           const activeBadge = b.active !== false
             ? '<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">Activo</span>'
             : '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">Inactivo</span>';
-          const allowedCount = (b.allowed_variant_ids || []).length;
-          const excludedCount = (b.excluded_variant_ids || []).length;
+          const typeBadge = isCombo
+            ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:800">COMBO FIJO</span>'
+            : '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:800">MIX &amp; MATCH</span>';
+          const contenido = isCombo
+            ? (b.combo_items || []).map(it => `${it.quantity}× ${escapeHtml(it.title || it.variant_title || it.variant_id)}`).join(' + ') || '<em style="color:var(--mut)">sin items</em>'
+            : `${(b.allowed_variant_ids || []).length} variantes · fuente: ${escapeHtml(b.source_product_title || b.source_product_id || '-')}`;
+          const editBtn = isCombo
+            ? `<button class="btn btn-g btn-sm" onclick="openEditCombo('${b.id}')">Editar</button>`
+            : `<button class="btn btn-g btn-sm" onclick="openEditBundle('${b.id}')">Editar</button>`;
           return `<tr>
-            <td><strong>${escapeHtml(b.name)}</strong><br><span style="font-size:10px;color:var(--mut)">${allowedCount} variantes permitidas${excludedCount ? ' · ' + excludedCount + ' excluidas' : ''}</span></td>
+            <td>${typeBadge}</td>
+            <td><strong>${escapeHtml(b.name)}</strong></td>
             <td style="font-size:11px"><code>${escapeHtml(b.bundle_product_id || '-')}</code></td>
-            <td style="font-size:11px">${escapeHtml(b.source_product_title || b.source_product_id || '-')}</td>
+            <td style="font-size:11px">${contenido}</td>
             <td style="text-align:center;font-weight:700">${b.target_quantity || '-'}</td>
             <td style="font-size:11px">${plansLabel || '-'}</td>
-            <td style="text-align:center;font-size:11px">${b.min_stock_threshold || 100}</td>
             <td>${activeBadge}</td>
             <td>
-              <button class="btn btn-g btn-sm" onclick="openEditBundle('${b.id}')">Editar</button>
+              ${editBtn}
               <button class="btn btn-g btn-sm" onclick="deleteBundle('${b.id}', '${escapeHtml(b.name).replace(/'/g, "\\'")}')">Eliminar</button>
             </td>
           </tr>`;
@@ -5416,6 +5502,345 @@
         await loadBundles();
       } catch (e) {
         alert('Error al eliminar: ' + e.message);
+      }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       COMBO FIJO (type=fixed_combo) — admin UI 2026-04-22
+       Guarda el combo como bundle_config con type='fixed_combo'.
+       Reutiliza el motor de bundle_items en el webhook MP + creación de
+       órdenes Shopify → CERO toques a la lógica de pagos (MASTER LOCK).
+    ═══════════════════════════════════════════════════════════════════ */
+    let _comboEditingId = null;
+    let _comboItems = [];            // [{product_id, variant_id, quantity, title, variant_title, image}]
+    let _comboPlans = [];            // [{freq_months, perm_months, price, discount_pct, gifts}]
+    let _comboItemVariantsCache = {}; // productId -> [variants]
+    let _comboSearchTimer = null;
+
+    function openNewComboModal() {
+      _comboEditingId = null;
+      _comboItems = [];
+      _comboPlans = [
+        { freq_months: 1, perm_months: 3, price: 280, discount_pct: 0, gifts: { enabled: false, items: [] } }
+      ];
+      document.getElementById('combo-modal-title').textContent = 'Nuevo combo fijo';
+      document.getElementById('combo-id').value = '';
+      document.getElementById('combo-name').value = '';
+      document.getElementById('combo-description').value = '';
+      document.getElementById('combo-active').value = 'true';
+      document.getElementById('combo-product-search').value = '';
+      document.getElementById('combo-product-id').value = '';
+      document.getElementById('combo-product-handle').value = '';
+      document.getElementById('combo-product-selected').innerHTML = '';
+      document.getElementById('combo-product-results').style.display = 'none';
+      renderComboItems();
+      renderComboPlans();
+      document.getElementById('combo-modal').style.display = 'flex';
+    }
+
+    async function openEditCombo(id) {
+      const b = _bundlesCache.find(x => x.id === id);
+      if (!b) { alert('Combo no encontrado, recarga la página'); return; }
+      _comboEditingId = id;
+      _comboItems = (b.combo_items || []).map(it => ({ ...it }));
+      _comboPlans = (b.plans || []).map(p => ({
+        freq_months: p.freq_months || 1,
+        perm_months: p.perm_months || 3,
+        price: p.price || 0,
+        discount_pct: p.discount_pct || 0,
+        gifts: p.gifts || { enabled: false, items: [] }
+      }));
+      document.getElementById('combo-modal-title').textContent = 'Editar combo fijo';
+      document.getElementById('combo-id').value = id;
+      document.getElementById('combo-name').value = b.name || '';
+      document.getElementById('combo-description').value = b.description || '';
+      document.getElementById('combo-active').value = (b.active !== false) ? 'true' : 'false';
+      document.getElementById('combo-product-id').value = b.bundle_product_id || '';
+      document.getElementById('combo-product-handle').value = b.bundle_product_handle || '';
+      document.getElementById('combo-product-search').value = '';
+      document.getElementById('combo-product-selected').innerHTML = b.bundle_product_id
+        ? `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:12px"><strong>✓ Seleccionado</strong> — ID <code>${escapeHtml(b.bundle_product_id)}</code></div>`
+        : '';
+      document.getElementById('combo-product-results').style.display = 'none';
+      renderComboItems();
+      renderComboPlans();
+      document.getElementById('combo-modal').style.display = 'flex';
+    }
+
+    function debouncedSearchComboProduct(q) {
+      clearTimeout(_comboSearchTimer);
+      _comboSearchTimer = setTimeout(async () => {
+        const query = (q || '').trim();
+        const box = document.getElementById('combo-product-results');
+        if (query.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+        try {
+          const r = await fetch('/api/shopify/products?limit=20&query=' + encodeURIComponent(query));
+          const d = await r.json();
+          const products = d.products || [];
+          if (!products.length) {
+            box.innerHTML = '<div style="padding:10px;color:var(--mut);font-size:12px">Sin resultados</div>';
+          } else {
+            box.innerHTML = products.map(p => `
+              <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:12px;display:flex;justify-content:space-between;gap:8px"
+                   onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background='#fff'"
+                   onclick='selectComboProduct(${JSON.stringify(p)})'>
+                <span><strong>${escapeHtml(p.title)}</strong><br><span style="font-size:10px;color:var(--mut)">${p.variants_count || 0} variantes · ${escapeHtml(p.handle || '')}</span></span>
+                <code style="font-size:10px;color:var(--mut);white-space:nowrap">${p.id}</code>
+              </div>`).join('');
+          }
+          box.style.display = 'block';
+        } catch (e) {
+          box.innerHTML = `<div style="padding:10px;color:#b00;font-size:12px">Error: ${escapeHtml(e.message)}</div>`;
+          box.style.display = 'block';
+        }
+      }, 320);
+    }
+
+    function selectComboProduct(product) {
+      document.getElementById('combo-product-id').value = String(product.id);
+      document.getElementById('combo-product-handle').value = product.handle || '';
+      document.getElementById('combo-product-search').value = product.title;
+      document.getElementById('combo-product-results').style.display = 'none';
+      document.getElementById('combo-product-selected').innerHTML = `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;font-size:12px"><strong>✓ Producto combo:</strong> ${escapeHtml(product.title)} · <code>${product.id}</code></div>`;
+    }
+
+    function addComboItem() {
+      _comboItems.push({ product_id: '', variant_id: '', quantity: 1, title: '', variant_title: '', image: '' });
+      renderComboItems();
+    }
+
+    function removeComboItem(idx) {
+      _comboItems.splice(idx, 1);
+      renderComboItems();
+    }
+
+    function renderComboItems() {
+      const list = document.getElementById('combo-items-list');
+      if (!list) return;
+      if (_comboItems.length === 0) {
+        list.innerHTML = '<div style="padding:14px;text-align:center;color:var(--mut);font-size:12px;background:#fafafa;border:1px dashed var(--bdr);border-radius:8px">Aún no hay items. Haz clic en <strong>"+ Agregar item"</strong> arriba.</div>';
+        return;
+      }
+      list.innerHTML = _comboItems.map((it, idx) => {
+        const selected = it.product_id && it.variant_id;
+        const preview = selected
+          ? `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:6px 10px;font-size:11px">✓ <strong>${escapeHtml(it.title || '')}</strong> · ${escapeHtml(it.variant_title || '')}</div>`
+          : '';
+        const variants = _comboItemVariantsCache[it.product_id] || [];
+        const variantOpts = variants.length
+          ? variants.map(v => `<option value="${v.id}" ${String(v.id) === String(it.variant_id) ? 'selected' : ''}>${escapeHtml(v.title)} · stock ${v.inventory_quantity == null ? '?' : v.inventory_quantity}</option>`).join('')
+          : '<option value="">Primero elige un producto arriba</option>';
+        return `<div style="border:1px solid var(--bdr);border-radius:10px;padding:10px;background:#fff">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <strong style="font-size:12px">Item ${idx + 1}</strong>
+            <button class="btn btn-sm" style="background:#fee2e2;color:#991b1b" onclick="removeComboItem(${idx})">🗑 Quitar</button>
+          </div>
+          <div class="fr" style="gap:6px">
+            <div class="fg" style="flex:2;position:relative">
+              <label class="fl">Producto</label>
+              <input class="fsi" placeholder="Busca en Shopify..." value="${escapeHtml(it.title || '')}" oninput="searchComboItemProduct(${idx}, this.value)">
+              <div id="combo-item-results-${idx}" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--bdr);border-radius:8px;max-height:220px;overflow:auto;z-index:100;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+            </div>
+            <div class="fg" style="flex:2">
+              <label class="fl">Variante</label>
+              <select class="fsl" onchange="selectComboItemVariant(${idx}, this.value)" ${variants.length ? '' : 'disabled'}>
+                ${variants.length ? '<option value="">— Elige variante —</option>' : ''}
+                ${variantOpts}
+              </select>
+            </div>
+            <div class="fg" style="flex:0 0 90px">
+              <label class="fl">Cantidad</label>
+              <input class="fsi" type="number" min="1" max="99" value="${it.quantity || 1}" onchange="updateComboItemQty(${idx}, this.value)">
+            </div>
+          </div>
+          ${preview}
+        </div>`;
+      }).join('');
+    }
+
+    function searchComboItemProduct(idx, q) {
+      clearTimeout(_comboSearchTimer);
+      _comboSearchTimer = setTimeout(async () => {
+        const query = (q || '').trim();
+        const box = document.getElementById('combo-item-results-' + idx);
+        if (!box) return;
+        if (query.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+        try {
+          const r = await fetch('/api/shopify/products?limit=20&query=' + encodeURIComponent(query));
+          const d = await r.json();
+          const products = d.products || [];
+          if (!products.length) {
+            box.innerHTML = '<div style="padding:10px;color:var(--mut);font-size:12px">Sin resultados</div>';
+          } else {
+            box.innerHTML = products.map(p => `
+              <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #eee;font-size:12px"
+                   onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background='#fff'"
+                   onclick='pickComboItemProduct(${idx}, ${JSON.stringify(p)})'>
+                <strong>${escapeHtml(p.title)}</strong>
+                <div style="font-size:10px;color:var(--mut)">${p.variants_count || 0} variantes · ID ${p.id}</div>
+              </div>`).join('');
+          }
+          box.style.display = 'block';
+        } catch (e) {
+          box.innerHTML = `<div style="padding:10px;color:#b00;font-size:12px">Error: ${escapeHtml(e.message)}</div>`;
+          box.style.display = 'block';
+        }
+      }, 300);
+    }
+
+    async function pickComboItemProduct(idx, product) {
+      _comboItems[idx].product_id = String(product.id);
+      _comboItems[idx].title = product.title;
+      _comboItems[idx].variant_id = '';
+      _comboItems[idx].variant_title = '';
+      _comboItems[idx].image = product.image || '';
+      // Fetch variants
+      try {
+        const r = await fetch('/api/shopify/products/' + encodeURIComponent(product.id) + '/variants');
+        const d = await r.json();
+        _comboItemVariantsCache[String(product.id)] = d.variants || [];
+      } catch (e) {
+        _comboItemVariantsCache[String(product.id)] = [];
+      }
+      renderComboItems();
+    }
+
+    function selectComboItemVariant(idx, variantId) {
+      if (!variantId) return;
+      const pid = _comboItems[idx].product_id;
+      const variants = _comboItemVariantsCache[pid] || [];
+      const v = variants.find(x => String(x.id) === String(variantId));
+      if (!v) return;
+      _comboItems[idx].variant_id = String(variantId);
+      _comboItems[idx].variant_title = v.title;
+      _comboItems[idx].sku = v.sku || '';
+      _comboItems[idx].image = v.image || _comboItems[idx].image;
+      renderComboItems();
+    }
+
+    function updateComboItemQty(idx, v) {
+      _comboItems[idx].quantity = Math.max(1, Number(v) || 1);
+    }
+
+    function addComboPlan() {
+      _comboPlans.push({ freq_months: 1, perm_months: 3, price: 0, discount_pct: 0, gifts: { enabled: false, items: [] } });
+      renderComboPlans();
+    }
+
+    function removeComboPlan(idx) {
+      _comboPlans.splice(idx, 1);
+      renderComboPlans();
+    }
+
+    function renderComboPlans() {
+      const list = document.getElementById('combo-plans-list');
+      if (!list) return;
+      if (_comboPlans.length === 0) {
+        list.innerHTML = '<div style="padding:14px;text-align:center;color:var(--mut);font-size:12px;background:#fafafa;border:1px dashed var(--bdr);border-radius:8px">Agrega al menos 1 plan</div>';
+        return;
+      }
+      list.innerHTML = _comboPlans.map((p, idx) => `
+        <div style="border:1px solid var(--bdr);border-radius:10px;padding:10px;background:#fff">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <strong style="font-size:12px">Plan ${idx + 1}</strong>
+            <button class="btn btn-sm" style="background:#fee2e2;color:#991b1b" onclick="removeComboPlan(${idx})">🗑 Quitar</button>
+          </div>
+          <div class="fr" style="gap:6px">
+            <div class="fg" style="flex:1">
+              <label class="fl">Frecuencia (meses entre envíos)</label>
+              <input class="fsi" type="number" min="1" max="12" value="${p.freq_months || 1}" onchange="_comboPlans[${idx}].freq_months = Number(this.value)||1">
+            </div>
+            <div class="fg" style="flex:1">
+              <label class="fl">Permanencia (meses)</label>
+              <input class="fsi" type="number" min="1" max="36" value="${p.perm_months || 3}" onchange="_comboPlans[${idx}].perm_months = Number(this.value)||3">
+            </div>
+            <div class="fg" style="flex:1">
+              <label class="fl">Precio S/</label>
+              <input class="fsi" type="number" min="0" step="0.01" value="${p.price || 0}" onchange="_comboPlans[${idx}].price = Number(this.value)||0">
+            </div>
+            <div class="fg" style="flex:1">
+              <label class="fl">Descuento %</label>
+              <input class="fsi" type="number" min="0" max="100" step="0.01" value="${p.discount_pct || 0}" onchange="_comboPlans[${idx}].discount_pct = Number(this.value)||0">
+            </div>
+          </div>
+          <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--bdr)">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+              <input type="checkbox" ${p.gifts?.enabled ? 'checked' : ''} onchange="toggleComboPlanGifts(${idx}, this.checked)">
+              <span>🎁 Regalo en el <strong>primer pedido</strong> (solo 1 vez)</span>
+            </label>
+            <div id="combo-plan-gifts-${idx}" style="display:${p.gifts?.enabled ? 'block' : 'none'};margin-top:6px">
+              <div style="font-size:11px;color:var(--mut);margin-bottom:4px">Lista de regalos (1 por línea). Formato: <code>productId|variantId|cantidad</code>. Ej: <code>15579970043985|46547123456|1</code></div>
+              <textarea class="fsi" rows="2" placeholder="productId|variantId|quantity" onchange="updateComboPlanGiftsFromText(${idx}, this.value)">${(p.gifts?.items || []).map(g => `${g.product_id}|${g.variant_id}|${g.quantity || 1}`).join('\n')}</textarea>
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    function toggleComboPlanGifts(idx, enabled) {
+      if (!_comboPlans[idx].gifts) _comboPlans[idx].gifts = { enabled: false, items: [] };
+      _comboPlans[idx].gifts.enabled = !!enabled;
+      renderComboPlans();
+    }
+
+    function updateComboPlanGiftsFromText(idx, text) {
+      const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean);
+      const items = [];
+      for (const line of lines) {
+        const parts = line.split('|').map(s => s.trim());
+        if (parts.length >= 2 && parts[0] && parts[1]) {
+          items.push({ product_id: parts[0], variant_id: parts[1], quantity: Number(parts[2]) || 1 });
+        }
+      }
+      if (!_comboPlans[idx].gifts) _comboPlans[idx].gifts = { enabled: false, items: [] };
+      _comboPlans[idx].gifts.items = items;
+    }
+
+    async function saveCombo() {
+      const btn = document.getElementById('combo-save-btn');
+      const name = document.getElementById('combo-name').value.trim();
+      const productId = document.getElementById('combo-product-id').value.trim();
+      const active = document.getElementById('combo-active').value === 'true';
+      const description = document.getElementById('combo-description').value.trim();
+
+      if (!name) { alert('Falta el nombre del combo'); return; }
+      if (!productId) { alert('Falta seleccionar el producto Shopify del combo'); return; }
+      if (!_comboItems.length) { alert('Agrega al menos 1 item al combo'); return; }
+      for (const it of _comboItems) {
+        if (!it.product_id || !it.variant_id) { alert('Cada item necesita producto + variante'); return; }
+      }
+      if (!_comboPlans.length) { alert('Agrega al menos 1 plan'); return; }
+      for (const p of _comboPlans) {
+        if (!p.price || p.price <= 0) { alert('Cada plan necesita un precio > 0'); return; }
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Guardando...';
+      const payload = {
+        type: 'fixed_combo',
+        name,
+        description,
+        bundle_product_id: productId,
+        bundle_product_handle: document.getElementById('combo-product-handle').value || '',
+        combo_items: _comboItems,
+        plans: _comboPlans,
+        active
+      };
+      try {
+        const isEdit = !!_comboEditingId;
+        const url = isEdit ? '/api/admin/bundles/' + encodeURIComponent(_comboEditingId) : '/api/admin/bundles';
+        const method = isEdit ? 'PUT' : 'POST';
+        const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        document.getElementById('combo-modal').style.display = 'none';
+        await loadBundles();
+        if (typeof toast === 'function') toast('Combo guardado', 'ok');
+        else alert('Combo guardado');
+      } catch (e) {
+        alert('Error al guardar: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Guardar combo';
       }
     }
 
