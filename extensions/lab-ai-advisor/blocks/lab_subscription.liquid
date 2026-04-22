@@ -261,6 +261,44 @@
   var blkId = '{{ block.id }}';
   var wrap = document.getElementById('lab-sub-' + blkId);
   var hasNativePlans = {{ has_plans | json }};
+
+  /* ────────────────────────────────────────────────────────────
+     FIX 2026-04-22 v133: TELEPORT MODAL A DOCUMENT.BODY
+     El modal tiene position:fixed pero si un padre tiene
+     transform / filter / contain, position:fixed se rompe y el
+     modal se renderiza inline (full width, sin overlay, sin
+     poder cerrar). Solución: mover el modal directo a body.
+     Se define una sola vez globalmente; idempotente por blkId.
+     ──────────────────────────────────────────────────────────── */
+  if (!window.__labSubTeleportModal) {
+    window.__labSubTeleportModal = function(id) {
+      var m = document.getElementById('lab-modal-' + id);
+      if (!m) return null;
+      if (m.dataset.teleported !== '1' && document.body) {
+        try { document.body.appendChild(m); m.dataset.teleported = '1'; } catch(e){}
+      }
+      return m;
+    };
+  }
+  // Teleport inmediato al init (antes de que el usuario haga click)
+  if (window.__labSubTeleportModal) window.__labSubTeleportModal(blkId);
+
+  // Cerrar modal con tecla ESC y clic fuera del contenido
+  (function(){
+    var modal = document.getElementById('lab-modal-' + blkId);
+    if (!modal) return;
+    // clic en backdrop (fuera del contenido)
+    modal.addEventListener('click', function(e){
+      if (e.target === modal) modal.style.display = 'none';
+    });
+    // ESC cierra
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && modal.style.display !== 'none') {
+        modal.style.display = 'none';
+      }
+    });
+  })();
+
   wrap.querySelectorAll('.lab-sub__tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
       wrap.querySelectorAll('.lab-sub__tab').forEach(function(t) { t.classList.remove('lab-sub__tab--active'); });
@@ -663,7 +701,8 @@
     }
     window.labSubOpenModal = function(id) {
       if (id !== blkId) return;
-      var modal = document.getElementById('lab-modal-' + id);
+      // v133: teleport primero para escapar contenedores con transform/contain
+      var modal = (window.__labSubTeleportModal ? window.__labSubTeleportModal(id) : document.getElementById('lab-modal-' + id));
       if (modal) modal.style.display = 'flex';
       // Pre-fill modal with selected plan info
       var plan = selectedPlanKey && activePlans.find(function(p) { return p.key === selectedPlanKey; });
