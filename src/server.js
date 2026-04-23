@@ -3301,8 +3301,15 @@ app.post('/webhooks/mercadopago', async (req, res) => {
                 const alreadyHasOrder = activationEvents.some(e => e.event_type === 'first_order_created');
 
                 if (!alreadyHasOrder) {
-                    // Crear primera orden en Shopify
-                    const firstOrder = await createShopifyOrderFromSub(sub, preapprovalId).catch(e => { console.error('[MP WEBHOOK] Order error:', e.message); return null; });
+                    // Crear primera orden en Shopify (con retry automático)
+                    let firstOrder = null;
+                    for (let attempt = 1; attempt <= 3 && !firstOrder; attempt++) {
+                        firstOrder = await createShopifyOrderFromSub(sub, preapprovalId).catch(e => {
+                            console.error(`[MP WEBHOOK] Order error (attempt ${attempt}/3):`, e.message);
+                            return null;
+                        });
+                        if (!firstOrder && attempt < 3) await new Promise(r => setTimeout(r, 2000));
+                    }
                     if (firstOrder?.id) {
                         await db.updateSubscription(sub.id, {
                             shopify_order_id: String(firstOrder.id),
@@ -3425,10 +3432,15 @@ app.post('/webhooks/mercadopago', async (req, res) => {
             nextCharge.setMonth(nextCharge.getMonth() + (parseInt(sub.frequency_months) || 1));
             const isComplete = cyclesCompleted >= (parseInt(sub.cycles_required) || 999);
 
-            // Crear orden Shopify
-            const order = await createShopifyOrderFromSub(sub, resourceId).catch(e => {
-                console.error('[MP WEBHOOK] ❌ Shopify order error:', e.message); return null;
-            });
+            // Crear orden Shopify (con retry automático)
+            let order = null;
+            for (let attempt = 1; attempt <= 3 && !order; attempt++) {
+                order = await createShopifyOrderFromSub(sub, resourceId).catch(e => {
+                    console.error(`[MP WEBHOOK] ❌ Shopify order error (attempt ${attempt}/3):`, e.message);
+                    return null;
+                });
+                if (!order && attempt < 3) await new Promise(r => setTimeout(r, 2000));
+            }
 
             // FIX 2026-04-11: Save shopify_order_id + cycle update together
             await db.updateSubscription(sub.id, {
@@ -4129,6 +4141,56 @@ cron.schedule('0 14 * * *', async () => {  // 14:00 UTC = 09:00 PET
         console.log(`[CRON] Processed ${subs.length} subs, resumed ${paused.length} paused`);
     } catch (e) {
         console.error('[CRON] Error:', e.message);
+    }
+}, { timezone: 'America/Lima' });
+
+/* ── SELF-HEALING: crear órdenes Shopify que el webhook no pudo crear ── */
+// Cada 4 horas: busca suscripciones activas con pago confirmado pero sin orden en Shopify
+// y crea la orden automáticamente. Así nunca se pierde un pedido.
+cron.schedule('0 */4 * * *', async () => {
+    console.log('[SELF-HEAL] Scanning for active subs missing Shopify orders...');
+    try {
+        const allSubs = await db.getSubscriptions({ status: 'active' }).catch(() => []);
+        const missing = allSubs.filter(s =>
+            s.status === 'active' &&
+            (parseInt(s.cycles_completed) || 0) >= 1 &&
+            !s.shopify_order_id &&
+            s.variant_id &&
+            s.mp_preapproval_id
+        );
+
+        if (!missing.length) {
+            console.log('[SELF-HEAL] ✅ All active subs have Shopify orders');
+            return;
+        }
+
+        console.log(`[SELF-HEAL] Found ${missing.length} subs without Shopify orders — creating...`);
+        let created = 0, failed = 0;
+
+        for (const sub of missing) {
+            try {
+                const mpId = sub.mp_preapproval_id || 'selfheal_' + Date.now();
+                const order = await createShopifyOrderFromSub(sub, mpId);
+                if (order?.id) {
+                    await db.updateSubscription(sub.id, {
+                        shopify_order_id: String(order.id),
+                        shopify_order_name: order.name
+                    }).catch(() => {});
+                    await db.createEvent({ subscription_id: sub.id, event_type: 'selfheal_order_created',
+                        metadata: JSON.stringify({ shopify_order_id: order.id, order_name: order.name })
+                    }).catch(() => {});
+                    console.log(`[SELF-HEAL] ✅ Order ${order.name} created for ${sub.customer_email}`);
+                    created++;
+                } else { failed++; }
+                await new Promise(r => setTimeout(r, 800)); // Rate limit
+            } catch (e) {
+                console.error(`[SELF-HEAL] ❌ ${sub.customer_email}: ${e.message}`);
+                failed++;
+            }
+        }
+        console.log(`[SELF-HEAL] Done: ${created} created, ${failed} failed`);
+    } catch (e) {
+        console.error('[SELF-HEAL] Error:', e.message);
     }
 }, { timezone: 'America/Lima' });
 
