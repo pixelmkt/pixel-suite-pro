@@ -872,7 +872,9 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
         //   viejas (creadas antes del 15/4 sin array de regalos). No afecta crons ni webhook MP.
         const allowed = ['permanence_months', 'cycles_required', 'discount_pct', 'frequency_months', 'customer_name', 'product_title', 'variant_id', 'product_id', 'status', 'next_charge_at', 'base_price', 'final_price', 'shipping_address', 'tipo_documento', 'dni', 'mp_preapproval_id', 'activated_at', 'cycles_completed', 'last_charge_at', 'customer_email', 'customer_phone', 'gifts_planned', 'gifts_delivered', 'gifts_delivered_at', 'gifts_delivered_order_id', 'gifts_delivered_order_name',
             // 2026-04-21 — bundle configurable
-            'bundle_items', 'bundle_config_id', 'bundle_target_quantity', 'bundle_source_product_id', 'bundle_name'];
+            'bundle_items', 'bundle_config_id', 'bundle_target_quantity', 'bundle_source_product_id', 'bundle_name',
+            // 2026-04-23 — allow admin repair of order references
+            'shopify_order_id', 'shopify_order_name'];
         const updates = {};
         for (const key of allowed) { if (req.body[key] !== undefined) updates[key] = req.body[key]; }
         if (!Object.keys(updates).length) return res.status(400).json({ error: 'No valid fields to update' });
