@@ -4151,12 +4151,15 @@ cron.schedule('0 */4 * * *', async () => {
     console.log('[SELF-HEAL] Scanning for active subs missing Shopify orders...');
     try {
         const allSubs = await db.getSubscriptions({ status: 'active' }).catch(() => []);
+        // Solo subs activadas en los últimos 7 días — las antiguas requieren intervención manual
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         const missing = allSubs.filter(s =>
             s.status === 'active' &&
             (parseInt(s.cycles_completed) || 0) >= 1 &&
             !s.shopify_order_id &&
             s.variant_id &&
-            s.mp_preapproval_id
+            s.mp_preapproval_id &&
+            (s.activated_at || s.created_at || '') >= sevenDaysAgo
         );
 
         if (!missing.length) {
