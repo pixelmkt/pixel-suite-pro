@@ -2485,10 +2485,53 @@ app.post('/api/subscriptions/:id/create-order', async (req, res) => {
     try {
         const sub = await db.getSubscription(req.params.id);
         if (!sub) return res.status(404).json({ error: 'Subscription not found' });
-        const mpPaymentId = req.body.mp_payment_id || 'manual_' + Date.now();
+        // Skip if already has a Shopify order (prevent duplicates)
+        if (sub.shopify_order_id && !req.body.force) {
+            return res.json({ success: true, already_exists: true, order_name: sub.shopify_order_name, order_id: sub.shopify_order_id });
+        }
+        const mpPaymentId = req.body.mp_payment_id || sub.mp_preapproval_id || 'manual_' + Date.now();
         const order = await createShopifyOrderFromSub(sub, mpPaymentId);
         if (!order) return res.status(500).json({ error: 'Failed to create order' });
+        // Save order data back to subscription
+        await db.updateSubscription(sub.id, {
+            shopify_order_id: String(order.id),
+            shopify_order_name: order.name
+        }).catch(e => console.warn('[CREATE-ORDER] Failed to save order to sub:', e.message));
+        await db.createEvent({ subscription_id: sub.id, event_type: 'manual_order_created',
+            metadata: JSON.stringify({ shopify_order_id: order.id, order_name: order.name, created_by: 'admin_batch' })
+        }).catch(() => {});
         res.json({ success: true, order_number: order.order_number, order_name: order.name, order_id: order.id });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── BATCH CREATE missing Shopify orders for active subs ── */
+app.post('/api/subscriptions/batch-create-orders', async (req, res) => {
+    try {
+        const allSubs = await db.getSubscriptions({ status: 'active' }).catch(() => []);
+        const missing = allSubs.filter(s => s.status === 'active' && s.cycles_completed >= 1 && !s.shopify_order_id && s.variant_id);
+        const results = [];
+        for (const sub of missing) {
+            try {
+                const mpId = sub.mp_preapproval_id || 'batch_' + Date.now();
+                const order = await createShopifyOrderFromSub(sub, mpId);
+                if (order?.id) {
+                    await db.updateSubscription(sub.id, { shopify_order_id: String(order.id), shopify_order_name: order.name }).catch(() => {});
+                    await db.createEvent({ subscription_id: sub.id, event_type: 'manual_order_created',
+                        metadata: JSON.stringify({ shopify_order_id: order.id, order_name: order.name, created_by: 'admin_batch' })
+                    }).catch(() => {});
+                    results.push({ id: sub.id, email: sub.customer_email, name: sub.customer_name, order_name: order.name, status: 'created' });
+                    console.log(`[BATCH] ✅ Order ${order.name} created for ${sub.customer_email}`);
+                } else {
+                    results.push({ id: sub.id, email: sub.customer_email, name: sub.customer_name, status: 'failed', error: 'No order returned' });
+                }
+                // Small delay to avoid Shopify rate limits
+                await new Promise(r => setTimeout(r, 600));
+            } catch (e) {
+                results.push({ id: sub.id, email: sub.customer_email, name: sub.customer_name, status: 'error', error: e.message });
+                console.error(`[BATCH] ❌ ${sub.customer_email}: ${e.message}`);
+            }
+        }
+        res.json({ total_missing: missing.length, results });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
