@@ -4193,7 +4193,16 @@ cron.schedule('0 */4 * * *', async () => {
             !s.shopify_order_id &&
             s.variant_id &&
             s.mp_preapproval_id &&
-            (s.activated_at || s.created_at || '') >= sevenDaysAgo
+            (s.activated_at || s.created_at || '') >= sevenDaysAgo &&
+            // 🔒 FIX 2026-04-28: si gifts_delivered=true significa que YA se creó al
+            //   menos una orden con regalo (createShopifyOrderFromSub solo lo setea
+            //   después de crear order exitosamente). El problema entonces es solo
+            //   que shopify_order_id no se sincronizó, pero el order EXISTE en Shopify.
+            //   No hace falta crearlo de nuevo (eso causaba duplicados sin regalo
+            //   con cycleLabel="Ciclo 1/6", caso lili.020407@gmail.com).
+            //   Para subs sin gifts_planned (ej. C4 Bundle), gifts_delivered queda false
+            //   y este filtro no aplica — esas subs siguen recibiendo self-heal normal.
+            !(s.gifts_delivered === true && Array.isArray(s.gifts_planned) && s.gifts_planned.length > 0)
         );
 
         if (!missing.length) {
