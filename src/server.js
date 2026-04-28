@@ -3428,7 +3428,8 @@ app.post('/webhooks/mercadopago', async (req, res) => {
             }
 
             // 🔒 FIX 2026-04-28: cross-dedup contra activación de la suscripción.
-            //   Cuando MP autoriza una nueva sub, dispara DOS webhooks casi simultáneos:
+            //   Cuando MP autoriza una nueva sub, dispara DOS webhooks (preapproval + payment)
+            //   con gap variable: a veces segundos, a veces hasta 3+ horas (ej. rcerronb 191min).
             //     1) preapproval (action=created, status=authorized) → handler caso 1 crea
             //        la primera orden con cycleLabel="Ciclo 1" + regalo, y registra event
             //        first_order_created.
@@ -3436,14 +3437,15 @@ app.post('/webhooks/mercadopago', async (req, res) => {
             //        protección crearíamos una SEGUNDA orden duplicada con cycleLabel="Ciclo 1/6"
             //        y SIN regalo (cycles_completed ya pasó a 1). El cliente recibiría 2 cajas
             //        por un solo cobro de MP.
-            //   Solución: si first_order_created existe hace < 60 min, skip este payment.
-            //   En cobros recurrentes mes 2+, first_order_created tiene >30 días → no aplica.
+            //   Solución: si first_order_created existe hace < 24h, skip este payment.
+            //   Ventana 24h es segura porque cobros recurrentes son cada 30+ días.
+            //   En cobros recurrentes mes 2+, first_order_created tiene >>24h → no aplica.
             //   Aditivo: agrega un branch de skip, no toca nada de la lógica existente.
             const recentFirstOrder = paymentEvents.find(e => e.event_type === 'first_order_created');
             if (recentFirstOrder) {
                 const eventTime = new Date(recentFirstOrder.created_at || 0).getTime();
                 const minutesAgo = (Date.now() - eventTime) / 60000;
-                if (minutesAgo > 0 && minutesAgo < 60) {
+                if (minutesAgo > 0 && minutesAgo < 1440) {
                     console.log(`[MP WEBHOOK] 🔒 Skip payment ${resourceId} for ${sub.id} — first_order_created hace ${minutesAgo.toFixed(1)} min (duplicado de activación)`);
                     await db.createEvent({
                         subscription_id: sub.id,
