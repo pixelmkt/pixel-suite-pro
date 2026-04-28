@@ -7021,6 +7021,366 @@ app.post('/api/mp-polling/run-now', async (req, res) => {
 
 /* Portal endpoints moved to early registration above checkout */
 
+/* ═══════════════════════════════════════════════════════════════════
+   📊 DASHBOARD STATS (additive 2026-04-28)
+   Endpoint read-only que calcula MRR, churn, LTV y métricas clave.
+   No modifica ninguna lógica existente.
+   ═══════════════════════════════════════════════════════════════════ */
+app.get('/api/admin/dashboard-stats', async (req, res) => {
+    try {
+        const subs = await db.getSubscriptions().catch(() => []);
+        const events = db?.getAllEvents ? await db.getAllEvents().catch(() => []) :
+            (db?._listAll ? await db._listAll('lab_sub_event').catch(() => []) : []);
+
+        const now = Date.now();
+        const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+        const last30 = now - 30 * 24 * 3600 * 1000;
+        const last90 = now - 90 * 24 * 3600 * 1000;
+
+        // Conteos por status
+        const byStatus = {};
+        subs.forEach(s => { byStatus[s.status || 'unknown'] = (byStatus[s.status || 'unknown'] || 0) + 1; });
+
+        // Active recurrentes (con ciclos pendientes)
+        const activeRecurring = subs.filter(s =>
+            s.status === 'active' &&
+            (parseInt(s.cycles_completed) || 0) < (parseInt(s.cycles_required) || 999)
+        );
+
+        // MRR: suma de final_price de todas las activas (mensual)
+        const mrr = activeRecurring.reduce((sum, s) => sum + parseFloat(s.final_price || 0), 0);
+        const arr = mrr * 12;
+
+        // Activas creadas en últimos 30 días (nuevas)
+        const newLast30 = subs.filter(s => s.created_at && new Date(s.created_at).getTime() > last30).length;
+        const newLast90 = subs.filter(s => s.created_at && new Date(s.created_at).getTime() > last90).length;
+
+        // Cancelled últimos 30 días
+        const cancelledLast30 = subs.filter(s =>
+            s.status === 'cancelled' &&
+            (s.cancelled_at || s.updated_at || '') &&
+            new Date(s.cancelled_at || s.updated_at || 0).getTime() > last30
+        ).length;
+
+        // Churn rate: cancelled últimos 30d / active al inicio del periodo
+        const churnRate = activeRecurring.length > 0
+            ? ((cancelledLast30 / (activeRecurring.length + cancelledLast30)) * 100).toFixed(2)
+            : '0.00';
+
+        // LTV simple: (precio_promedio_mensual × meses_promedio) — meses_promedio = 1/churn_rate*100
+        const avgMonthlyPrice = activeRecurring.length > 0
+            ? mrr / activeRecurring.length
+            : 0;
+        const churnDecimal = parseFloat(churnRate) / 100;
+        const ltvMonths = churnDecimal > 0 ? Math.min(1 / churnDecimal, 12) : 6;
+        const ltv = avgMonthlyPrice * ltvMonths;
+
+        // Regalos entregados este mes
+        const giftsThisMonth = subs.filter(s =>
+            s.gifts_delivered === true &&
+            (s.gifts_delivered_at || '') >= new Date(monthStart).toISOString()
+        ).length;
+
+        // Cobros exitosos este mes (charge_success events)
+        const chargesThisMonth = events.filter(e =>
+            e.event_type === 'charge_success' &&
+            new Date(e.created_at || 0).getTime() > monthStart
+        ).length;
+
+        // Revenue este mes (suma de cobros aprobados)
+        const revenueThisMonth = events.filter(e =>
+            e.event_type === 'charge_success' &&
+            new Date(e.created_at || 0).getTime() > monthStart
+        ).reduce((sum, e) => {
+            try { const m = JSON.parse(e.metadata || '{}'); return sum + (parseFloat(m.amount) || 0); } catch { return sum; }
+        }, 0);
+
+        // Distribución por producto (subs activas)
+        const byProduct = {};
+        activeRecurring.forEach(s => {
+            const k = s.product_title || s.product_id || 'unknown';
+            byProduct[k] = (byProduct[k] || 0) + 1;
+        });
+
+        // Pending stuck (>24h sin pagar)
+        const pendingStuck = subs.filter(s =>
+            s.status === 'pending_payment' &&
+            s.created_at &&
+            (now - new Date(s.created_at).getTime()) > 24 * 3600 * 1000
+        ).length;
+
+        res.json({
+            generated_at: new Date().toISOString(),
+            counts: {
+                total: subs.length,
+                active_recurring: activeRecurring.length,
+                pending_payment: byStatus['pending_payment'] || 0,
+                pending_stuck_24h: pendingStuck,
+                cancelled: byStatus['cancelled'] || 0,
+                completed: subs.filter(s => (parseInt(s.cycles_completed)||0) >= (parseInt(s.cycles_required)||999)).length,
+                payment_failed: byStatus['payment_failed'] || 0
+            },
+            financials: {
+                mrr: parseFloat(mrr.toFixed(2)),
+                arr: parseFloat(arr.toFixed(2)),
+                avg_monthly_price: parseFloat(avgMonthlyPrice.toFixed(2)),
+                ltv: parseFloat(ltv.toFixed(2)),
+                ltv_months: parseFloat(ltvMonths.toFixed(1)),
+                revenue_this_month: parseFloat(revenueThisMonth.toFixed(2)),
+                charges_this_month: chargesThisMonth
+            },
+            churn: {
+                cancelled_last_30d: cancelledLast30,
+                churn_rate_pct: parseFloat(churnRate)
+            },
+            growth: {
+                new_subs_last_30d: newLast30,
+                new_subs_last_90d: newLast90
+            },
+            gifts: {
+                delivered_this_month: giftsThisMonth
+            },
+            distribution: {
+                by_product: byProduct,
+                by_status: byStatus
+            }
+        });
+    } catch (e) {
+        console.error('[DASHBOARD STATS] Error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/* ═══════════════════════════════════════════════════════════════════
+   📨 MARKETING HELPERS (additive 2026-04-28)
+   Endpoints adicionales que /api/marketing/send ya tiene como base.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/** GET /api/marketing/segment-counts — cuántos clientes hay por segmento (antes de mandar campaña). */
+app.get('/api/marketing/segment-counts', async (req, res) => {
+    try {
+        const subs = await db.getSubscriptions().catch(() => []);
+        const seen = new Set();
+        const dedup = subs.filter(s => {
+            const e = (s.customer_email || '').toLowerCase();
+            if (!e || seen.has(e)) return false;
+            seen.add(e); return true;
+        });
+        res.json({
+            active: dedup.filter(s => s.status === 'active').length,
+            paused: dedup.filter(s => s.status === 'paused').length,
+            payment_failed: dedup.filter(s => s.status === 'payment_failed').length,
+            cancelled: dedup.filter(s => s.status === 'cancelled').length,
+            pending_payment: dedup.filter(s => s.status === 'pending_payment').length,
+            pending_stuck_24h: dedup.filter(s => s.status === 'pending_payment' && s.created_at && (Date.now() - new Date(s.created_at).getTime()) > 24*3600*1000).length,
+            total_unique_emails: dedup.length
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/** GET /api/marketing/recent-campaigns — últimas 20 campañas enviadas (lee del event log). */
+app.get('/api/marketing/recent-campaigns', async (req, res) => {
+    try {
+        const events = db?._listAll ? await db._listAll('lab_sub_event').catch(() => []) : [];
+        const camp = events
+            .filter(e => e.event_type === 'marketing_campaign_sent' || e.event_type === 'abandoned_checkout_recovery_sent')
+            .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+            .slice(0, 20);
+        res.json({ campaigns: camp });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ═══════════════════════════════════════════════════════════════════
+   ⏰ ABANDONED CHECKOUT RECOVERY — cron (additive 2026-04-28)
+   Cada 6 horas: encuentra subs en pending_payment > 24h y < 7d
+   sin email de recovery enviado, manda email único, registra event.
+   No toca lógica existente. Falla silencioso.
+   ═══════════════════════════════════════════════════════════════════ */
+async function runAbandonedCheckoutRecovery() {
+    console.log('[ABANDONED RECOVERY] Scanning pending_payment subs...');
+    try {
+        const subs = await db.getSubscriptions().catch(() => []);
+        const now = Date.now();
+        const candidates = subs.filter(s =>
+            s.status === 'pending_payment' &&
+            s.customer_email &&
+            s.created_at &&
+            (now - new Date(s.created_at).getTime()) > 24 * 3600 * 1000 &&
+            (now - new Date(s.created_at).getTime()) < 7 * 24 * 3600 * 1000
+        );
+        if (!candidates.length) {
+            console.log('[ABANDONED RECOVERY] No hay candidatos');
+            return;
+        }
+        console.log(`[ABANDONED RECOVERY] Encontrados: ${candidates.length}`);
+
+        let sent = 0, skipped = 0;
+        for (const sub of candidates) {
+            try {
+                // No re-enviar si ya tiene event de recovery
+                const evs = db?.getEvents ? await db.getEvents(sub.id, 50).catch(() => []) : [];
+                const alreadySent = evs.some(e => e.event_type === 'abandoned_checkout_recovery_sent');
+                if (alreadySent) { skipped++; continue; }
+
+                // Construir link al portal MP si tenemos preapproval_id
+                const portalUrl = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
+                const resumeLink = sub.mp_preapproval_id
+                    ? `https://www.mercadopago.com/checkout/v1/redirect?pref_id=${encodeURIComponent(sub.mp_preapproval_id)}`
+                    : portalUrl;
+
+                const html = `
+<div style="font-family:Inter,Arial,sans-serif;max-width:540px;margin:0 auto;padding:24px;background:#fff">
+  <div style="text-align:center;margin-bottom:28px">
+    <div style="font-size:11px;font-weight:800;letter-spacing:.2em;color:#bd1718">LAB NUTRITION</div>
+  </div>
+  <div style="background:#fafafa;border:1px solid #ececec;border-radius:14px;padding:36px 28px">
+    <h2 style="font-size:22px;font-weight:900;color:#0a0a0a;margin:0 0 14px;letter-spacing:-.02em">Te falta 1 paso</h2>
+    <p style="font-size:14.5px;color:#4a4a4a;line-height:1.55;margin:0 0 22px">
+      Hola${sub.customer_name ? ' ' + sub.customer_name.split(' ')[0] : ''}, empezaste a suscribirte a
+      <strong>${sub.product_title || 'tu plan'}</strong> pero el pago quedó pendiente.
+    </p>
+    <p style="font-size:14.5px;color:#4a4a4a;line-height:1.55;margin:0 0 28px">
+      Completá el pago en Mercado Pago para activar tu primer envío con
+      <strong>regalo de bienvenida</strong> incluido.
+    </p>
+    <div style="text-align:center;margin:24px 0">
+      <a href="${resumeLink}" style="display:inline-block;background:#0a0a0a;color:#fff;padding:16px 32px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px">
+        Completar mi suscripción
+      </a>
+    </div>
+    <p style="font-size:12px;color:#777;text-align:center;margin:18px 0 0">
+      Si ya pagaste o cambiaste de idea, ignorá este email.
+    </p>
+  </div>
+  <p style="text-align:center;font-size:11px;color:#999;margin:18px 0 0;letter-spacing:.05em">
+    LAB NUTRITION · Programa Black Diamond
+  </p>
+</div>`;
+
+                if (typeof sendAutoEmail === 'function') {
+                    await sendAutoEmail({
+                        to: sub.customer_email,
+                        subject: 'Te falta 1 paso para activar tu suscripción Black Diamond',
+                        html
+                    });
+                }
+                await db.createEvent({
+                    subscription_id: sub.id,
+                    event_type: 'abandoned_checkout_recovery_sent',
+                    metadata: JSON.stringify({ to: sub.customer_email, hours_since_create: Math.round((now - new Date(sub.created_at).getTime()) / 3600000) })
+                }).catch(() => {});
+                sent++;
+                await new Promise(r => setTimeout(r, 600));
+            } catch (e) {
+                console.warn('[ABANDONED RECOVERY] Error con ' + sub.customer_email + ': ' + e.message);
+            }
+        }
+        console.log(`[ABANDONED RECOVERY] Enviados: ${sent} | Skipped (ya enviado): ${skipped}`);
+    } catch (e) {
+        console.error('[ABANDONED RECOVERY] Fatal: ' + e.message);
+    }
+}
+
+/** Cron cada 6 horas */
+if (typeof cron !== 'undefined' && cron.schedule) {
+    cron.schedule('0 */6 * * *', runAbandonedCheckoutRecovery, { timezone: 'America/Lima' });
+}
+
+/** Manual trigger */
+app.post('/api/admin/abandoned-recovery/run-now', async (req, res) => {
+    res.json({ started: true, message: 'Abandoned checkout recovery triggered' });
+    runAbandonedCheckoutRecovery().catch(console.error);
+});
+
+/* ═══════════════════════════════════════════════════════════════════
+   📈 META PIXEL CAPI — Server-side tracking (additive 2026-04-28)
+   Endpoint que dispara evento "Subscribe" en Meta Conversions API.
+   Si META_PIXEL_ID o META_ACCESS_TOKEN no están seteados, hace no-op.
+   No bloquea el flujo de suscripción.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const crypto = require('crypto');
+function sha256Hash(value) {
+    if (!value) return null;
+    return crypto.createHash('sha256').update(String(value).trim().toLowerCase()).digest('hex');
+}
+
+async function sendMetaCapiEvent(eventName, sub, eventId, sourceUrl) {
+    const PIXEL_ID = process.env.META_PIXEL_ID;
+    const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
+    if (!PIXEL_ID || !ACCESS_TOKEN) {
+        return { ok: false, reason: 'meta_not_configured' };
+    }
+
+    const userData = {
+        em: sub.customer_email ? [sha256Hash(sub.customer_email)] : undefined,
+        ph: sub.customer_phone ? [sha256Hash(sub.customer_phone.replace(/\D/g, ''))] : undefined,
+        fn: sub.customer_name ? [sha256Hash(sub.customer_name.split(' ')[0])] : undefined,
+        ln: sub.customer_name ? [sha256Hash(sub.customer_name.split(' ').slice(1).join(' '))] : undefined,
+        country: ['68b6cd6d8cc41bc0e92bba4b22b25a7eda6b9c01dd8a8e2e9cab0a5c10e50f23'] // sha256('pe')
+    };
+
+    const data = [{
+        event_name: eventName,
+        event_time: Math.floor(Date.now() / 1000),
+        event_id: eventId || (sub.id + '_' + eventName),
+        action_source: 'website',
+        event_source_url: sourceUrl || 'https://labnutrition.com/pages/suscripciones',
+        user_data: Object.fromEntries(Object.entries(userData).filter(([_, v]) => v !== undefined)),
+        custom_data: {
+            currency: 'PEN',
+            value: parseFloat(sub.final_price || 0),
+            content_ids: [String(sub.product_id || '')],
+            content_name: sub.product_title || 'Suscripción Lab Nutrition',
+            content_type: 'product',
+            num_items: 1,
+            predicted_ltv: parseFloat(sub.final_price || 0) * (parseInt(sub.cycles_required) || 6),
+            subscription_id: sub.id,
+            plan_frequency_months: parseInt(sub.frequency_months) || 1,
+            plan_permanence_months: parseInt(sub.permanence_months) || 0
+        }
+    }];
+
+    const body = JSON.stringify({ data });
+    const url = `https://graph.facebook.com/v19.0/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`;
+    try {
+        const r = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body
+        });
+        const j = await r.json();
+        return { ok: r.ok, response: j };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+}
+
+/** POST /api/track/subscribe — dispara evento Subscribe en Meta CAPI.
+ *  Body: { subscription_id, event_id?, source_url? }
+ *  Llamar desde frontend success page para tracking server-side.
+ */
+app.post('/api/track/subscribe', async (req, res) => {
+    try {
+        const { subscription_id, event_id, source_url } = req.body || {};
+        if (!subscription_id) return res.status(400).json({ error: 'subscription_id required' });
+        const sub = await db.getSubscription(subscription_id).catch(() => null);
+        if (!sub) return res.status(404).json({ error: 'subscription not found' });
+        const result = await sendMetaCapiEvent('Subscribe', sub, event_id, source_url);
+        // Log para auditoría
+        if (result.ok) {
+            await db.createEvent({
+                subscription_id: sub.id,
+                event_type: 'meta_capi_subscribe_sent',
+                metadata: JSON.stringify({ event_id: event_id || (sub.id + '_Subscribe'), value: sub.final_price })
+            }).catch(() => {});
+        }
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 /* ── START SERVER ── */
 const server = app.listen(PORT, '0.0.0.0', async () => {
     console.log(`\nLAB NUTRITION Backend v6.3.0 running on 0.0.0.0:${PORT}`);
