@@ -7502,7 +7502,8 @@ const ALLOWED_TOKENS = [
     'monthly_discount', 'total_discount_if_complete',
     'plan_label', 'next_charge_at', 'next_charge_date',
     'status', 'subscription_id',
-    'portal_url', 'unsubscribe_url'
+    'portal_url', 'unsubscribe_url',
+    'product_url', 'product_handle'
 ];
 
 function buildPlanLabel(sub) {
@@ -7524,7 +7525,7 @@ function escapeHtml(s) {
     return String(s || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 }
 
-function buildContextForSub(sub) {
+async function buildContextForSub(sub) {
     const portalBase = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
     const fn = (sub.customer_name || '').split(' ')[0] || '';
     const ln = (sub.customer_name || '').split(' ').slice(1).join(' ') || '';
@@ -7533,6 +7534,21 @@ function buildContextForSub(sub) {
     const monthlyDiscount = Math.max(0, basePrice - finalPrice);
     const cyclesReq = parseInt(sub.cycles_required) || 0;
     const totalDiscountIfComplete = monthlyDiscount * cyclesReq;
+
+    // Resolve product URL: usa getProductHandle (con cache 1h) si está disponible,
+    // sino fallback a /pages/suscripciones. NUNCA falla.
+    let productHandle = '';
+    let productUrl = 'https://labnutrition.com/pages/suscripciones';
+    try {
+        if (sub.product_id && typeof getProductHandle === 'function') {
+            const h = await getProductHandle(sub.product_id).catch(() => null);
+            if (h) {
+                productHandle = h;
+                productUrl = 'https://labnutrition.com/products/' + h;
+            }
+        }
+    } catch (_) { /* fallback queda */ }
+
     return {
         first_name: fn,
         last_name: ln,
@@ -7558,7 +7574,9 @@ function buildContextForSub(sub) {
         status: sub.status || '',
         subscription_id: sub.id || '',
         portal_url: portalBase + '/portal?email=' + encodeURIComponent(sub.customer_email || ''),
-        unsubscribe_url: portalBase + '/api/marketing/unsubscribe?email=' + encodeURIComponent(sub.customer_email || '') + '&sub_id=' + encodeURIComponent(sub.id || '')
+        unsubscribe_url: portalBase + '/api/marketing/unsubscribe?email=' + encodeURIComponent(sub.customer_email || '') + '&sub_id=' + encodeURIComponent(sub.id || ''),
+        product_url: productUrl,
+        product_handle: productHandle
     };
 }
 
@@ -7595,7 +7613,7 @@ app.post('/api/marketing/preview-html', async (req, res) => {
         if (!pool.length) return res.status(404).json({ error: 'No hay subs en el segmento elegido' });
 
         const sub = pool[0];
-        const ctx = buildContextForSub(sub);
+        const ctx = await buildContextForSub(sub);
         const rendered = applyTokens(html, ctx);
         res.json({
             sample_sub_email: sub.customer_email,
@@ -7640,7 +7658,7 @@ app.post('/api/marketing/test-html', async (req, res) => {
             next_charge_at: new Date(Date.now() + 30*24*3600*1000).toISOString()
         };
 
-        const ctx = buildContextForSub(sample_safe);
+        const ctx = await buildContextForSub(sample_safe);
         const safeHtml = sanitizeMarketingHtml(html);
         let rendered = applyTokens(safeHtml, ctx);
         rendered = appendUnsubscribeFooter(rendered, ctx);
@@ -7783,7 +7801,7 @@ app.post('/api/marketing/send-html', async (req, res) => {
         const mailtoUnsub = process.env.UNSUBSCRIBE_MAILTO || 'unsubscribe@labnutrition.com';
         for (const sub of filtered) {
             try {
-                const ctx = buildContextForSub(sub);
+                const ctx = await buildContextForSub(sub);
                 // 1) Reemplazar tokens
                 let rendered = applyTokens(safeHtml, ctx);
                 // 2) Inyectar preheader text si fue provisto
