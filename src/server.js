@@ -3575,6 +3575,33 @@ function assertSubShippable(sub) {
    Usado por el enricher de regalos para generar URLs /products/{handle}.
    Si falla, devuelve null y el widget renderiza sin link — no bloquea. ── */
 const _handleCache = new Map(); // product_id → { handle, at }
+/* getProductImage: resuelve la imagen principal del producto Shopify por product_id.
+ * Cache 1h. Falla a null silencioso. Aditivo. */
+const _imageCache = new Map();
+async function getProductImage(productId) {
+    if (!productId) return null;
+    const key = String(productId);
+    const cached = _imageCache.get(key);
+    const now = Date.now();
+    if (cached && (now - cached.at) < 3600000) return cached.url;
+    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+    const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+    if (!token) return null;
+    try {
+        const r = await fetch(`https://${shop}/admin/api/2026-01/products/${encodeURIComponent(key)}.json?fields=id,image,images`, {
+            headers: { 'X-Shopify-Access-Token': token }
+        });
+        if (!r.ok) { _imageCache.set(key, { url: null, at: now }); return null; }
+        const data = await r.json();
+        const url = data?.product?.image?.src || data?.product?.images?.[0]?.src || null;
+        _imageCache.set(key, { url, at: now });
+        return url;
+    } catch (e) {
+        _imageCache.set(key, { url: null, at: now });
+        return null;
+    }
+}
+
 async function getProductHandle(productId) {
     if (!productId) return null;
     const key = String(productId);
@@ -7378,7 +7405,9 @@ app.get('/api/admin/dashboard-stats', async (req, res) => {
    Endpoints adicionales que /api/marketing/send ya tiene como base.
    ═══════════════════════════════════════════════════════════════════ */
 
-/** GET /api/marketing/segment-counts — cuántos clientes hay por segmento (antes de mandar campaña). */
+/** GET /api/marketing/segment-counts — cuántos clientes hay por segmento (antes de mandar campaña).
+ *  Si querés desglose por producto: /api/marketing/segment-counts?breakdown=product
+ */
 app.get('/api/marketing/segment-counts', async (req, res) => {
     try {
         const subs = await db.getSubscriptions().catch(() => []);
@@ -7388,7 +7417,8 @@ app.get('/api/marketing/segment-counts', async (req, res) => {
             if (!e || seen.has(e)) return false;
             seen.add(e); return true;
         });
-        res.json({
+
+        const result = {
             active: dedup.filter(s => s.status === 'active').length,
             paused: dedup.filter(s => s.status === 'paused').length,
             payment_failed: dedup.filter(s => s.status === 'payment_failed').length,
@@ -7396,7 +7426,30 @@ app.get('/api/marketing/segment-counts', async (req, res) => {
             pending_payment: dedup.filter(s => s.status === 'pending_payment').length,
             pending_stuck_24h: dedup.filter(s => s.status === 'pending_payment' && s.created_at && (Date.now() - new Date(s.created_at).getTime()) > 24*3600*1000).length,
             total_unique_emails: dedup.length
-        });
+        };
+
+        // Breakdown por producto si lo piden
+        if (req.query.breakdown === 'product') {
+            const byProduct = {};
+            for (const s of dedup) {
+                const pid = String(s.product_id || 'unknown');
+                if (!byProduct[pid]) {
+                    byProduct[pid] = {
+                        product_id: pid,
+                        product_title: s.product_title || 'Desconocido',
+                        active: 0, paused: 0, payment_failed: 0, cancelled: 0, pending_payment: 0, pending_stuck_24h: 0
+                    };
+                }
+                const slot = byProduct[pid];
+                if (slot[s.status] !== undefined) slot[s.status]++;
+                if (s.status === 'pending_payment' && s.created_at && (Date.now() - new Date(s.created_at).getTime()) > 24*3600*1000) {
+                    slot.pending_stuck_24h++;
+                }
+            }
+            result.by_product = Object.values(byProduct).sort((a, b) => (b.active + b.pending_payment) - (a.active + a.pending_payment));
+        }
+
+        res.json(result);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -7503,7 +7556,7 @@ const ALLOWED_TOKENS = [
     'plan_label', 'next_charge_at', 'next_charge_date',
     'status', 'subscription_id',
     'portal_url', 'unsubscribe_url',
-    'product_url', 'product_handle'
+    'product_url', 'product_handle', 'product_image'
 ];
 
 function buildPlanLabel(sub) {
@@ -7539,12 +7592,19 @@ async function buildContextForSub(sub) {
     // sino fallback a /pages/suscripciones. NUNCA falla.
     let productHandle = '';
     let productUrl = 'https://labnutrition.com/pages/suscripciones';
+    let productImage = sub.product_image || '';
     try {
-        if (sub.product_id && typeof getProductHandle === 'function') {
-            const h = await getProductHandle(sub.product_id).catch(() => null);
-            if (h) {
-                productHandle = h;
-                productUrl = 'https://labnutrition.com/products/' + h;
+        if (sub.product_id) {
+            if (typeof getProductHandle === 'function') {
+                const h = await getProductHandle(sub.product_id).catch(() => null);
+                if (h) {
+                    productHandle = h;
+                    productUrl = 'https://labnutrition.com/products/' + h;
+                }
+            }
+            if (!productImage && typeof getProductImage === 'function') {
+                const img = await getProductImage(sub.product_id).catch(() => null);
+                if (img) productImage = img;
             }
         }
     } catch (_) { /* fallback queda */ }
@@ -7576,7 +7636,8 @@ async function buildContextForSub(sub) {
         portal_url: portalBase + '/portal?email=' + encodeURIComponent(sub.customer_email || ''),
         unsubscribe_url: portalBase + '/api/marketing/unsubscribe?email=' + encodeURIComponent(sub.customer_email || '') + '&sub_id=' + encodeURIComponent(sub.id || ''),
         product_url: productUrl,
-        product_handle: productHandle
+        product_handle: productHandle,
+        product_image: productImage
     };
 }
 
@@ -7603,14 +7664,15 @@ function appendUnsubscribeFooter(html, ctx) {
  */
 app.post('/api/marketing/preview-html', async (req, res) => {
     try {
-        const { segment, html, sample_email } = req.body || {};
+        const { segment, html, sample_email, product_id } = req.body || {};
         if (!html || typeof html !== 'string') return res.status(400).json({ error: 'html required' });
 
         const subs = await db.getSubscriptions().catch(() => []);
         let pool = subs;
-        if (segment && segment !== 'all') pool = subs.filter(s => s.status === segment);
+        if (segment && segment !== 'all') pool = pool.filter(s => s.status === segment);
+        if (product_id) pool = pool.filter(s => String(s.product_id || '') === String(product_id));
         if (sample_email) pool = subs.filter(s => (s.customer_email || '').toLowerCase() === sample_email.toLowerCase());
-        if (!pool.length) return res.status(404).json({ error: 'No hay subs en el segmento elegido' });
+        if (!pool.length) return res.status(404).json({ error: 'No hay subs en el segmento+producto elegido' });
 
         const sub = pool[0];
         const ctx = await buildContextForSub(sub);
@@ -7634,13 +7696,14 @@ app.post('/api/marketing/preview-html', async (req, res) => {
  */
 app.post('/api/marketing/test-html', async (req, res) => {
     try {
-        const { html, subject, to_email, sample_segment, from } = req.body || {};
+        const { html, subject, to_email, sample_segment, from, product_id } = req.body || {};
         if (!html || !subject || !to_email) return res.status(400).json({ error: 'html, subject, to_email required' });
 
         const subs = await db.getSubscriptions().catch(() => []);
         let pool = sample_segment && sample_segment !== 'all'
             ? subs.filter(s => s.status === sample_segment)
             : subs;
+        if (product_id) pool = pool.filter(s => String(s.product_id || '') === String(product_id));
         const sample = pool[0] || subs[0];
         // Si no hay subs, usar contexto vacío de placeholder
         const sample_safe = sample || {
@@ -7735,7 +7798,7 @@ app.post('/api/marketing/test-html', async (req, res) => {
  */
 app.post('/api/marketing/send-html', async (req, res) => {
     try {
-        const { segment, subject, html, preheader, throttle_ms, dry_run } = req.body || {};
+        const { segment, subject, html, preheader, throttle_ms, dry_run, product_id } = req.body || {};
         if (!segment || !subject || !html) return res.status(400).json({ error: 'segment, subject, html required' });
 
         const allowedSegments = ['active', 'paused', 'payment_failed', 'cancelled', 'pending_payment', 'all'];
@@ -7745,6 +7808,7 @@ app.post('/api/marketing/send-html', async (req, res) => {
 
         const subs = await db.getSubscriptions().catch(() => []);
         let filtered = segment === 'all' ? subs : subs.filter(s => s.status === segment);
+        if (product_id) filtered = filtered.filter(s => String(s.product_id || '') === String(product_id));
         const totalBefore = filtered.length;
 
         // Skip clientes que se dieron de baja del mailing (compliance)
