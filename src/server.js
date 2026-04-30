@@ -3918,9 +3918,14 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         }
     }
 
-    const cycleLabel = sub.cycles_completed
-        ? ('Ciclo ' + sub.cycles_completed + '/' + (sub.cycles_required || '?'))
-        : 'Ciclo 1';
+    // 🔧 FIX 2026-04-30 cosmético: el label debe reflejar el ciclo QUE SE ESTÁ CREANDO,
+    // no el ya completado. Antes: cycles_completed=1 → "Ciclo 1/6" (se veía como ciclo 1 pero era el 2).
+    // Ahora: cycles_completed=1 → "Ciclo 2/6" (el cobro recurrente que se está procesando).
+    // Coherente con cycle_number (note_attribute) que ya usa cycles_completed+1.
+    const _cyc = parseInt(sub.cycles_completed) || 0;
+    const cycleLabel = _cyc === 0
+        ? 'Ciclo 1'
+        : ('Ciclo ' + (_cyc + 1) + '/' + (sub.cycles_required || '?'));
 
     // Line item at the actual price the subscriber pays (final_price after discount)
     const basePrice = parseFloat(sub.base_price || 0);
