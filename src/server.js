@@ -7046,6 +7046,57 @@ app.post('/api/billing/run-now', async (req, res) => {
     runDailyBillingCron().catch(console.error);
 });
 
+/** Manual trigger for SELF-HEAL — recrea orders Shopify para subs activas
+ *  con cycles >= 1 sin shopify_order_id grabado. Util para arreglar
+ *  subs viejas con datos incompletos (con el fix de 2026-04-30,
+ *  estas subs ahora caen con placeholders + tag pending_data).
+ */
+app.post('/api/admin/self-heal/run-now', async (req, res) => {
+    res.json({ started: true, message: 'Self-heal triggered manually — revisar logs en 30-60s' });
+    // Ejecutar la misma lógica del cron interno
+    (async () => {
+        try {
+            const allSubs = await db.getSubscriptions({ status: 'active' }).catch(() => []);
+            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+            const missing = allSubs.filter(s =>
+                s.status === 'active' &&
+                (parseInt(s.cycles_completed) || 0) >= 1 &&
+                !s.shopify_order_id &&
+                s.variant_id &&
+                s.mp_preapproval_id &&
+                (s.activated_at || s.created_at || '') >= sevenDaysAgo &&
+                !(s.gifts_delivered === true && Array.isArray(s.gifts_planned) && s.gifts_planned.length > 0)
+            );
+            console.log(`[SELF-HEAL MANUAL] Found ${missing.length} subs sin shopify_order_id`);
+            let created = 0, failed = 0;
+            for (const sub of missing) {
+                try {
+                    const mpId = sub.mp_preapproval_id || 'selfheal_' + Date.now();
+                    const order = await createShopifyOrderFromSub(sub, mpId);
+                    if (order?.id) {
+                        await db.updateSubscription(sub.id, {
+                            shopify_order_id: String(order.id),
+                            shopify_order_name: order.name
+                        }).catch(() => {});
+                        await db.createEvent({ subscription_id: sub.id, event_type: 'selfheal_order_created',
+                            metadata: JSON.stringify({ shopify_order_id: order.id, order_name: order.name, manual: true })
+                        }).catch(() => {});
+                        console.log(`[SELF-HEAL MANUAL] OK ${order.name} para ${sub.customer_email}`);
+                        created++;
+                    } else { failed++; }
+                    await new Promise(r => setTimeout(r, 800));
+                } catch (e) {
+                    console.error(`[SELF-HEAL MANUAL] Error ${sub.customer_email}: ${e.message}`);
+                    failed++;
+                }
+            }
+            console.log(`[SELF-HEAL MANUAL] Done. Created:${created} Failed:${failed}`);
+        } catch (e) {
+            console.error('[SELF-HEAL MANUAL] Fatal: ' + e.message);
+        }
+    })().catch(console.error);
+});
+
 /** Manual trigger for MP payment polling */
 app.post('/api/mp-polling/run-now', async (req, res) => {
     res.json({ started: true, message: 'MP payment polling triggered manually' });
