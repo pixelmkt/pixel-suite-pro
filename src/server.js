@@ -3782,10 +3782,39 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         // Re-check after auto-resolve
         shipCheck = assertSubShippable(sub);
         if (!shipCheck.ok) {
-            console.error(`[ORDER] ❌ NO se crea orden Shopify para ${sub.customer_email || sub.id}: falta ${shipCheck.missing.join(', ')}. Cobro MP ${mpPaymentId || '?'} guardado. Completá datos y usá /api/admin/subscriptions/:id/retry-order para reintentar.`);
-            return null;
+            // 🔧 FIX 2026-04-30: NO bloquear más por datos faltantes.
+            // Los cobros MP entran de todas formas, las cajas DEBEN despacharse.
+            // Aplicamos placeholders en memoria (no se graban en la sub original)
+            // y taggeamos la orden con 'pending_data' para que el equipo de ops
+            // las identifique y complete los datos desde Shopify Admin manualmente.
+            // El cliente recibe su producto, SUNAT se completa manualmente con DNI real
+            // cuando el equipo lo recopile (vía cpe.labnutrition.com).
+            console.warn(`[ORDER] ⚠️ Sub ${sub.customer_email || sub.id} con datos incompletos (${shipCheck.missing.join(', ')}). Creando orden con placeholders + tag pending_data.`);
+            if (shipCheck.missing.includes('dni')) sub.dni = '00000000';
+            if (!sub.shipping_address) sub.shipping_address = {};
+            if (shipCheck.missing.includes('shipping_address1')) sub.shipping_address.address1 = 'POR COMPLETAR — CONTACTAR CLIENTE';
+            if (shipCheck.missing.includes('shipping_city')) sub.shipping_address.city = 'Lima';
+            if (shipCheck.missing.includes('shipping_province')) sub.shipping_address.province = 'Lima';
+            if (!sub.shipping_address.country) sub.shipping_address.country = 'PE';
+            if (!sub.shipping_address.country_code) sub.shipping_address.country_code = 'PE';
+            if (!sub.shipping_address.zip) sub.shipping_address.zip = '15000';
+            if (!sub.shipping_address.first_name) sub.shipping_address.first_name = (sub.customer_name || sub.customer_email || 'Cliente').split(' ')[0];
+            if (!sub.shipping_address.last_name) sub.shipping_address.last_name = (sub.customer_name || '').split(' ').slice(1).join(' ') || '';
+            if (!sub.shipping_address.phone) sub.shipping_address.phone = sub.customer_phone || '';
+            // Marker para el orderBody (agrega tag pending_data y note_attribute)
+            sub._partial_data = true;
+            sub._missing_fields = shipCheck.missing.slice();
+            // Loguear event
+            if (db?.createEvent && sub.id && !String(sub.id).startsWith('orphan_')) {
+                db.createEvent({
+                    subscription_id: sub.id,
+                    event_type: 'order_created_with_partial_data',
+                    metadata: JSON.stringify({ missing: shipCheck.missing, mp_payment_id: mpPaymentId, at: new Date().toISOString() })
+                }).catch(() => {});
+            }
+        } else {
+            console.log(`[ORDER] ✅ Auto-resolve exitoso para ${sub.customer_email} — datos completos, creando orden`);
         }
-        console.log(`[ORDER] ✅ Auto-resolve exitoso para ${sub.customer_email} — datos completos, creando orden`);
     }
 
     // Si falta variant_id, intentar resolverlo buscando por título de producto
@@ -4043,7 +4072,11 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         { name: 'igv_incluido', value: 'true' },
         { name: 'tax_included', value: 'true' },
         // 🎁 Auditoría regalo: visible en admin Shopify, no afecta lógica Navasoft
-        ...(shouldDeliverGifts ? [{ name: 'gift_included', value: String(giftLineItems.length) + ' item(s)' }] : [])
+        ...(shouldDeliverGifts ? [{ name: 'gift_included', value: String(giftLineItems.length) + ' item(s)' }] : []),
+        ...(sub._partial_data ? [
+            { name: 'pending_data', value: 'true' },
+            { name: 'pending_data_missing', value: (sub._missing_fields || []).join(', ') }
+        ] : [])
     ].filter(a => a.value);
 
     // 🏬 Location de inventario: default automático.
@@ -4076,7 +4109,7 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
             discount_codes: [],
             shipping_lines: [{ title: 'Envío suscripción', price: '10.00', code: '02' }],
             note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF | IGV incluido${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
-            tags: 'suscripcion',
+            tags: sub._partial_data ? 'suscripcion,pending_data,revisar_cliente' : 'suscripcion',
             note_attributes: noteAttrs,
             shipping_address: shippingAddr || undefined,
             billing_address: shippingAddr ? { ...shippingAddr, company: sub.dni || '' } : undefined,
@@ -7380,12 +7413,13 @@ app.post('/api/marketing/preview-html', async (req, res) => {
 });
 
 /** POST /api/marketing/test-html — envía 1 email de prueba a un destinatario específico.
- *  Body: { html, subject, to_email, sample_segment? }
+ *  Body: { html, subject, to_email, sample_segment?, from? }
  *  Renderiza con datos del primer sub del segmento (o uno random) y manda solo a to_email.
+ *  Acepta from override (ej. "informes@labnutrition.com" si el dominio está verificado en Resend).
  */
 app.post('/api/marketing/test-html', async (req, res) => {
     try {
-        const { html, subject, to_email, sample_segment } = req.body || {};
+        const { html, subject, to_email, sample_segment, from } = req.body || {};
         if (!html || !subject || !to_email) return res.status(400).json({ error: 'html, subject, to_email required' });
 
         const subs = await db.getSubscriptions().catch(() => []);
@@ -7393,22 +7427,79 @@ app.post('/api/marketing/test-html', async (req, res) => {
             ? subs.filter(s => s.status === sample_segment)
             : subs;
         const sample = pool[0] || subs[0];
-        if (!sample) return res.status(404).json({ error: 'No hay subs para usar como sample' });
+        // Si no hay subs, usar contexto vacío de placeholder
+        const sample_safe = sample || {
+            id: 'test_sample',
+            customer_email: to_email,
+            customer_name: 'Cliente de Prueba',
+            product_title: 'Producto Test',
+            frequency_months: 1,
+            permanence_months: 6,
+            cycles_completed: 0,
+            cycles_required: 6,
+            discount_pct: 50,
+            final_price: 90,
+            base_price: 179,
+            next_charge_at: new Date(Date.now() + 30*24*3600*1000).toISOString()
+        };
 
-        const ctx = buildContextForSub(sample);
-        let rendered = applyTokens(html, ctx);
+        const ctx = buildContextForSub(sample_safe);
+        const safeHtml = sanitizeMarketingHtml(html);
+        let rendered = applyTokens(safeHtml, ctx);
         rendered = appendUnsubscribeFooter(rendered, ctx);
-
         const subjectRendered = applyTokens(subject, ctx);
+        const plainText = htmlToPlainText(rendered);
 
-        if (typeof sendAutoEmail !== 'function') return res.status(500).json({ error: 'sendAutoEmail not available' });
-        await sendAutoEmail({ to: to_email, subject: '[TEST] ' + subjectRendered, html: rendered });
+        // Usar sendCampaignEmail con headers modernos y from override opcional
+        const fromOverride = from
+            ? (from.includes('<') ? from : '"LAB NUTRITION" <' + from + '>')
+            : undefined;
+
+        if (fromOverride) {
+            // Llamar Resend directo con from custom
+            const key = process.env.RESEND_API_KEY;
+            if (!key) return res.status(500).json({ error: 'RESEND_API_KEY no configurado, no puedo usar from override' });
+            const r = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from: fromOverride,
+                    to: to_email,
+                    subject: '[TEST] ' + subjectRendered,
+                    html: rendered,
+                    text: plainText,
+                    headers: {
+                        'List-Unsubscribe': '<' + ctx.unsubscribe_url + '>',
+                        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+                    }
+                })
+            });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) return res.status(500).json({ error: '[Resend] ' + (j?.message || j?.error || 'HTTP ' + r.status), detail: j });
+            return res.json({
+                ok: true,
+                sent_to: to_email,
+                from: fromOverride,
+                sample_used: { email: sample_safe.customer_email, name: sample_safe.customer_name },
+                resend_id: j.id,
+                note: 'Email TEST enviado vía Resend con from override. Subject lleva prefijo [TEST].'
+            });
+        }
+
+        // Sin from override → usar sendCampaignEmail (Resend o SMTP fallback)
+        await sendCampaignEmail({
+            to: to_email,
+            subject: '[TEST] ' + subjectRendered,
+            html: rendered,
+            text: plainText,
+            unsubscribeUrl: ctx.unsubscribe_url
+        });
 
         res.json({
             ok: true,
             sent_to: to_email,
-            sample_used: { email: sample.customer_email, name: sample.customer_name },
-            note: 'Email de TEST enviado. Reviá tu inbox (puede tardar 1-2 min). El subject lleva prefijo [TEST].'
+            sample_used: { email: sample_safe.customer_email, name: sample_safe.customer_name },
+            note: 'Email TEST enviado. Subject lleva prefijo [TEST].'
         });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -7445,6 +7536,11 @@ app.post('/api/marketing/send-html', async (req, res) => {
         filtered = filtered.filter(s => s.marketing_unsubscribed !== true);
         const skippedUnsub = totalBefore - filtered.length;
 
+        // Skip clientes con email rebotado (Resend webhook nos avisó)
+        const beforeBounce = filtered.length;
+        filtered = filtered.filter(s => s.email_bounced !== true);
+        const skippedBounced = beforeBounce - filtered.length;
+
         // Dedup por email
         const seen = new Set();
         filtered = filtered.filter(s => {
@@ -7463,6 +7559,7 @@ app.post('/api/marketing/send-html', async (req, res) => {
                 dry_run: true,
                 recipients_count: filtered.length,
                 skipped_unsubscribed: skippedUnsub,
+                skipped_bounced: skippedBounced,
                 segment,
                 subject,
                 preheader: preheader || null,
@@ -7587,6 +7684,140 @@ app.get('/api/marketing/unsubscribe', async (req, res) => {
     } catch (e) {
         res.status(500).send('Error: ' + e.message);
     }
+});
+
+/* ═══════════════════════════════════════════════════════════════════
+   📬 RESEND WEBHOOKS — bounces, complaints, deliveries (additive 2026-04-30)
+   Endpoint que recibe eventos de Resend y los procesa:
+   - email.bounced     → marca sub con email_bounced=true (no reintenta)
+   - email.complained  → marca sub con marketing_unsubscribed=true (compliance)
+   - email.delivered   → loguea event opcional
+   - email.opened      → loguea event opcional (si tracking habilitado)
+   - email.clicked     → loguea event opcional (si tracking habilitado)
+
+   Configuración en Resend Dashboard:
+   1. Settings → Webhooks → Add Endpoint
+   2. URL: https://pixel-suite-pro-production.up.railway.app/api/webhooks/resend
+   3. Eventos: bounced, complained, delivered (mín)
+   4. Copiar el signing secret y setear env var RESEND_WEBHOOK_SECRET
+   ═══════════════════════════════════════════════════════════════════ */
+app.post('/api/webhooks/resend', express.json(), async (req, res) => {
+    res.sendStatus(200); // Ack inmediato para no reintentar
+    try {
+        // Validar firma si tenemos secret configurado
+        const secret = process.env.RESEND_WEBHOOK_SECRET;
+        if (secret) {
+            const sig = req.headers['svix-signature'] || req.headers['resend-signature'] || '';
+            const ts = req.headers['svix-timestamp'] || '';
+            const id = req.headers['svix-id'] || '';
+            // Validación svix HMAC SHA256
+            try {
+                const signed = id + '.' + ts + '.' + JSON.stringify(req.body);
+                const expected = crypto.createHmac('sha256', secret.replace('whsec_', '')).update(signed).digest('base64');
+                const provided = String(sig).split(' ').map(s => s.split(',')[1]).filter(Boolean);
+                if (provided.length && !provided.includes(expected)) {
+                    console.warn('[RESEND WEBHOOK] Firma inválida — ignorando');
+                    return;
+                }
+            } catch (e) {
+                console.warn('[RESEND WEBHOOK] Error validando firma:', e.message);
+            }
+        }
+
+        const { type, data } = req.body || {};
+        if (!type || !data) return;
+
+        const recipient = (Array.isArray(data.to) ? data.to[0] : data.to) || data.email_to || '';
+        const emailLc = String(recipient).toLowerCase().trim();
+        if (!emailLc) return;
+
+        // Buscar sub por email
+        const subs = await db.getSubscriptions().catch(() => []);
+        const matchSubs = subs.filter(s => (s.customer_email || '').toLowerCase() === emailLc);
+
+        console.log('[RESEND WEBHOOK] event=' + type + ' to=' + emailLc + ' subs_match=' + matchSubs.length);
+
+        for (const sub of matchSubs) {
+            try {
+                if (type === 'email.bounced' || type === 'email.bounce') {
+                    const bounceType = data.bounce?.type || data.bounce_type || 'unknown';
+                    const isHard = /hard|permanent|invalid/i.test(bounceType);
+                    if (isHard && db.updateSubscription) {
+                        await db.updateSubscription(sub.id, {
+                            email_bounced: true,
+                            email_bounced_at: new Date().toISOString(),
+                            email_bounce_type: bounceType
+                        }).catch(() => {});
+                    }
+                    if (db.createEvent) {
+                        await db.createEvent({
+                            subscription_id: sub.id,
+                            event_type: 'email_bounced',
+                            metadata: JSON.stringify({ bounce_type: bounceType, hard: isHard, subject: data.subject || '' })
+                        }).catch(() => {});
+                    }
+                } else if (type === 'email.complained' || type === 'email.complaint') {
+                    if (db.updateSubscription) {
+                        await db.updateSubscription(sub.id, {
+                            marketing_unsubscribed: true,
+                            marketing_unsubscribed_at: new Date().toISOString(),
+                            email_complained: true
+                        }).catch(() => {});
+                    }
+                    if (db.createEvent) {
+                        await db.createEvent({
+                            subscription_id: sub.id,
+                            event_type: 'email_complained',
+                            metadata: JSON.stringify({ subject: data.subject || '' })
+                        }).catch(() => {});
+                    }
+                } else if (type === 'email.delivered') {
+                    if (db.createEvent) {
+                        await db.createEvent({
+                            subscription_id: sub.id,
+                            event_type: 'email_delivered',
+                            metadata: JSON.stringify({ subject: data.subject || '' })
+                        }).catch(() => {});
+                    }
+                } else if (type === 'email.opened') {
+                    if (db.createEvent) {
+                        await db.createEvent({
+                            subscription_id: sub.id,
+                            event_type: 'email_opened',
+                            metadata: JSON.stringify({ subject: data.subject || '' })
+                        }).catch(() => {});
+                    }
+                } else if (type === 'email.clicked') {
+                    if (db.createEvent) {
+                        await db.createEvent({
+                            subscription_id: sub.id,
+                            event_type: 'email_clicked',
+                            metadata: JSON.stringify({ subject: data.subject || '', url: data.click?.link || '' })
+                        }).catch(() => {});
+                    }
+                }
+            } catch (e) {
+                console.warn('[RESEND WEBHOOK] Error procesando ' + sub.id + ':', e.message);
+            }
+        }
+    } catch (e) {
+        console.error('[RESEND WEBHOOK] Fatal:', e.message);
+    }
+});
+
+/** GET /api/marketing/bounce-list — clientes con email rebotado (no recibirán más mailing). */
+app.get('/api/marketing/bounce-list', async (req, res) => {
+    try {
+        const subs = await db.getSubscriptions().catch(() => []);
+        const bounced = subs.filter(s => s.email_bounced === true).map(s => ({
+            email: s.customer_email,
+            bounced_at: s.email_bounced_at,
+            bounce_type: s.email_bounce_type,
+            sub_id: s.id,
+            status: s.status
+        }));
+        res.json({ count: bounced.length, list: bounced });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /** GET /api/marketing/recent-campaigns — últimas 20 campañas enviadas (lee del event log). */
