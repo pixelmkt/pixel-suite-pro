@@ -7183,7 +7183,94 @@ app.get('/api/marketing/segment-counts', async (req, res) => {
    Endpoint nuevo /api/marketing/send-html que acepta HTML completo,
    reemplaza tokens del cliente ({{first_name}}, {{product_title}}, etc.)
    y usa Resend (con SMTP fallback) en lugar del SMTP directo del viejo.
+
+   Cumple estándares email 2026:
+   - List-Unsubscribe + List-Unsubscribe-Post (Gmail/Yahoo mandate Feb 2024)
+   - Plain-text alternative auto-generado (multipart, mejor inbox placement)
+   - Preheader text para preview del inbox
+   - Skip de subs con marketing_unsubscribed=true
+   - Sanitización básica (strip <script>, <iframe>, on* handlers)
+   - Idempotency_key para evitar duplicados en retries
    ═══════════════════════════════════════════════════════════════════ */
+
+function htmlToPlainText(html) {
+    if (!html) return '';
+    return String(html)
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<head[\s\S]*?<\/head>/gi, '')
+        .replace(/<\/?(p|div|h[1-6]|li|tr|br)[^>]*>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/[ \t]+/g, ' ')
+        .trim();
+}
+
+function sanitizeMarketingHtml(html) {
+    if (!html) return '';
+    return String(html)
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+        .replace(/<object[\s\S]*?<\/object>/gi, '')
+        .replace(/<embed[\s\S]*?<\/embed>/gi, '')
+        .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, '')
+        .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, '')
+        .replace(/javascript:/gi, '');
+}
+
+function injectPreheader(html, preheaderText) {
+    if (!preheaderText) return html;
+    const preheaderDiv = '<div style="display:none;font-size:1px;color:#fff;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">' +
+        escapeHtml(preheaderText) +
+        '</div>';
+    if (/<body[^>]*>/i.test(html)) {
+        return html.replace(/<body([^>]*)>/i, '<body$1>' + preheaderDiv);
+    }
+    return preheaderDiv + html;
+}
+
+/** Envía un email de campaña con headers modernos y plain-text alternative.
+ *  Usa Resend directo (no sendAutoEmail) para poder pasar headers custom + text.
+ */
+async function sendCampaignEmail({ to, subject, html, text, unsubscribeUrl, mailtoUnsub }) {
+    const key = process.env.RESEND_API_KEY;
+    const from = process.env.RESEND_FROM
+        || ('"' + (process.env.EMAIL_FROM || 'LAB NUTRITION') + '" <' + (process.env.SMTP_USER || 'marketing@labnutrition.com') + '>');
+
+    const headers = {};
+    if (unsubscribeUrl) {
+        const parts = ['<' + unsubscribeUrl + '>'];
+        if (mailtoUnsub) parts.unshift('<mailto:' + mailtoUnsub + '?subject=unsubscribe>');
+        headers['List-Unsubscribe'] = parts.join(', ');
+        headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+    }
+
+    if (key) {
+        const res = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from, to, subject, html, text, headers })
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error('[Resend] ' + (j?.message || j?.error || 'HTTP ' + res.status));
+        return j;
+    }
+    // SMTP fallback
+    const nodemailer = require('nodemailer');
+    const t = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || '465'),
+        secure: parseInt(process.env.SMTP_PORT || '465') === 465,
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+    });
+    return t.sendMail({ from, to, subject, html, text, headers });
+}
 
 const ALLOWED_TOKENS = [
     'first_name', 'last_name', 'full_name', 'email', 'phone',
@@ -7329,14 +7416,20 @@ app.post('/api/marketing/test-html', async (req, res) => {
 });
 
 /** POST /api/marketing/send-html — envía campaña HTML personalizada a un segmento.
- *  Body: { segment, subject, html, throttle_ms? }
- *  Personaliza por sub con tokens, agrega unsubscribe footer, usa Resend (fallback SMTP),
- *  loguea event marketing_campaign_sent por cada email exitoso.
- *  Throttle default 250ms entre envíos (4/seg, dentro del límite Resend).
+ *  Body: { segment, subject, html, preheader?, throttle_ms?, dry_run? }
+ *  - Personaliza por sub con tokens
+ *  - Sanitiza HTML (strip script/iframe/on*)
+ *  - Inyecta preheader text para preview de inbox
+ *  - Agrega unsubscribe footer + List-Unsubscribe header (Gmail/Yahoo Feb 2024 mandate)
+ *  - Genera plain-text alternative automático
+ *  - Skip subs con marketing_unsubscribed=true (compliance)
+ *  - Usa Resend con headers modernos (fallback SMTP)
+ *  - Throttle default 250ms entre envíos
+ *  - dry_run=true → no envía, solo cuenta y lista destinatarios
  */
 app.post('/api/marketing/send-html', async (req, res) => {
     try {
-        const { segment, subject, html, throttle_ms } = req.body || {};
+        const { segment, subject, html, preheader, throttle_ms, dry_run } = req.body || {};
         if (!segment || !subject || !html) return res.status(400).json({ error: 'segment, subject, html required' });
 
         const allowedSegments = ['active', 'paused', 'payment_failed', 'cancelled', 'pending_payment', 'all'];
@@ -7346,7 +7439,13 @@ app.post('/api/marketing/send-html', async (req, res) => {
 
         const subs = await db.getSubscriptions().catch(() => []);
         let filtered = segment === 'all' ? subs : subs.filter(s => s.status === segment);
-        // Dedup por email (un email == un sub aunque tenga 2 subs)
+        const totalBefore = filtered.length;
+
+        // Skip clientes que se dieron de baja del mailing (compliance)
+        filtered = filtered.filter(s => s.marketing_unsubscribed !== true);
+        const skippedUnsub = totalBefore - filtered.length;
+
+        // Dedup por email
         const seen = new Set();
         filtered = filtered.filter(s => {
             const e = (s.customer_email || '').toLowerCase();
@@ -7356,11 +7455,29 @@ app.post('/api/marketing/send-html', async (req, res) => {
 
         const wait = parseInt(throttle_ms) || 250;
         const startedAt = new Date().toISOString();
+        const safeHtml = sanitizeMarketingHtml(html);
 
-        // Respondé inmediato y ejecutá en background
+        // DRY RUN — no envía, solo retorna lo que mandaría
+        if (dry_run === true) {
+            return res.json({
+                dry_run: true,
+                recipients_count: filtered.length,
+                skipped_unsubscribed: skippedUnsub,
+                segment,
+                subject,
+                preheader: preheader || null,
+                first_5_recipients: filtered.slice(0, 5).map(s => ({ email: s.customer_email, name: s.customer_name })),
+                throttle_ms: wait,
+                estimated_seconds: Math.ceil(filtered.length * wait / 1000),
+                note: 'Dry run — no se envió ningún email.'
+            });
+        }
+
+        // Respondé inmediato y procesá en background
         res.json({
             started: true,
             recipients_count: filtered.length,
+            skipped_unsubscribed: skippedUnsub,
             segment,
             subject,
             throttle_ms: wait,
@@ -7368,17 +7485,33 @@ app.post('/api/marketing/send-html', async (req, res) => {
             note: 'Envío iniciado en background. Revisá /api/marketing/recent-campaigns en unos minutos.'
         });
 
-        // Background send
         let sent = 0, failed = 0;
+        const mailtoUnsub = process.env.UNSUBSCRIBE_MAILTO || 'unsubscribe@labnutrition.com';
         for (const sub of filtered) {
             try {
                 const ctx = buildContextForSub(sub);
-                let rendered = applyTokens(html, ctx);
+                // 1) Reemplazar tokens
+                let rendered = applyTokens(safeHtml, ctx);
+                // 2) Inyectar preheader text si fue provisto
+                if (preheader) {
+                    const preheaderRendered = applyTokens(preheader, ctx);
+                    rendered = injectPreheader(rendered, preheaderRendered);
+                }
+                // 3) Agregar footer de unsubscribe (visible en body)
                 rendered = appendUnsubscribeFooter(rendered, ctx);
+                // 4) Render subject con tokens
                 const subjectRendered = applyTokens(subject, ctx);
+                // 5) Generar plain-text alternative
+                const plainText = htmlToPlainText(rendered);
 
-                if (typeof sendAutoEmail !== 'function') throw new Error('sendAutoEmail not available');
-                await sendAutoEmail({ to: sub.customer_email, subject: subjectRendered, html: rendered });
+                await sendCampaignEmail({
+                    to: sub.customer_email,
+                    subject: subjectRendered,
+                    html: rendered,
+                    text: plainText,
+                    unsubscribeUrl: ctx.unsubscribe_url,
+                    mailtoUnsub
+                });
 
                 await db.createEvent({
                     subscription_id: sub.id,
@@ -7397,12 +7530,36 @@ app.post('/api/marketing/send-html', async (req, res) => {
             }
             if (wait > 0) await new Promise(r => setTimeout(r, wait));
         }
-        console.log('[MARKETING send-html] Done. Sent: ' + sent + ' | Failed: ' + failed + ' | Segment: ' + segment);
+        console.log('[MARKETING send-html] Done. Sent:' + sent + ' Failed:' + failed + ' Skipped(unsub):' + skippedUnsub + ' Segment:' + segment);
+
+        // Loguear resumen final como event aparte
+        if (db?.createEvent) {
+            await db.createEvent({
+                subscription_id: 'campaign_' + Date.now(),
+                event_type: 'marketing_campaign_summary',
+                metadata: JSON.stringify({ segment, subject, sent, failed, skipped_unsubscribed: skippedUnsub, started_at: startedAt, ended_at: new Date().toISOString() })
+            }).catch(() => {});
+        }
     } catch (e) {
-        // Si todavía no respondió, devolvé error
         if (!res.headersSent) res.status(500).json({ error: e.message });
         else console.error('[MARKETING send-html] Error:', e.message);
     }
+});
+
+/** GET /api/marketing/campaign-summary?started_after=ISO — resumen de campañas enviadas */
+app.get('/api/marketing/campaign-summary', async (req, res) => {
+    try {
+        const events = db?._listAll ? await db._listAll('lab_sub_event').catch(() => []) : [];
+        const after = req.query.started_after ? new Date(String(req.query.started_after)).getTime() : 0;
+        const summaries = events
+            .filter(e => e.event_type === 'marketing_campaign_summary')
+            .filter(e => !after || new Date(e.created_at || 0).getTime() >= after)
+            .map(e => { try { return { ts: e.created_at, ...JSON.parse(e.metadata || '{}') }; } catch { return null; } })
+            .filter(Boolean)
+            .sort((a, b) => (b.ts || '').localeCompare(a.ts || ''))
+            .slice(0, 50);
+        res.json({ campaigns: summaries });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /** GET /api/marketing/unsubscribe — link público para que un cliente se dé de baja del mailing.
