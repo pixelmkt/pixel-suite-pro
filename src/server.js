@@ -5224,6 +5224,139 @@ app.post('/api/subscriptions/:id/resume', async (req, res) => {
 });
 
 /* GET /api/portal/:email — all subscriptions for a customer (MUST be LAST portal route) */
+/* ═══════════════════════════════════════════════════════════════════
+   👤 PORTAL CUSTOMER-FACING (additive 2026-04-30)
+   Endpoint para que el cliente EDITE sus datos desde el portal sin
+   pasar por admin. Validación: el email del body debe coincidir con
+   el customer_email de la sub. Esto evita que un cliente edite la
+   sub de otro (auth básica por email match).
+   ═══════════════════════════════════════════════════════════════════ */
+app.put('/api/portal/subscription/:id/update-customer-data', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Suscripción no encontrada' });
+
+        const reqEmail = String(req.body?.email || '').toLowerCase().trim();
+        const subEmail = String(sub.customer_email || '').toLowerCase().trim();
+        if (!reqEmail || reqEmail !== subEmail) {
+            return res.status(403).json({ error: 'Email no coincide con la suscripción' });
+        }
+
+        const updates = {};
+        const body = req.body || {};
+
+        // DNI
+        if (body.dni !== undefined) {
+            const dni = String(body.dni).replace(/\D/g, '').trim();
+            if (dni.length < 8 || dni.length > 15) {
+                return res.status(400).json({ error: 'DNI debe tener entre 8 y 15 dígitos' });
+            }
+            updates.dni = dni;
+        }
+
+        // Tipo documento
+        if (body.tipo_documento !== undefined) {
+            const td = String(body.tipo_documento).trim();
+            if (!['01','06'].includes(td)) {
+                return res.status(400).json({ error: 'tipo_documento debe ser 01 (DNI) o 06 (RUC)' });
+            }
+            updates.tipo_documento = td;
+        }
+
+        // Customer name / phone
+        if (body.customer_name !== undefined) updates.customer_name = String(body.customer_name).trim().slice(0, 100);
+        if (body.customer_phone !== undefined) updates.customer_phone = String(body.customer_phone).replace(/[^\d+\-\s]/g, '').trim().slice(0, 20);
+
+        // Shipping address
+        if (body.shipping_address && typeof body.shipping_address === 'object') {
+            const a = body.shipping_address;
+            const PE_PROV = { 'lima':'LIM','arequipa':'ARE','cusco':'CUS','la libertad':'LAL','piura':'PIU','lambayeque':'LAM','junin':'JUN','cajamarca':'CAJ','ancash':'ANC','ica':'ICA','callao':'CAL','tacna':'TAC' };
+            const province = String(a.province || '').trim();
+            updates.shipping_address = {
+                ...(sub.shipping_address || {}),
+                first_name: String(a.first_name || '').trim().slice(0,40) || (sub.customer_name || '').split(' ')[0] || '',
+                last_name: String(a.last_name || '').trim().slice(0,40) || (sub.customer_name || '').split(' ').slice(1).join(' ') || '',
+                address1: String(a.address1 || '').trim().slice(0,120),
+                address2: String(a.address2 || '').trim().slice(0,80),
+                city: String(a.city || '').trim().slice(0,40),
+                province: province,
+                province_code: a.province_code || PE_PROV[province.toLowerCase()] || 'LIM',
+                country: 'PE',
+                country_code: 'PE',
+                zip: String(a.zip || '15000').trim().slice(0,10),
+                phone: String(a.phone || sub.customer_phone || '').trim().slice(0,20)
+            };
+        }
+
+        if (!Object.keys(updates).length) {
+            return res.status(400).json({ error: 'Sin datos para actualizar' });
+        }
+
+        if (db.updateSubscription) {
+            await db.updateSubscription(sub.id, updates);
+        }
+        if (db.createEvent) {
+            await db.createEvent({
+                subscription_id: sub.id,
+                event_type: 'customer_data_updated_by_portal',
+                metadata: JSON.stringify({ fields: Object.keys(updates), at: new Date().toISOString() })
+            }).catch(() => {});
+        }
+
+        res.json({ ok: true, updates_applied: Object.keys(updates) });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/* GET customer-facing detail of subs by email (más data que /api/portal/:email para el portal nuevo) */
+app.get('/api/portal/me/:email', async (req, res) => {
+    try {
+        const email = String(req.params.email || '').toLowerCase().trim();
+        if (!email) return res.json({ subscriptions: [], email: '' });
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const subs = allSubs
+            .filter(s => (s.customer_email || '').toLowerCase() === email)
+            .map(s => {
+                const planLabel = (s.frequency_months === 1 ? 'Mensual' : 'Cada ' + s.frequency_months + ' meses') + ' × ' + s.permanence_months + 'm';
+                return {
+                    id: s.id,
+                    customer_email: s.customer_email,
+                    customer_name: s.customer_name,
+                    customer_phone: s.customer_phone,
+                    dni: s.dni,
+                    tipo_documento: s.tipo_documento,
+                    product_id: s.product_id,
+                    product_title: s.product_title,
+                    product_image: s.product_image,
+                    variant_title: s.variant_title,
+                    plan_label: planLabel,
+                    frequency_months: s.frequency_months,
+                    permanence_months: s.permanence_months,
+                    discount_pct: s.discount_pct,
+                    base_price: s.base_price,
+                    final_price: s.final_price,
+                    status: s.status,
+                    cycles_completed: s.cycles_completed || 0,
+                    cycles_required: s.cycles_required || 0,
+                    next_charge_at: s.next_charge_at,
+                    last_charge_at: s.last_charge_at,
+                    activated_at: s.activated_at,
+                    created_at: s.created_at,
+                    gifts_planned: Array.isArray(s.gifts_planned) ? s.gifts_planned : [],
+                    gifts_delivered: !!s.gifts_delivered,
+                    gifts_delivered_order_name: s.gifts_delivered_order_name,
+                    shipping_address: s.shipping_address || null,
+                    shopify_order_name: s.shopify_order_name,
+                    has_pending_data: !!s.shopify_order_id && !s.dni  // marker rápido
+                };
+            });
+        res.json({ subscriptions: subs, email, count: subs.length });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/api/portal/:email', async (req, res) => {
     const email = decodeURIComponent(req.params.email).toLowerCase().trim();
     try {

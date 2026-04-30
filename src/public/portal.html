@@ -108,6 +108,71 @@
     .footer { text-align: center; padding: 32px 20px; border-top: 1px solid var(--lab-border); font-size: 11px; color: var(--lab-muted); letter-spacing: .3px; }
     .footer strong { color: var(--lab-red); font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
 
+    /* MY SUBSCRIPTIONS — additive 2026-04-30 */
+    .mysubs-grid { display: flex; flex-direction: column; gap: 16px; }
+    .mysub-card { background: var(--lab-white); border: 1px solid var(--lab-border); border-radius: 14px; padding: 22px; transition: border-color .15s; }
+    .mysub-card:hover { border-color: var(--lab-black); }
+    .mysub-head { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 18px; }
+    .mysub-img { width: 88px; height: 88px; border-radius: 10px; object-fit: contain; background: var(--lab-gray); flex-shrink: 0; padding: 8px; border: 1px solid var(--lab-border); }
+    .mysub-info { flex: 1; min-width: 200px; }
+    .mysub-name { font-size: 17px; font-weight: 800; color: var(--lab-black); letter-spacing: -.2px; margin-bottom: 4px; }
+    .mysub-plan { font-size: 12px; color: var(--lab-muted); margin-bottom: 10px; }
+    .mysub-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 100px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+    .mysub-status.active { background: #dcfce7; color: #166534; }
+    .mysub-status.paused { background: #fef3c7; color: #92400e; }
+    .mysub-status.cancelled { background: #fee2e2; color: #991b1b; }
+    .mysub-status.payment_failed { background: #fee2e2; color: #991b1b; }
+    .mysub-status.completed { background: #dbeafe; color: #1e40af; }
+    .mysub-status.pending_payment { background: #f3e8ff; color: #6b21a8; }
+    .mysub-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .6; }
+    .mysub-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; padding: 16px; background: var(--lab-gray); border-radius: 10px; margin-bottom: 16px; }
+    .mysub-stat { font-size: 11px; }
+    .mysub-stat-label { color: var(--lab-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; font-size: 10px; margin-bottom: 4px; }
+    .mysub-stat-value { color: var(--lab-black); font-size: 14px; font-weight: 800; }
+    .mysub-stat-value.red { color: var(--lab-red); }
+    .mysub-gifts-row { background: linear-gradient(180deg, #fff5f5, #fff); border: 1px dashed var(--lab-red); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; }
+    .mysub-gifts-row b { color: var(--lab-red); font-weight: 800; letter-spacing: .5px; text-transform: uppercase; font-size: 10.5px; display: block; margin-bottom: 6px; }
+    .mysub-gifts-row ul { list-style: none; padding: 0; margin: 0; }
+    .mysub-gifts-row li { padding: 3px 0; color: var(--lab-black); display: flex; align-items: center; gap: 6px; }
+    .mysub-gifts-row li::before { content: '✓'; color: var(--lab-red); font-weight: 900; }
+    .mysub-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .mysub-action { padding: 9px 16px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1.5px solid var(--lab-border); background: var(--lab-white); color: var(--lab-black); letter-spacing: .3px; transition: .15s; font-family: inherit; }
+    .mysub-action:hover { border-color: var(--lab-black); }
+    .mysub-action.primary { background: var(--lab-black); color: var(--lab-white); border-color: var(--lab-black); }
+    .mysub-action.primary:hover { background: var(--lab-red); border-color: var(--lab-red); }
+    .mysub-action.danger:hover { border-color: var(--lab-red); color: var(--lab-red); }
+    .mysub-warn { background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 12px; color: #92400e; line-height: 1.5; }
+    .mysub-warn b { color: #78350f; }
+
+    /* MODAL */
+    .modal-bg { position: fixed; inset: 0; background: rgba(10,10,10,.6); display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
+    .modal-bg.show { display: flex; }
+    .modal-box { background: var(--lab-white); border-radius: 14px; max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 28px; }
+    .modal-title { font-size: 20px; font-weight: 900; color: var(--lab-black); margin-bottom: 8px; letter-spacing: -.3px; }
+    .modal-desc { font-size: 14px; color: var(--lab-muted); line-height: 1.55; margin-bottom: 20px; }
+    .modal-form-group { margin-bottom: 14px; }
+    .modal-form-label { display: block; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--lab-muted); margin-bottom: 6px; }
+    .modal-form-input, .modal-form-select { width: 100%; padding: 11px 14px; border: 1.5px solid var(--lab-border); border-radius: 8px; font-size: 14px; font-family: inherit; transition: border-color .15s; box-sizing: border-box; }
+    .modal-form-input:focus, .modal-form-select:focus { outline: none; border-color: var(--lab-black); }
+    .modal-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; flex-wrap: wrap; }
+    .modal-btn { padding: 12px 22px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; border: 1.5px solid; font-family: inherit; }
+    .modal-btn-cancel { background: var(--lab-white); color: var(--lab-muted); border-color: var(--lab-border); }
+    .modal-btn-confirm { background: var(--lab-black); color: var(--lab-white); border-color: var(--lab-black); }
+    .modal-btn-confirm:hover { background: var(--lab-red); border-color: var(--lab-red); }
+    .modal-btn-danger { background: var(--lab-red); color: var(--lab-white); border-color: var(--lab-red); }
+    .modal-msg { padding: 10px 14px; border-radius: 8px; margin-top: 12px; font-size: 12.5px; }
+    .modal-msg.error { background: #fee2e2; color: #991b1b; }
+    .modal-msg.success { background: #dcfce7; color: #166534; }
+
+    /* LOGIN BLOCK */
+    .login-block { background: var(--lab-white); border: 1px solid var(--lab-border); border-radius: 14px; padding: 32px 24px; text-align: center; max-width: 420px; margin: 24px auto; }
+    .login-block h3 { font-size: 18px; font-weight: 800; margin-bottom: 8px; }
+    .login-block p { color: var(--lab-muted); font-size: 13px; margin-bottom: 16px; line-height: 1.5; }
+    .login-block input { width: 100%; padding: 12px 14px; border: 1.5px solid var(--lab-border); border-radius: 8px; font-size: 14px; margin-bottom: 12px; box-sizing: border-box; font-family: inherit; }
+    .login-block button { width: 100%; padding: 12px; background: var(--lab-black); color: var(--lab-white); border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+    .login-block button:hover { background: var(--lab-red); }
+
     /* LOADING */
     .loading { text-align: center; padding: 60px 20px; color: var(--lab-muted); }
     .loading-spinner { width: 30px; height: 30px; border: 3px solid var(--lab-border); border-top-color: var(--lab-red); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 14px; }
@@ -242,10 +307,15 @@
               + list.map(c => '<a href="' + c.url + '" class="cta-btn ' + (c.style === 'secondary' ? 'secondary' : 'primary') + '" target="_blank">' + c.text + '</a>').join('')
               + '</div></div></div>';
           },
-          custom_html: () => config.custom_html ? '<div class="card"><div class="card-inner">' + config.custom_html + '</div></div>' : ''
+          custom_html: () => config.custom_html ? '<div class="card"><div class="card-inner">' + config.custom_html + '</div></div>' : '',
+          my_subscriptions: () => {
+            // Solo si hay email visible y subs cargadas (las cargamos abajo)
+            // Render placeholder con id que se rellena con loadMySubs()
+            return '<div id="mysubs-mount"></div>';
+          }
         };
 
-        const defaultOrder = ['bd_cta', 'banner', 'benefits', 'product', 'events', 'ctas', 'custom_html'];
+        const defaultOrder = ['my_subscriptions', 'bd_cta', 'banner', 'benefits', 'product', 'events', 'ctas', 'custom_html'];
         const order = Array.isArray(config.section_order) && config.section_order.length ? config.section_order.filter(k => renderers[k]) : defaultOrder;
         // Append any missing renderers at end (safety)
         defaultOrder.forEach(k => { if (!order.includes(k)) order.push(k); });
@@ -274,10 +344,263 @@
         }
 
         document.getElementById('app').innerHTML = html;
+
+        // Cargar y renderizar mis suscripciones (si hay email)
+        if (email) await loadMySubs(email);
+        else mountLoginBlock();
       } catch (e) {
-        document.getElementById('app').innerHTML = '<div class="container"><div class="card"><div class="card-inner" style="text-align:center;padding:40px"><div style="font-size:40px;margin-bottom:10px">⚠️</div><div style="font-weight:700;margin-bottom:6px">Error al cargar</div><div style="font-size:13px;color:#666">' + e.message + '</div></div></div></div>';
+        document.getElementById('app').innerHTML = '<div class="container"><div class="card"><div class="card-inner" style="text-align:center;padding:40px"><div style="font-size:40px;margin-bottom:10px">⚠</div><div style="font-weight:700;margin-bottom:6px">Error al cargar</div><div style="font-size:13px;color:#666">' + e.message + '</div></div></div></div>';
       }
     }
+
+    /* ── HELPERS ───────────────────────────────────────────────── */
+    function fmtMoney(n) { return 'S/ ' + Number(n || 0).toFixed(2); }
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      try {
+        const d = new Date(iso);
+        return d.toLocaleDateString('es-PE', { day: '2-digit', month: 'long', year: 'numeric' });
+      } catch { return iso.slice(0, 10); }
+    }
+    function escHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    /* ── MIS SUSCRIPCIONES ─────────────────────────────────────── */
+    async function loadMySubs(email) {
+      const mount = document.getElementById('mysubs-mount');
+      if (!mount) return;
+      try {
+        const r = await fetch(BACKEND + '/api/portal/me/' + encodeURIComponent(email));
+        const data = await r.json();
+        const subs = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+        if (!subs.length) {
+          mount.innerHTML = '<div class="section-title">Mi suscripción</div><div class="card"><div class="card-inner" style="text-align:center;padding:32px 20px"><div style="font-size:14px;color:#555;line-height:1.6">No encontramos suscripciones para <b>' + escHtml(email) + '</b>.<br>Si pagaste recientemente, esperá unos minutos. Si querés suscribirte, mirá <a href="https://labnutrition.com/pages/suscripciones" style="color:#bd1718;font-weight:700">los planes</a>.</div></div></div>';
+          return;
+        }
+        let h = '<div class="section-title">Mi suscripción</div><div class="mysubs-grid">';
+        for (const s of subs) {
+          const statusClass = (s.status || 'active').toLowerCase();
+          const statusLabel = ({ active: 'Activa', paused: 'Pausada', cancelled: 'Cancelada', payment_failed: 'Pago fallido', completed: 'Completada', pending_payment: 'Pago pendiente' })[statusClass] || s.status;
+          const cyclesLeft = Math.max(0, (s.cycles_required || 0) - (s.cycles_completed || 0));
+          const productImg = s.product_image || '';
+
+          h += '<div class="mysub-card">';
+          h += '  <div class="mysub-head">';
+          h += productImg ? '<img class="mysub-img" src="' + escHtml(productImg) + '" alt="">' : '<div class="mysub-img"></div>';
+          h += '    <div class="mysub-info">';
+          h += '      <div class="mysub-name">' + escHtml(s.product_title || 'Producto') + '</div>';
+          h += '      <div class="mysub-plan">' + escHtml(s.plan_label || '') + (s.discount_pct ? ' · <b style="color:#bd1718">' + Math.round(s.discount_pct) + '% OFF</b>' : '') + '</div>';
+          h += '      <span class="mysub-status ' + statusClass + '">' + statusLabel + '</span>';
+          h += '    </div>';
+          h += '  </div>';
+
+          // Warning si tiene tag pending_data (datos incompletos)
+          const needsCompleteData = (s.has_pending_data === true) || (!s.dni || (s.shipping_address && (!s.shipping_address.address1 || !s.shipping_address.city || !s.shipping_address.province)));
+          if (needsCompleteData && s.status === 'active') {
+            h += '<div class="mysub-warn"><b>⚠ Faltan datos para tu próximo envío.</b> Completá tu DNI y dirección para que tu próxima caja llegue sin demoras.</div>';
+          }
+
+          h += '  <div class="mysub-stats">';
+          h += '    <div class="mysub-stat"><div class="mysub-stat-label">Precio mensual</div><div class="mysub-stat-value">' + fmtMoney(s.final_price) + '</div></div>';
+          h += '    <div class="mysub-stat"><div class="mysub-stat-label">Próximo cobro</div><div class="mysub-stat-value red">' + fmtDate(s.next_charge_at) + '</div></div>';
+          h += '    <div class="mysub-stat"><div class="mysub-stat-label">Ciclos</div><div class="mysub-stat-value">' + (s.cycles_completed || 0) + ' de ' + (s.cycles_required || '?') + '</div></div>';
+          h += '    <div class="mysub-stat"><div class="mysub-stat-label">Quedan</div><div class="mysub-stat-value">' + cyclesLeft + ' meses</div></div>';
+          h += '  </div>';
+
+          // Regalo
+          if (Array.isArray(s.gifts_planned) && s.gifts_planned.length > 0) {
+            h += '<div class="mysub-gifts-row">';
+            h += '<b>' + (s.gifts_delivered ? 'Regalo entregado' : 'Regalo de bienvenida (próximo envío)') + '</b>';
+            h += '<ul>';
+            for (const g of s.gifts_planned) {
+              h += '<li>' + escHtml(g.product_title || '') + (g.variant_title ? ' — ' + escHtml(g.variant_title) : '') + '</li>';
+            }
+            h += '</ul>';
+            h += '</div>';
+          }
+
+          // Acciones
+          h += '<div class="mysub-actions">';
+          if (needsCompleteData) {
+            h += '<button class="mysub-action primary" onclick="openEditModal(\'' + s.id + '\', \'' + escHtml(email) + '\')">Completar datos</button>';
+          } else {
+            h += '<button class="mysub-action" onclick="openEditModal(\'' + s.id + '\', \'' + escHtml(email) + '\')">Editar datos de envío</button>';
+          }
+          if (s.status === 'active') {
+            h += '<button class="mysub-action" onclick="openPauseModal(\'' + s.id + '\')">Pausar</button>';
+            h += '<button class="mysub-action danger" onclick="openCancelModal(\'' + s.id + '\')">Cancelar</button>';
+          } else if (s.status === 'paused') {
+            h += '<button class="mysub-action primary" onclick="resumeSub(\'' + s.id + '\')">Reactivar</button>';
+            h += '<button class="mysub-action danger" onclick="openCancelModal(\'' + s.id + '\')">Cancelar</button>';
+          }
+          h += '</div>';
+          h += '</div>'; // mysub-card
+        }
+        h += '</div>';
+        mount.innerHTML = h;
+        // Guardar para los modales
+        window._mySubs = subs.reduce((acc, s) => { acc[s.id] = s; return acc; }, {});
+      } catch (e) {
+        mount.innerHTML = '<div class="card"><div class="card-inner">Error cargando tus suscripciones: ' + escHtml(e.message) + '</div></div>';
+      }
+    }
+
+    function mountLoginBlock() {
+      const app = document.getElementById('app');
+      if (document.getElementById('mysubs-mount')) return; // ya renderizado
+      const block = document.createElement('div');
+      block.className = 'container';
+      block.innerHTML = '<div class="login-block"><h3>Ver mi suscripción</h3><p>Ingresá el email con el que te suscribiste para ver tus pedidos y gestionar tu plan.</p><input id="login-email" type="email" placeholder="tu@email.com" autocomplete="email"><button onclick="goWithEmail()">Continuar</button></div>';
+      app.appendChild(block);
+    }
+    window.goWithEmail = function() {
+      const v = document.getElementById('login-email').value.trim();
+      if (!v) return;
+      location.search = 'email=' + encodeURIComponent(v);
+    };
+
+    /* ── MODALES ───────────────────────────────────────────────── */
+    function openModal(html) {
+      let bg = document.getElementById('lab-modal-bg');
+      if (!bg) {
+        bg = document.createElement('div');
+        bg.id = 'lab-modal-bg';
+        bg.className = 'modal-bg';
+        bg.onclick = (e) => { if (e.target === bg) closeModal(); };
+        document.body.appendChild(bg);
+      }
+      bg.innerHTML = '<div class="modal-box">' + html + '</div>';
+      bg.classList.add('show');
+    }
+    function closeModal() {
+      const bg = document.getElementById('lab-modal-bg');
+      if (bg) bg.classList.remove('show');
+    }
+    window.closeModal = closeModal;
+
+    window.openEditModal = function(subId, customerEmail) {
+      const s = (window._mySubs || {})[subId];
+      if (!s) return;
+      const a = s.shipping_address || {};
+      const html =
+        '<div class="modal-title">Editar mis datos</div>' +
+        '<div class="modal-desc">Estos datos se usan para enviarte tu producto cada mes y para el comprobante electrónico.</div>' +
+        '<div class="modal-form-group"><label class="modal-form-label">Nombre completo</label><input class="modal-form-input" id="m-name" value="' + escHtml(s.customer_name || '') + '"></div>' +
+        '<div class="modal-form-row">' +
+        '  <div class="modal-form-group"><label class="modal-form-label">Tipo doc</label><select class="modal-form-select" id="m-tipodoc"><option value="01"' + ((s.tipo_documento || '01') === '01' ? ' selected' : '') + '>DNI</option><option value="06"' + (s.tipo_documento === '06' ? ' selected' : '') + '>RUC</option></select></div>' +
+        '  <div class="modal-form-group"><label class="modal-form-label">Documento</label><input class="modal-form-input" id="m-dni" value="' + escHtml(s.dni || '').replace(/^0+$/, '') + '" placeholder="8 a 11 dígitos"></div>' +
+        '</div>' +
+        '<div class="modal-form-group"><label class="modal-form-label">Teléfono</label><input class="modal-form-input" id="m-phone" value="' + escHtml(s.customer_phone || '') + '"></div>' +
+        '<div class="modal-form-group"><label class="modal-form-label">Dirección</label><input class="modal-form-input" id="m-addr1" value="' + escHtml(a.address1 || '').replace(/POR COMPLETAR.*/, '') + '" placeholder="Av., calle, número"></div>' +
+        '<div class="modal-form-row">' +
+        '  <div class="modal-form-group"><label class="modal-form-label">Distrito</label><input class="modal-form-input" id="m-city" value="' + escHtml(a.city || '') + '" placeholder="Ej: San Isidro"></div>' +
+        '  <div class="modal-form-group"><label class="modal-form-label">Provincia</label><input class="modal-form-input" id="m-province" value="' + escHtml(a.province || 'Lima') + '" placeholder="Lima"></div>' +
+        '</div>' +
+        '<div id="m-msg"></div>' +
+        '<div class="modal-actions"><button class="modal-btn modal-btn-cancel" onclick="closeModal()">Cancelar</button><button class="modal-btn modal-btn-confirm" id="m-save">Guardar</button></div>';
+      openModal(html);
+      document.getElementById('m-save').onclick = async () => {
+        const btn = document.getElementById('m-save');
+        const msg = document.getElementById('m-msg');
+        btn.disabled = true; btn.textContent = 'Guardando...';
+        try {
+          const body = {
+            email: customerEmail,
+            customer_name: document.getElementById('m-name').value.trim(),
+            customer_phone: document.getElementById('m-phone').value.trim(),
+            tipo_documento: document.getElementById('m-tipodoc').value,
+            dni: document.getElementById('m-dni').value.trim(),
+            shipping_address: {
+              address1: document.getElementById('m-addr1').value.trim(),
+              city: document.getElementById('m-city').value.trim(),
+              province: document.getElementById('m-province').value.trim()
+            }
+          };
+          const r = await fetch(BACKEND + '/api/portal/subscription/' + subId + '/update-customer-data', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          const j = await r.json();
+          if (!r.ok) { msg.innerHTML = '<div class="modal-msg error">' + escHtml(j.error || 'Error al guardar') + '</div>'; btn.disabled = false; btn.textContent = 'Guardar'; return; }
+          msg.innerHTML = '<div class="modal-msg success">Datos actualizados. Refrescando...</div>';
+          setTimeout(() => location.reload(), 1200);
+        } catch (e) {
+          msg.innerHTML = '<div class="modal-msg error">' + escHtml(e.message) + '</div>';
+          btn.disabled = false; btn.textContent = 'Guardar';
+        }
+      };
+    };
+
+    window.openPauseModal = function(subId) {
+      const html =
+        '<div class="modal-title">Pausar suscripción</div>' +
+        '<div class="modal-desc">Tu suscripción quedará pausada. No te haremos cobros hasta que la reactives. Podés volver cuando quieras.</div>' +
+        '<div id="m-msg"></div>' +
+        '<div class="modal-actions"><button class="modal-btn modal-btn-cancel" onclick="closeModal()">Volver</button><button class="modal-btn modal-btn-confirm" id="m-confirm">Pausar</button></div>';
+      openModal(html);
+      document.getElementById('m-confirm').onclick = async () => {
+        const btn = document.getElementById('m-confirm'); const msg = document.getElementById('m-msg');
+        btn.disabled = true; btn.textContent = 'Pausando...';
+        try {
+          const r = await fetch(BACKEND + '/api/subscriptions/' + subId + '/pause', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+          const j = await r.json();
+          if (!r.ok) { msg.innerHTML = '<div class="modal-msg error">' + escHtml(j.error || 'Error') + '</div>'; btn.disabled = false; btn.textContent = 'Pausar'; return; }
+          msg.innerHTML = '<div class="modal-msg success">Suscripción pausada. Refrescando...</div>';
+          setTimeout(() => location.reload(), 1200);
+        } catch (e) {
+          msg.innerHTML = '<div class="modal-msg error">' + escHtml(e.message) + '</div>';
+          btn.disabled = false; btn.textContent = 'Pausar';
+        }
+      };
+    };
+
+    window.openCancelModal = async function(subId) {
+      // Preview de penalty si aplica
+      let preview = null;
+      try {
+        const pr = await fetch(BACKEND + '/api/subscriptions/' + subId + '/cancel/preview');
+        if (pr.ok) preview = await pr.json();
+      } catch {}
+      const penaltyInfo = preview && preview.penalty > 0
+        ? '<div class="mysub-warn">Tu plan tiene permanencia. Cancelar ahora aplica una penalidad de <b>S/ ' + Number(preview.penalty).toFixed(2) + '</b>.</div>'
+        : '';
+      const html =
+        '<div class="modal-title">Cancelar suscripción</div>' +
+        '<div class="modal-desc">Si cancelás, dejamos de cobrar y enviar producto. ¿Estás seguro?</div>' +
+        penaltyInfo +
+        '<div id="m-msg"></div>' +
+        '<div class="modal-actions"><button class="modal-btn modal-btn-cancel" onclick="closeModal()">Volver</button><button class="modal-btn modal-btn-danger" id="m-confirm">Sí, cancelar</button></div>';
+      openModal(html);
+      document.getElementById('m-confirm').onclick = async () => {
+        const btn = document.getElementById('m-confirm'); const msg = document.getElementById('m-msg');
+        btn.disabled = true; btn.textContent = 'Cancelando...';
+        try {
+          const r = await fetch(BACKEND + '/api/subscriptions/' + subId + '/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmPenalty: true }) });
+          const j = await r.json();
+          if (!r.ok) { msg.innerHTML = '<div class="modal-msg error">' + escHtml(j.error || 'Error') + '</div>'; btn.disabled = false; btn.textContent = 'Sí, cancelar'; return; }
+          if (j.penalty_payment_url) {
+            msg.innerHTML = '<div class="modal-msg success">Cancelación iniciada. Te llevamos al pago de la penalidad...</div>';
+            setTimeout(() => { window.location.href = j.penalty_payment_url; }, 1500);
+          } else {
+            msg.innerHTML = '<div class="modal-msg success">Cancelada. Refrescando...</div>';
+            setTimeout(() => location.reload(), 1200);
+          }
+        } catch (e) {
+          msg.innerHTML = '<div class="modal-msg error">' + escHtml(e.message) + '</div>';
+          btn.disabled = false; btn.textContent = 'Sí, cancelar';
+        }
+      };
+    };
+
+    window.resumeSub = async function(subId) {
+      try {
+        const r = await fetch(BACKEND + '/api/subscriptions/' + subId + '/resume', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+        const j = await r.json();
+        if (!r.ok) { alert(j.error || 'Error'); return; }
+        location.reload();
+      } catch (e) { alert(e.message); }
+    };
+
     load();
   </script>
 </body>
