@@ -7178,6 +7178,260 @@ app.get('/api/marketing/segment-counts', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ═══════════════════════════════════════════════════════════════════
+   📨 HTML MAILING con personalización (additive 2026-04-30)
+   Endpoint nuevo /api/marketing/send-html que acepta HTML completo,
+   reemplaza tokens del cliente ({{first_name}}, {{product_title}}, etc.)
+   y usa Resend (con SMTP fallback) en lugar del SMTP directo del viejo.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const ALLOWED_TOKENS = [
+    'first_name', 'last_name', 'full_name', 'email', 'phone',
+    'product_title', 'product_id', 'variant_id', 'variant_title',
+    'frequency_months', 'permanence_months', 'cycles_completed', 'cycles_required',
+    'discount_pct', 'final_price', 'base_price',
+    'plan_label', 'next_charge_at', 'next_charge_date',
+    'status', 'subscription_id',
+    'portal_url', 'unsubscribe_url'
+];
+
+function buildPlanLabel(sub) {
+    const f = parseInt(sub.frequency_months) || 1;
+    const p = parseInt(sub.permanence_months) || 0;
+    const freqWord = f === 1 ? 'Mensual' : 'Cada ' + f + ' meses';
+    return freqWord + ' × ' + p + ' meses';
+}
+
+function formatNextCharge(iso) {
+    if (!iso) return '';
+    try {
+        const d = new Date(iso);
+        return d.toLocaleDateString('es-PE', { day: '2-digit', month: 'long', year: 'numeric' });
+    } catch { return iso.slice(0, 10); }
+}
+
+function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
+function buildContextForSub(sub) {
+    const portalBase = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
+    const fn = (sub.customer_name || '').split(' ')[0] || '';
+    const ln = (sub.customer_name || '').split(' ').slice(1).join(' ') || '';
+    return {
+        first_name: fn,
+        last_name: ln,
+        full_name: sub.customer_name || sub.customer_email || '',
+        email: sub.customer_email || '',
+        phone: sub.customer_phone || '',
+        product_title: sub.product_title || '',
+        product_id: String(sub.product_id || ''),
+        variant_id: String(sub.variant_id || ''),
+        variant_title: sub.variant_title || '',
+        frequency_months: String(sub.frequency_months || 1),
+        permanence_months: String(sub.permanence_months || 0),
+        cycles_completed: String(sub.cycles_completed || 0),
+        cycles_required: String(sub.cycles_required || 0),
+        discount_pct: String(Math.round(sub.discount_pct || 0)),
+        final_price: String(parseFloat(sub.final_price || 0).toFixed(2)),
+        base_price: String(parseFloat(sub.base_price || 0).toFixed(2)),
+        plan_label: buildPlanLabel(sub),
+        next_charge_at: sub.next_charge_at || '',
+        next_charge_date: formatNextCharge(sub.next_charge_at),
+        status: sub.status || '',
+        subscription_id: sub.id || '',
+        portal_url: portalBase + '/portal?email=' + encodeURIComponent(sub.customer_email || ''),
+        unsubscribe_url: portalBase + '/api/marketing/unsubscribe?email=' + encodeURIComponent(sub.customer_email || '') + '&sub_id=' + encodeURIComponent(sub.id || '')
+    };
+}
+
+function applyTokens(html, ctx) {
+    return html.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (m, key) => {
+        if (!ALLOWED_TOKENS.includes(key)) return m; // dejar tokens desconocidos sin tocar
+        const val = ctx[key];
+        return val !== undefined && val !== null ? escapeHtml(val) : '';
+    });
+}
+
+function appendUnsubscribeFooter(html, ctx) {
+    const footer = '\n<div style="text-align:center;padding:18px 16px;font-size:11px;color:#999;font-family:Arial,sans-serif;border-top:1px solid #eee;margin-top:24px">' +
+        'Recibís este email porque sos suscriptor de LAB NUTRITION. ' +
+        '<a href="' + ctx.unsubscribe_url + '" style="color:#999;text-decoration:underline">Darme de baja</a>' +
+        '</div>';
+    if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, footer + '</body>');
+    return html + footer;
+}
+
+/** POST /api/marketing/preview-html — pre-renderiza el HTML con un sub real (sin enviar email).
+ *  Body: { segment, html, sample_email? }
+ *  Retorna el HTML renderizado con datos de un sub random del segmento (o del email indicado).
+ */
+app.post('/api/marketing/preview-html', async (req, res) => {
+    try {
+        const { segment, html, sample_email } = req.body || {};
+        if (!html || typeof html !== 'string') return res.status(400).json({ error: 'html required' });
+
+        const subs = await db.getSubscriptions().catch(() => []);
+        let pool = subs;
+        if (segment && segment !== 'all') pool = subs.filter(s => s.status === segment);
+        if (sample_email) pool = subs.filter(s => (s.customer_email || '').toLowerCase() === sample_email.toLowerCase());
+        if (!pool.length) return res.status(404).json({ error: 'No hay subs en el segmento elegido' });
+
+        const sub = pool[0];
+        const ctx = buildContextForSub(sub);
+        const rendered = applyTokens(html, ctx);
+        res.json({
+            sample_sub_email: sub.customer_email,
+            sample_sub_name: sub.customer_name,
+            tokens_used: Object.fromEntries(ALLOWED_TOKENS.filter(t => html.includes('{{' + t + '}}') || html.includes('{{ ' + t + ' }}')).map(t => [t, ctx[t]])),
+            html: rendered,
+            html_with_footer: appendUnsubscribeFooter(rendered, ctx)
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/** POST /api/marketing/test-html — envía 1 email de prueba a un destinatario específico.
+ *  Body: { html, subject, to_email, sample_segment? }
+ *  Renderiza con datos del primer sub del segmento (o uno random) y manda solo a to_email.
+ */
+app.post('/api/marketing/test-html', async (req, res) => {
+    try {
+        const { html, subject, to_email, sample_segment } = req.body || {};
+        if (!html || !subject || !to_email) return res.status(400).json({ error: 'html, subject, to_email required' });
+
+        const subs = await db.getSubscriptions().catch(() => []);
+        let pool = sample_segment && sample_segment !== 'all'
+            ? subs.filter(s => s.status === sample_segment)
+            : subs;
+        const sample = pool[0] || subs[0];
+        if (!sample) return res.status(404).json({ error: 'No hay subs para usar como sample' });
+
+        const ctx = buildContextForSub(sample);
+        let rendered = applyTokens(html, ctx);
+        rendered = appendUnsubscribeFooter(rendered, ctx);
+
+        const subjectRendered = applyTokens(subject, ctx);
+
+        if (typeof sendAutoEmail !== 'function') return res.status(500).json({ error: 'sendAutoEmail not available' });
+        await sendAutoEmail({ to: to_email, subject: '[TEST] ' + subjectRendered, html: rendered });
+
+        res.json({
+            ok: true,
+            sent_to: to_email,
+            sample_used: { email: sample.customer_email, name: sample.customer_name },
+            note: 'Email de TEST enviado. Reviá tu inbox (puede tardar 1-2 min). El subject lleva prefijo [TEST].'
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/** POST /api/marketing/send-html — envía campaña HTML personalizada a un segmento.
+ *  Body: { segment, subject, html, throttle_ms? }
+ *  Personaliza por sub con tokens, agrega unsubscribe footer, usa Resend (fallback SMTP),
+ *  loguea event marketing_campaign_sent por cada email exitoso.
+ *  Throttle default 250ms entre envíos (4/seg, dentro del límite Resend).
+ */
+app.post('/api/marketing/send-html', async (req, res) => {
+    try {
+        const { segment, subject, html, throttle_ms } = req.body || {};
+        if (!segment || !subject || !html) return res.status(400).json({ error: 'segment, subject, html required' });
+
+        const allowedSegments = ['active', 'paused', 'payment_failed', 'cancelled', 'pending_payment', 'all'];
+        if (!allowedSegments.includes(segment)) {
+            return res.status(400).json({ error: 'segment invalid', allowed: allowedSegments });
+        }
+
+        const subs = await db.getSubscriptions().catch(() => []);
+        let filtered = segment === 'all' ? subs : subs.filter(s => s.status === segment);
+        // Dedup por email (un email == un sub aunque tenga 2 subs)
+        const seen = new Set();
+        filtered = filtered.filter(s => {
+            const e = (s.customer_email || '').toLowerCase();
+            if (!e || seen.has(e)) return false;
+            seen.add(e); return true;
+        });
+
+        const wait = parseInt(throttle_ms) || 250;
+        const startedAt = new Date().toISOString();
+
+        // Respondé inmediato y ejecutá en background
+        res.json({
+            started: true,
+            recipients_count: filtered.length,
+            segment,
+            subject,
+            throttle_ms: wait,
+            estimated_seconds: Math.ceil(filtered.length * wait / 1000),
+            note: 'Envío iniciado en background. Revisá /api/marketing/recent-campaigns en unos minutos.'
+        });
+
+        // Background send
+        let sent = 0, failed = 0;
+        for (const sub of filtered) {
+            try {
+                const ctx = buildContextForSub(sub);
+                let rendered = applyTokens(html, ctx);
+                rendered = appendUnsubscribeFooter(rendered, ctx);
+                const subjectRendered = applyTokens(subject, ctx);
+
+                if (typeof sendAutoEmail !== 'function') throw new Error('sendAutoEmail not available');
+                await sendAutoEmail({ to: sub.customer_email, subject: subjectRendered, html: rendered });
+
+                await db.createEvent({
+                    subscription_id: sub.id,
+                    event_type: 'marketing_campaign_sent',
+                    metadata: JSON.stringify({
+                        to: sub.customer_email,
+                        subject: subjectRendered,
+                        segment,
+                        campaign_started_at: startedAt
+                    })
+                }).catch(() => {});
+                sent++;
+            } catch (e) {
+                failed++;
+                console.warn('[MARKETING send-html] Fallo a ' + (sub.customer_email || '?') + ': ' + e.message);
+            }
+            if (wait > 0) await new Promise(r => setTimeout(r, wait));
+        }
+        console.log('[MARKETING send-html] Done. Sent: ' + sent + ' | Failed: ' + failed + ' | Segment: ' + segment);
+    } catch (e) {
+        // Si todavía no respondió, devolvé error
+        if (!res.headersSent) res.status(500).json({ error: e.message });
+        else console.error('[MARKETING send-html] Error:', e.message);
+    }
+});
+
+/** GET /api/marketing/unsubscribe — link público para que un cliente se dé de baja del mailing.
+ *  Marca la sub con un flag y registra event. No cancela la suscripción de pago.
+ */
+app.get('/api/marketing/unsubscribe', async (req, res) => {
+    try {
+        const email = String(req.query.email || '').trim();
+        const subId = String(req.query.sub_id || '').trim();
+        if (!email && !subId) return res.status(400).send('Falta email o sub_id');
+
+        const subs = await db.getSubscriptions().catch(() => []);
+        const target = subId ? subs.find(s => s.id === subId)
+                              : subs.find(s => (s.customer_email || '').toLowerCase() === email.toLowerCase());
+        if (target && db.updateSubscription) {
+            await db.updateSubscription(target.id, { marketing_unsubscribed: true, marketing_unsubscribed_at: new Date().toISOString() }).catch(() => {});
+            await db.createEvent({
+                subscription_id: target.id,
+                event_type: 'marketing_unsubscribed',
+                metadata: JSON.stringify({ email })
+            }).catch(() => {});
+        }
+        res.setHeader('Content-Type', 'text/html');
+        res.send('<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Suscripcion al mailing cancelada</title><style>body{font-family:Arial,sans-serif;max-width:480px;margin:80px auto;padding:24px;text-align:center}h1{font-size:22px;color:#0a0a0a;margin-bottom:14px}p{color:#555;line-height:1.55}a{color:#bd1718}</style></head><body><h1>Listo, te dimos de baja del mailing</h1><p>No vas a recibir m&aacute;s campa&ntilde;as comerciales de LAB NUTRITION. Tu suscripci&oacute;n de productos sigue activa (esto solo afecta los emails promocionales).</p><p style="margin-top:32px;font-size:12px;color:#999">Si fue por error, escribinos a hola@labnutrition.com</p></body></html>');
+    } catch (e) {
+        res.status(500).send('Error: ' + e.message);
+    }
+});
+
 /** GET /api/marketing/recent-campaigns — últimas 20 campañas enviadas (lee del event log). */
 app.get('/api/marketing/recent-campaigns', async (req, res) => {
     try {
