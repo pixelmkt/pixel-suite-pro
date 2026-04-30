@@ -5407,7 +5407,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.2.0', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.3.0', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
@@ -6700,10 +6700,10 @@ app.get('/api/bundles/product/:bundleProductId/config', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* ── Catch-all: serve admin.html for Shopify embedded app ── */
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
+/* NOTA: catch-all movido al final del archivo. Si está antes de los endpoints
+   nuevos (marketing/*, portal/me, dashboard-stats) los intercepta y devuelve
+   admin.html en lugar del JSON. Mover al final garantiza que solo capture
+   rutas que ningún handler atendió. */
 
 
 /* ══════════════════════════════════════════════════════
@@ -8300,6 +8300,15 @@ app.post('/api/track/subscribe', async (req, res) => {
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
+});
+
+/* ── Catch-all: serve admin.html for Shopify embedded app (must be LAST) ── */
+app.get('*', (req, res) => {
+    // Evita capturar paths que parecen archivos estáticos faltantes (404 limpio)
+    if (req.path.startsWith('/api/') || req.path.startsWith('/webhooks/')) {
+        return res.status(404).json({ error: 'Not found', path: req.path });
+    }
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 /* ── START SERVER ── */
