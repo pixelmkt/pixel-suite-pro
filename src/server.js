@@ -7499,6 +7499,7 @@ const ALLOWED_TOKENS = [
     'product_title', 'product_id', 'variant_id', 'variant_title',
     'frequency_months', 'permanence_months', 'cycles_completed', 'cycles_required',
     'discount_pct', 'final_price', 'base_price',
+    'monthly_discount', 'total_discount_if_complete',
     'plan_label', 'next_charge_at', 'next_charge_date',
     'status', 'subscription_id',
     'portal_url', 'unsubscribe_url'
@@ -7527,6 +7528,11 @@ function buildContextForSub(sub) {
     const portalBase = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
     const fn = (sub.customer_name || '').split(' ')[0] || '';
     const ln = (sub.customer_name || '').split(' ').slice(1).join(' ') || '';
+    const basePrice = parseFloat(sub.base_price || 0);
+    const finalPrice = parseFloat(sub.final_price || basePrice);
+    const monthlyDiscount = Math.max(0, basePrice - finalPrice);
+    const cyclesReq = parseInt(sub.cycles_required) || 0;
+    const totalDiscountIfComplete = monthlyDiscount * cyclesReq;
     return {
         first_name: fn,
         last_name: ln,
@@ -7544,6 +7550,8 @@ function buildContextForSub(sub) {
         discount_pct: String(Math.round(sub.discount_pct || 0)),
         final_price: String(parseFloat(sub.final_price || 0).toFixed(2)),
         base_price: String(parseFloat(sub.base_price || 0).toFixed(2)),
+        monthly_discount: monthlyDiscount.toFixed(2),
+        total_discount_if_complete: totalDiscountIfComplete.toFixed(2),
         plan_label: buildPlanLabel(sub),
         next_charge_at: sub.next_charge_at || '',
         next_charge_date: formatNextCharge(sub.next_charge_at),
