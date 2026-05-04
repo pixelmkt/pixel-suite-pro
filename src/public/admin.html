@@ -4409,9 +4409,14 @@
       const variantCbs = document.querySelectorAll('.variant-cb');
       const selectedVariants = [];
       variantCbs.forEach(cb => { if (cb.checked) selectedVariants.push(String(cb.value)); });
-      // Si todas estan marcadas o no hay checkboxes, enviar array vacio (= todas elegibles)
-      const allChecked = variantCbs.length === 0 || selectedVariants.length === variantCbs.length;
-      const eligibleVariantIds = allChecked ? [] : selectedVariants;
+      // FIX 2026-05-04: si admin marca todas las variantes, guardar TODAS (no array vacío).
+      // Antes guardaba [] cuando "todas" estaban marcadas → no aportaban nada al allowlist
+      // union → órdenes Shopify se bloqueaban silenciosamente al cobrar (caso C4).
+      // Ahora guarda los IDs reales para que pasen el check de allowlist al crear orden.
+      const allChecked = variantCbs.length > 0 && selectedVariants.length === variantCbs.length;
+      const eligibleVariantIds = allChecked
+        ? Array.from(variantCbs).map(cb => String(cb.value))
+        : selectedVariants;
 
       const config = { plans: plansConfig, eligible_variant_ids: eligibleVariantIds, updated_at: new Date().toISOString() };
       try {

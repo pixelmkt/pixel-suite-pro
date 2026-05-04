@@ -207,6 +207,33 @@ const HARDCODED_SUBSCRIPTION_VARIANTS = [
     '58307532587089' // CREATINE BLACK LIMITED EDITION 500g — única variante oficial de suscripción (abril 2026)
 ];
 
+// 2026-05-04 — Cache de variants por bundle_product_id (TTL 5min).
+// Evita que cada cobro consulte Shopify Admin API. Auto-invalida al expirar.
+const _bundleProductVariantsCache = new Map(); // bundle_product_id → { variants: [...], at: number }
+async function _getBundleProductVariantIds(bundleProductId) {
+    if (!bundleProductId) return [];
+    const key = String(bundleProductId);
+    const cached = _bundleProductVariantsCache.get(key);
+    const now = Date.now();
+    if (cached && (now - cached.at) < 300000) return cached.variants;
+    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+    const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+    if (!token) return [];
+    try {
+        const r = await fetch(`https://${shop}/admin/api/2026-01/products/${encodeURIComponent(key)}.json?fields=variants`, {
+            headers: { 'X-Shopify-Access-Token': token }
+        });
+        if (!r.ok) { _bundleProductVariantsCache.set(key, { variants: [], at: now }); return []; }
+        const data = await r.json();
+        const variants = (data?.product?.variants || []).map(v => String(v.id));
+        _bundleProductVariantsCache.set(key, { variants, at: now });
+        return variants;
+    } catch (_) {
+        _bundleProductVariantsCache.set(key, { variants: [], at: now });
+        return [];
+    }
+}
+
 async function getSubscriptionVariantAllowlist(settingsMaybe) {
     // settingsMaybe opcional: si lo pasan, evita un readFromShopify extra
     let settings = settingsMaybe;
@@ -227,6 +254,21 @@ async function getSubscriptionVariantAllowlist(settingsMaybe) {
             const evs = pCfgs[pid]?.eligible_variant_ids;
             if (Array.isArray(evs)) for (const v of evs) { if (v != null && v !== '') set.add(String(v)); }
         }
+        // 3. AUTO-DISCOVER 2026-05-04 — variants reales de productos bundle activos.
+        //    Cualquier bundle creado vía /api/admin/bundles auto-pasa el allowlist
+        //    sin que admin tenga que hacer un PUT manual al whitelist.
+        //    Cache 5min en memoria. Falla silenciosa: si Shopify Admin API no responde,
+        //    quedan las 3 fuentes anteriores. ADITIVO: solo agrega, nunca remueve.
+        try {
+            if (db && db.getBundleConfigs) {
+                const bundles = await db.getBundleConfigs({ active: true }).catch(() => []);
+                for (const b of (Array.isArray(bundles) ? bundles : [])) {
+                    if (!b || !b.bundle_product_id) continue;
+                    const variants = await _getBundleProductVariantIds(b.bundle_product_id);
+                    for (const v of variants) set.add(String(v));
+                }
+            }
+        } catch (_) { /* fail silent: 3 sources anteriores aplican igual */ }
     } catch (_) { /* si falla leer settings, queda el hardcoded */ }
     return set;
 }
@@ -323,12 +365,45 @@ function planAppliesToProduct(plan, productId) {
     return ids.includes(String(productId));
 }
 
+// 2026-05-04 — FALLBACK: regalos definidos directamente dentro del bundle local.
+//   Cuando el admin crea un bundle con plans[].gifts.enabled=true e items[],
+//   esos regalos quedan disponibles sin necesidad de duplicarlos en plans_config.
+//   Aditivo: solo se invoca cuando plans_config global no resuelve. No toca
+//   webhook MP, orders, ni la lógica existente — solo cierra el hueco para que
+//   un admin pueda configurar gifts directamente desde el modal de bundles.
+async function _resolveGiftsFromBundle(freq, perm, productId) {
+    try {
+        if (!db || !db.getBundleConfigByBundleProductId) return null;
+        const bundle = await db.getBundleConfigByBundleProductId(productId).catch(() => null);
+        if (!bundle || !Array.isArray(bundle.plans)) return null;
+        const bp = bundle.plans.find(p =>
+            Number(p.freq_months) === freq && Number(p.perm_months) === perm
+        );
+        if (!bp || !bp.gifts || !bp.gifts.enabled) return null;
+        const items = Array.isArray(bp.gifts.items) ? bp.gifts.items : [];
+        if (!items.length) return null;
+        return items.map(it => ({
+            product_id: String(it.product_id || ''),
+            product_title: it.product_title || '',
+            product_handle: it.product_handle || '',
+            variant_id: String(it.variant_id || ''),
+            variant_title: it.variant_title || '',
+            variant_sku: it.variant_sku || '',
+            quantity: Math.max(1, Math.min(3, parseInt(it.quantity, 10) || 1)),
+            image: it.image || null
+        })).filter(it => it.variant_id);
+    } catch (e) {
+        console.warn('[GIFTS] _resolveGiftsFromBundle error:', e.message);
+        return null;
+    }
+}
+
 async function resolveGiftsForNewSub(frequencyMonths, permanenceMonths, productId) {
+    const freq = Number(frequencyMonths);
+    const perm = Number(permanenceMonths);
     try {
         const data = await readFromShopify().catch(() => null);
         const plans = Array.isArray(data?.plans_config) ? data.plans_config : [];
-        const freq = Number(frequencyMonths);
-        const perm = Number(permanenceMonths);
         // 🔧 FIX 2026-04-22: ANTES buscaba el PRIMER plan con freq+perm matcheados,
         //   incluso si ese plan era de OTRO producto. Causaba que los regalos no se
         //   asignaran a la suscripción correcta cuando dos productos tenían mismos
@@ -339,13 +414,15 @@ async function resolveGiftsForNewSub(frequencyMonths, permanenceMonths, productI
             Number(p.permanence || p.permanence_months) === perm &&
             planAppliesToProduct(p, productId)
         );
-        if (!plan || !plan.gifts || !plan.gifts.enabled) return null;
+        // 2026-05-04: cada return-null se reemplaza por un intento de fallback al
+        // bundle local. Si bundle tampoco resuelve, devuelve null (comportamiento original).
+        if (!plan || !plan.gifts || !plan.gifts.enabled) return await _resolveGiftsFromBundle(freq, perm, productId);
         const items = Array.isArray(plan.gifts.items) ? plan.gifts.items : [];
-        if (!items.length) return null;
+        if (!items.length) return await _resolveGiftsFromBundle(freq, perm, productId);
         const appliesMode = plan.gifts.applies_to?.mode || 'all_products';
         if (appliesMode === 'specific_products') {
             const ids = (plan.gifts.applies_to?.product_ids || []).map(String);
-            if (!ids.includes(String(productId))) return null;
+            if (!ids.includes(String(productId))) return await _resolveGiftsFromBundle(freq, perm, productId);
         }
         return items.map(it => ({
             product_id: String(it.product_id || ''),
@@ -359,7 +436,7 @@ async function resolveGiftsForNewSub(frequencyMonths, permanenceMonths, productI
         })).filter(it => it.variant_id); // filtro seguridad: sin variant_id no sirve
     } catch (e) {
         console.warn('[GIFTS] resolveGiftsForNewSub error:', e.message);
-        return null;
+        return await _resolveGiftsFromBundle(freq, perm, productId).catch(() => null);
     }
 }
 
@@ -5407,7 +5484,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.3.0', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.4.0', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
@@ -8298,6 +8375,116 @@ app.post('/api/track/subscribe', async (req, res) => {
         }
         res.json(result);
     } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/* GET /api/admin/products-health-check
+ * 2026-05-04 — ADITIVO. Auditoría visual del estado de cada producto suscribible
+ * (simples + bundles). NO hace cambios. Solo lectura.
+ *
+ * Para cada producto registrado evalúa:
+ *  - ¿variants en allowlist union? (si NO → órdenes bloqueadas al cobrar)
+ *  - ¿plans_config con applies_to incluyendo el productId? (si NO → no hay descuento ni regalo)
+ *  - ¿gifts configurados? (vía plans_config global O vía bundle local)
+ *
+ * Útil para detectar productos rotos antes de que un cliente los compre.
+ * Permite al admin validar visualmente que un nuevo producto está completo.
+ */
+app.get('/api/admin/products-health-check', async (req, res) => {
+    try {
+        const settings = await readFromShopify() || readFromFile() || {};
+        const allowlist = await getSubscriptionVariantAllowlist(settings);
+        const plansCfg = Array.isArray(settings.plans_config) ? settings.plans_config : [];
+        const eligibleProducts = Array.isArray(settings.eligible_products) ? settings.eligible_products : [];
+        const bundles = (db && db.getBundleConfigs) ? await db.getBundleConfigs({ active: true }).catch(() => []) : [];
+
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+
+        async function getProductVariants(pid) {
+            if (!token || !pid) return [];
+            try {
+                const r = await fetch(`https://${shop}/admin/api/2026-01/products/${encodeURIComponent(pid)}.json?fields=variants,title`, {
+                    headers: { 'X-Shopify-Access-Token': token }
+                });
+                if (!r.ok) return [];
+                const d = await r.json();
+                return (d?.product?.variants || []).map(v => ({ id: String(v.id), title: v.title, price: v.price }));
+            } catch { return []; }
+        }
+
+        // Mezcla productos simples (eligible_products) y bundles (lab_bundle_config)
+        const tracked = new Map();
+        for (const p of eligibleProducts) {
+            const pid = String(p.shopify_id || p.shopify_product_id || '');
+            if (!pid) continue;
+            tracked.set(pid, { type: 'simple', title: p.product_title || '?', is_active: p.is_active !== false });
+        }
+        for (const b of (Array.isArray(bundles) ? bundles : [])) {
+            const pid = String(b.bundle_product_id || '');
+            if (!pid) continue;
+            tracked.set(pid, { type: b.type || 'mix_match', title: b.name || '?', is_active: b.active !== false, bundle_id: b.id });
+        }
+
+        const report = [];
+        for (const [pid, info] of tracked) {
+            const variants = await getProductVariants(pid);
+            const variantIds = variants.map(v => v.id);
+            const variantsInAllowlist = variantIds.filter(v => allowlist.has(v));
+            const allVariantsAllowed = variantIds.length > 0 && variantsInAllowlist.length === variantIds.length;
+            const matchingPlans = plansCfg.filter(p =>
+                p && p.active !== false &&
+                (p.applies_to?.mode === 'all_products' ||
+                 (p.applies_to?.product_ids || []).map(String).includes(pid))
+            );
+            const planCfgsWithGifts = matchingPlans.filter(p =>
+                p.gifts?.enabled &&
+                Array.isArray(p.gifts?.items) && p.gifts.items.length > 0
+            );
+            const hasGiftsViaPlansConfig = planCfgsWithGifts.length > 0;
+            const bundle = bundles.find(b => String(b.bundle_product_id) === pid);
+            const hasGiftsViaBundle = !!(bundle && Array.isArray(bundle.plans) && bundle.plans.some(p => p.gifts?.enabled && Array.isArray(p.gifts?.items) && p.gifts.items.length > 0));
+            const hasGiftsAnywhere = hasGiftsViaPlansConfig || hasGiftsViaBundle;
+
+            const issues = [];
+            if (variantIds.length === 0) issues.push('product_has_no_variants_or_unreachable');
+            if (variantIds.length > 0 && !allVariantsAllowed) {
+                issues.push(`some_variants_blocked_from_allowlist (${variantsInAllowlist.length}/${variantIds.length})`);
+            }
+            if (matchingPlans.length === 0) issues.push('no_plans_config_targeting_this_product');
+            if (!hasGiftsAnywhere) issues.push('no_gifts_configured');
+
+            report.push({
+                product_id: pid,
+                title: info.title,
+                type: info.type,
+                is_active: info.is_active,
+                bundle_id: info.bundle_id || null,
+                shopify_variants_count: variantIds.length,
+                variants_in_allowlist: variantsInAllowlist.length,
+                all_variants_allowed: allVariantsAllowed,
+                matching_plans_in_config: matchingPlans.length,
+                has_gifts_via_plans_config: hasGiftsViaPlansConfig,
+                has_gifts_via_bundle: hasGiftsViaBundle,
+                healthy: issues.length === 0,
+                issues
+            });
+        }
+
+        const summary = {
+            total_products: report.length,
+            healthy: report.filter(r => r.healthy).length,
+            with_issues: report.filter(r => !r.healthy).length,
+            allowlist_size: allowlist.size,
+            plans_config_count: plansCfg.length,
+            bundles_count: Array.isArray(bundles) ? bundles.length : 0,
+            checked_at: new Date().toISOString()
+        };
+
+        res.json({ summary, products: report });
+    } catch (e) {
+        console.error('[HEALTH-CHECK] error:', e.message);
         res.status(500).json({ error: e.message });
     }
 });
