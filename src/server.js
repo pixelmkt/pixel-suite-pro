@@ -8415,16 +8415,23 @@ app.get('/api/admin/products-health-check', async (req, res) => {
         }
 
         // Mezcla productos simples (eligible_products) y bundles (lab_bundle_config)
+        // FIX 2026-05-04: solo incluye productos ACTIVOS para no listar items inactivos
+        // como "rotos" en el dashboard.
+        const includeInactive = req.query.include_inactive === 'true';
         const tracked = new Map();
         for (const p of eligibleProducts) {
             const pid = String(p.shopify_id || p.shopify_product_id || '');
             if (!pid) continue;
-            tracked.set(pid, { type: 'simple', title: p.product_title || '?', is_active: p.is_active !== false });
+            const isActive = p.is_active !== false;
+            if (!includeInactive && !isActive) continue;
+            tracked.set(pid, { type: 'simple', title: p.product_title || '?', is_active: isActive });
         }
         for (const b of (Array.isArray(bundles) ? bundles : [])) {
             const pid = String(b.bundle_product_id || '');
             if (!pid) continue;
-            tracked.set(pid, { type: b.type || 'mix_match', title: b.name || '?', is_active: b.active !== false, bundle_id: b.id });
+            const isActive = b.active !== false;
+            if (!includeInactive && !isActive) continue;
+            tracked.set(pid, { type: b.type || 'mix_match', title: b.name || '?', is_active: isActive, bundle_id: b.id });
         }
 
         const report = [];
