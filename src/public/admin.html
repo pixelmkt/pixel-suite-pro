@@ -2601,11 +2601,28 @@
         const body = document.getElementById('ml-body').value;
         const headerTitle = document.getElementById('ml-header').value || 'Club Black Diamond';
         if (!body.trim() && !subject.trim()) return;
+        const iframe = document.getElementById('ml-preview');
+        if (!iframe) return;
         try {
-          const res = await api('/api/mailing/preview', { method: 'POST', body: { subject, body, headerTitle } });
-          const iframe = document.getElementById('ml-preview');
-          if (iframe) iframe.srcdoc = res.html || '';
-        } catch (e) { console.warn('[MAILING preview]', e); }
+          // 2026-05-12: auto-detect HTML vs texto y rutear al endpoint correcto.
+          // - HTML completo  -> /api/marketing/preview-html (renderiza tokens, no envuelve)
+          // - Texto plano    -> /api/mailing/preview (legacy con template Black Diamond)
+          if (typeof isHtmlBody === 'function' && isHtmlBody(body)) {
+            const seg = document.getElementById('ml-segment')?.value || 'active';
+            const res = await api('/api/marketing/preview-html', {
+              method: 'POST',
+              body: { html: body, subject, to_email: 'preview@test.com', sample_segment: seg }
+            });
+            iframe.srcdoc = res.html_with_footer || res.html || body;
+          } else {
+            const res = await api('/api/mailing/preview', { method: 'POST', body: { subject, body, headerTitle } });
+            iframe.srcdoc = res.html || '';
+          }
+        } catch (e) {
+          console.warn('[MAILING preview]', e);
+          // Fallback: render crudo si el endpoint falla
+          iframe.srcdoc = body;
+        }
       }, 400);
     }
 
