@@ -6147,7 +6147,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.1.0', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.2.0', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
@@ -8082,11 +8082,67 @@ app.post('/api/mp-polling/run-now', async (req, res) => {
    Endpoint read-only que calcula MRR, churn, LTV y métricas clave.
    No modifica ninguna lógica existente.
    ═══════════════════════════════════════════════════════════════════ */
+// 2026-05-12 — Cache MP revenue (10 min TTL). Consulta MP directo, fuente de verdad.
+let _mpRevenueCache = { total: 0, current_month: 0, last_month: 0, count: 0, at: 0 };
+async function computeMpRevenueFromMP() {
+    const now = Date.now();
+    if (_mpRevenueCache.at && (now - _mpRevenueCache.at) < 10 * 60 * 1000) {
+        return _mpRevenueCache;
+    }
+    const mpToken = process.env.MP_ACCESS_TOKEN;
+    if (!mpToken) return _mpRevenueCache;
+    try {
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const subsWithPre = (Array.isArray(allSubs) ? allSubs : []).filter(s => s.mp_preapproval_id);
+        const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+        const lastMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).getTime();
+        let total = 0, currentMonth = 0, lastMonth = 0, count = 0;
+        // batches paralelos para no demorar 20+ segundos
+        const BATCH = 8;
+        for (let bi = 0; bi < subsWithPre.length; bi += BATCH) {
+            const batch = subsWithPre.slice(bi, bi + BATCH);
+            const results = await Promise.all(batch.map(async (sub) => {
+                try {
+                    const url = `https://api.mercadopago.com/authorized_payments/search?preapproval_id=${encodeURIComponent(sub.mp_preapproval_id)}&limit=10`;
+                    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + mpToken } });
+                    if (!r.ok) return [];
+                    const d = await r.json();
+                    return (d.results || []).filter(p => p.status === 'processed' || p.status === 'approved');
+                } catch { return []; }
+            }));
+            for (const payments of results) {
+                for (const p of payments) {
+                    const amount = parseFloat(p.transaction_amount) || 0;
+                    const ts = new Date(p.date_created || 0).getTime();
+                    total += amount;
+                    count++;
+                    if (ts >= monthStart) currentMonth += amount;
+                    else if (ts >= lastMonthStart) lastMonth += amount;
+                }
+            }
+        }
+        _mpRevenueCache = {
+            total: parseFloat(total.toFixed(2)),
+            current_month: parseFloat(currentMonth.toFixed(2)),
+            last_month: parseFloat(lastMonth.toFixed(2)),
+            count,
+            at: now
+        };
+        console.log(`[MP REVENUE] Cache refreshed: total=S/${total.toFixed(2)} thisMonth=S/${currentMonth.toFixed(2)} lastMonth=S/${lastMonth.toFixed(2)} count=${count}`);
+    } catch (e) {
+        console.warn('[MP REVENUE] error:', e.message);
+    }
+    return _mpRevenueCache;
+}
+
 app.get('/api/admin/dashboard-stats', async (req, res) => {
     try {
         const subs = await db.getSubscriptions().catch(() => []);
         const events = db?.getAllEvents ? await db.getAllEvents().catch(() => []) :
             (db?._listAll ? await db._listAll('lab_sub_event').catch(() => []) : []);
+
+        // 2026-05-12 — REVENUE REAL desde MP (no del event log que tenía bug)
+        const mpRevenue = await computeMpRevenueFromMP();
 
         const now = Date.now();
         const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
@@ -8183,7 +8239,13 @@ app.get('/api/admin/dashboard-stats', async (req, res) => {
                 ltv: parseFloat(ltv.toFixed(2)),
                 ltv_months: parseFloat(ltvMonths.toFixed(1)),
                 revenue_this_month: parseFloat(revenueThisMonth.toFixed(2)),
-                charges_this_month: chargesThisMonth
+                charges_this_month: chargesThisMonth,
+                // 2026-05-12 — REAL desde MP (fuente de verdad financiera)
+                revenue_total_mp: mpRevenue.total,
+                revenue_current_month_mp: mpRevenue.current_month,
+                revenue_last_month_mp: mpRevenue.last_month,
+                mp_payments_count: mpRevenue.count,
+                mp_cache_age_seconds: Math.round((Date.now() - (mpRevenue.at || 0)) / 1000)
             },
             churn: {
                 cancelled_last_30d: cancelledLast30,

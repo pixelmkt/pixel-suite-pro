@@ -1992,9 +1992,17 @@
         </div>
 
         <div class="stats-grid" id="stats-grid">
-          <div class="stat">
-            <div class="stat-val" id="st-mrr">—</div>
-            <div class="stat-lbl">MRR (S/)</div>
+          <div class="stat" title="MRR = Suma de final_price de subs activas. Proyección de cobro mensual si todas siguen activas." style="border-left:3px solid #2563eb">
+            <div class="stat-val" id="st-mrr" style="color:#2563eb">—</div>
+            <div class="stat-lbl">Cobro mensual proyectado (MRR)</div>
+          </div>
+          <div class="stat" title="Cobrado este mes en MP (suma de payments processed/approved). Cache 10min." style="border-left:3px solid #10b981">
+            <div class="stat-val" id="st-revenue-month" style="color:#10b981">—</div>
+            <div class="stat-lbl">Cobrado este mes (MP)</div>
+          </div>
+          <div class="stat" title="Total cobrado histórico en MP desde el inicio. Fuente: MP authorized_payments. Cache 10min." style="border-left:3px solid #16a34a">
+            <div class="stat-val" id="st-revenue-total" style="color:#16a34a">—</div>
+            <div class="stat-lbl">Cobrado total (MP histórico)</div>
           </div>
           <div class="stat">
             <div class="stat-val" id="st-active" style="color:var(--grn)">—</div>
@@ -3970,11 +3978,32 @@
         // FIX 2026-04-09: fetch /api/subscriptions PRIMERO (dispara auto-import MP→metaobjects),
         // luego metrics y real-count para que reflejen los recién importados.
         const recent = await api('/api/subscriptions?limit=10').catch(() => []);
-        const [metrics, realCount] = await Promise.all([
+        const [metrics, realCount, dashStats] = await Promise.all([
           api('/api/metrics').catch(() => ({})),
-          api('/api/subscribers/real-count').catch(() => null)  // cantidad REAL (MP + Shopify + metaobjects)
+          api('/api/subscribers/real-count').catch(() => null),  // cantidad REAL (MP + Shopify + metaobjects)
+          api('/api/admin/dashboard-stats').catch(() => null)    // 2026-05-12 — incluye revenue MP real
         ]);
         document.getElementById('st-mrr').textContent = 'S/ ' + parseFloat(metrics.mrr || 0).toFixed(2);
+        // 2026-05-12 — Revenue real desde MP (no del event log)
+        const fin = dashStats?.financials || {};
+        const elRevMonth = document.getElementById('st-revenue-month');
+        const elRevTotal = document.getElementById('st-revenue-total');
+        if (elRevMonth) {
+          elRevMonth.textContent = 'S/ ' + parseFloat(fin.revenue_current_month_mp || 0).toFixed(2);
+          if (fin.revenue_last_month_mp) {
+            elRevMonth.title = 'Cobrado este mes: S/' + fin.revenue_current_month_mp.toFixed(2) +
+                              ' · Mes anterior: S/' + fin.revenue_last_month_mp.toFixed(2) +
+                              ' · Cache: ' + (fin.mp_cache_age_seconds || 0) + 's';
+          }
+        }
+        if (elRevTotal) {
+          elRevTotal.textContent = 'S/ ' + parseFloat(fin.revenue_total_mp || 0).toFixed(2);
+          if (fin.mp_payments_count) {
+            elRevTotal.title = 'Total histórico: S/' + fin.revenue_total_mp.toFixed(2) +
+                              ' en ' + fin.mp_payments_count + ' cobros MP processed/approved' +
+                              ' · Cache: ' + (fin.mp_cache_age_seconds || 0) + 's';
+          }
+        }
         // Si real-count está disponible, usar unión única por email como fuente de verdad
         const activeReal = realCount && typeof realCount.union_by_email === 'number'
           ? realCount.union_by_email
