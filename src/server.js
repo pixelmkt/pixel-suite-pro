@@ -6194,7 +6194,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.4.1', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.4.2', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
@@ -8527,6 +8527,7 @@ async function sendCampaignEmail({ to, subject, html, text, unsubscribeUrl, mail
 
 const ALLOWED_TOKENS = [
     'first_name', 'last_name', 'full_name', 'email', 'phone',
+    'greeting', // 2026-05-12: "Hola Juan" o "Hola" segun si el nombre es bueno
     'product_title', 'product_id', 'variant_id', 'variant_title',
     'frequency_months', 'permanence_months', 'cycles_completed', 'cycles_required',
     'discount_pct', 'final_price', 'base_price',
@@ -8536,6 +8537,38 @@ const ALLOWED_TOKENS = [
     'portal_url', 'unsubscribe_url',
     'product_url', 'product_handle', 'product_image'
 ];
+
+/**
+ * 2026-05-12 — Limpia first_name para usar en saludos de email.
+ * Detecta junk (emails, all caps, random strings) y los corrige o vacia.
+ * - "YUDER" -> "Yuder"
+ * - "JESÚS MANUEL ROJAS" -> "Jesús"
+ * - "luismiguelordonez" (username largo lowercase) -> ''
+ * - "sfvfd" (random short) -> ''
+ * - "jericobenitesgomez3" (lleva numero) -> ''
+ * - "Juan" -> "Juan" (sin cambios)
+ * - "" -> ""
+ */
+function cleanFirstName(rawName) {
+    if (!rawName) return '';
+    const n = String(rawName).trim();
+    if (!n) return '';
+    if (n.includes('@')) return ''; // es email
+    const firstWord = n.split(/\s+/)[0];
+    if (!firstWord) return '';
+    if (firstWord.length < 2) return ''; // muy corto, probable test
+    if (firstWord.length > 20) return ''; // muy largo, probable username concatenado
+    if (/\d/.test(firstWord)) return ''; // contiene numero
+    // Junk detector — ratio de vocales en palabra real es >= 25%
+    // sfvfd (0%) y SDFSDGFSDF (0%) → descartar.  Juan (50%), Yuder (40%) → ok.
+    const lower = firstWord.toLowerCase();
+    const vowels = (lower.match(/[aeiouáéíóú]/g) || []).length;
+    if (vowels / firstWord.length < 0.20) return '';
+    // Si todo lowercase y mas de 10 chars: probable username concatenado
+    if (firstWord === firstWord.toLowerCase() && firstWord.length > 10) return '';
+    // Capitalizar correctamente (Title Case en primera palabra)
+    return firstWord.charAt(0).toUpperCase() + firstWord.slice(1).toLowerCase();
+}
 
 function buildPlanLabel(sub) {
     const f = parseInt(sub.frequency_months) || 1;
@@ -8558,8 +8591,11 @@ function escapeHtml(s) {
 
 async function buildContextForSub(sub) {
     const portalBase = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
-    const fn = (sub.customer_name || '').split(' ')[0] || '';
+    // 2026-05-12: limpieza inteligente de first_name para evitar "Hola sfvfd"
+    const rawFn = (sub.customer_name || sub.first_name || '').split(' ')[0] || '';
+    const fn = cleanFirstName(rawFn);
     const ln = (sub.customer_name || '').split(' ').slice(1).join(' ') || '';
+    const greeting = fn ? ('Hola ' + fn) : 'Hola';
     const basePrice = parseFloat(sub.base_price || 0);
     const finalPrice = parseFloat(sub.final_price || basePrice);
     const monthlyDiscount = Math.max(0, basePrice - finalPrice);
@@ -8591,6 +8627,7 @@ async function buildContextForSub(sub) {
         first_name: fn,
         last_name: ln,
         full_name: sub.customer_name || sub.customer_email || '',
+        greeting: greeting, // 2026-05-12 — saludo inteligente listo para usar
         email: sub.customer_email || '',
         phone: sub.customer_phone || '',
         product_title: sub.product_title || '',
