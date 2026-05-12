@@ -1225,15 +1225,34 @@ app.post('/api/admin/orders/cancel-phantoms', async (req, res) => {
         const ORDER_EVENT_TYPES = new Set(['first_order_created', 'charge_success', 'manual_order_created']);
         const allSubs = await db.getSubscriptions().catch(() => []);
 
+        // 🚀 PERF: filtrar primero subs con potencial de tener fantasma para no iterar 215.
+        //  Solo procesa subs que cobraron al menos 1 vez (cycles>=1) o que ya tienen
+        //  gifts_delivered=true o shopify_order_id poblado (= la sub tiene ≥1 order
+        //  con la cual el rescue pudo duplicar).
+        const candidatesSubs = (Array.isArray(allSubs) ? allSubs : []).filter(s =>
+            (parseInt(s.cycles_completed) || 0) > 0 ||
+            s.gifts_delivered === true ||
+            !!s.shopify_order_id ||
+            !!s.gifts_delivered_order_id
+        );
+
+        // 🚀 PERF: leer events de a 10 subs en paralelo (Promise.all batches).
         const phantoms = [];
-        for (const sub of (Array.isArray(allSubs) ? allSubs : [])) {
-            let events = [];
-            try { events = await db.getEvents(sub.id, 100); } catch (_) { continue; }
-            // Ordenar ASC para identificar cuál orden vino primero
-            const orderEvts = (events || [])
-                .filter(e => ORDER_EVENT_TYPES.has(e.event_type))
-                .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
-            if (orderEvts.length < 2) continue;
+        const BATCH_SIZE = 10;
+        for (let bi = 0; bi < candidatesSubs.length; bi += BATCH_SIZE) {
+            const batch = candidatesSubs.slice(bi, bi + BATCH_SIZE);
+            const results = await Promise.all(batch.map(async (sub) => {
+                let events = [];
+                try { events = await db.getEvents(sub.id, 100); } catch (_) { return { sub, events: null }; }
+                return { sub, events };
+            }));
+            for (const { sub, events } of results) {
+                if (events === null) continue;
+                // Ordenar ASC para identificar cuál orden vino primero
+                const orderEvts = (events || [])
+                    .filter(e => ORDER_EVENT_TYPES.has(e.event_type))
+                    .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+                if (orderEvts.length < 2) continue;
             // Los fantasmas: first_order_created rescued:true en posición != 0
             for (let i = 1; i < orderEvts.length; i++) {
                 const e = orderEvts[i];
@@ -1258,6 +1277,7 @@ app.post('/api/admin/orders/cancel-phantoms', async (req, res) => {
                 });
             }
         }
+        } // close for bi (batch loop)
 
         if (dryRun) {
             return res.json({
@@ -6101,7 +6121,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.8.0', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.8.1', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
