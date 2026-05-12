@@ -1029,6 +1029,65 @@
           </div>
         </div>
 
+        <!-- ✨ MODO HTML PRO + PRODUCTOS SHOPIFY (2026-05-12) -->
+        <div class="card" style="margin-top:18px;border:2px solid #2563eb;border-radius:10px;overflow:hidden">
+          <div class="card-head" style="background:linear-gradient(135deg,#2563eb,#1e40af);color:#fff">
+            <span class="card-title" style="color:#fff">✨ MODO HTML PRO + PRODUCTOS SHOPIFY</span>
+            <span style="font-size:10px;color:#dbeafe;float:right">Editor avanzado · etiqueta productos · segmentos Shopify</span>
+          </div>
+          <div style="padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <!-- IZQ: Editor HTML + Producto Picker -->
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div>
+                <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Segmento (Shopify Customer Segments)</label>
+                <select id="pro-segment" onchange="proRefreshAudience()" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;margin-top:5px;outline:none;background:#fff;box-sizing:border-box">
+                  <option value="all">Todos los clientes con sub</option>
+                  <option value="active" selected>Activos (lab-sub-active)</option>
+                  <option value="pending_payment">Pendiente pago (lab-sub-pending)</option>
+                  <option value="cancelled">Cancelados (lab-sub-cancelled)</option>
+                  <option value="completed">Completados (lab-sub-completed)</option>
+                </select>
+                <div id="pro-audience" style="font-size:11px;color:var(--mut);margin-top:5px">Calculando…</div>
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Asunto del email</label>
+                <input id="pro-subject" type="text" placeholder="🎁 Hola {{first_name}}, tu producto favorito a 30% OFF" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;margin-top:5px;outline:none;box-sizing:border-box" oninput="proRefreshPreview()">
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px">Preheader (preview en bandeja)</label>
+                <input id="pro-preheader" type="text" placeholder="Texto corto que aparece junto al asunto en Gmail/Outlook" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;margin-top:5px;outline:none;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:flex;justify-content:space-between;align-items:center">
+                  <span>HTML del email (completo, con tags &lt;style&gt; permitidos)</span>
+                  <button type="button" onclick="proOpenProductPicker()" style="background:#2563eb;color:#fff;border:none;padding:4px 10px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer">+ INSERTAR PRODUCTO SHOPIFY</button>
+                </label>
+                <textarea id="pro-html" rows="18" placeholder="<table style='width:100%;background:#fff'>&#10;  <tr><td style='padding:30px'>&#10;    <h1>Hola {{first_name}}!</h1>&#10;    <p>Tenemos algo nuevo para ti...</p>&#10;    &lt;!-- Aquí pegas el bloque de producto desde el botón ↑ --&gt;&#10;  </td></tr>&#10;</table>" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:10px 12px;font-size:11px;margin-top:5px;outline:none;resize:vertical;box-sizing:border-box;font-family:monospace;line-height:1.5" oninput="proRefreshPreview()"></textarea>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:5px;font-size:10px">
+                <span style="color:var(--mut);font-weight:700">Variables:</span>
+                <button type="button" onclick="proInsertVar('first_name')" style="background:#f3f4f6;border:1px solid var(--bdr);padding:3px 8px;font-size:10px;cursor:pointer;font-family:monospace;border-radius:4px">{{first_name}}</button>
+                <button type="button" onclick="proInsertVar('email')" style="background:#f3f4f6;border:1px solid var(--bdr);padding:3px 8px;font-size:10px;cursor:pointer;font-family:monospace;border-radius:4px">{{email}}</button>
+                <button type="button" onclick="proInsertVar('product_title')" style="background:#f3f4f6;border:1px solid var(--bdr);padding:3px 8px;font-size:10px;cursor:pointer;font-family:monospace;border-radius:4px">{{product_title}}</button>
+                <button type="button" onclick="proInsertVar('final_price')" style="background:#f3f4f6;border:1px solid var(--bdr);padding:3px 8px;font-size:10px;cursor:pointer;font-family:monospace;border-radius:4px">{{final_price}}</button>
+                <button type="button" onclick="proInsertVar('portal_url')" style="background:#f3f4f6;border:1px solid var(--bdr);padding:3px 8px;font-size:10px;cursor:pointer;font-family:monospace;border-radius:4px">{{portal_url}}</button>
+                <button type="button" onclick="proInsertVar('product_url')" style="background:#f3f4f6;border:1px solid var(--bdr);padding:3px 8px;font-size:10px;cursor:pointer;font-family:monospace;border-radius:4px">{{product_url}}</button>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:6px">
+                <input id="pro-test-email" type="email" placeholder="email para test" style="flex:1;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:12px;outline:none;box-sizing:border-box">
+                <button onclick="proSendTest()" style="background:#0A0A0A;color:#fff;border:none;padding:9px 14px;border-radius:7px;font-weight:600;cursor:pointer;font-size:12px;white-space:nowrap">Enviar test</button>
+              </div>
+              <button onclick="proSendCampaign()" style="background:#2563eb;color:#fff;border:none;padding:12px;border-radius:7px;font-weight:700;cursor:pointer;font-size:13px">📨 ENVIAR CAMPAÑA HTML A SEGMENTO</button>
+              <div id="pro-result" style="display:none;padding:10px 14px;border-radius:7px;font-size:12px"></div>
+            </div>
+            <!-- DER: Preview iframe -->
+            <div style="position:sticky;top:16px;align-self:start">
+              <div style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;margin-bottom:5px">Preview en vivo</div>
+              <iframe id="pro-preview" style="width:100%;height:680px;border:1.5px solid var(--bdr);border-radius:8px;background:#fff" srcdoc="<div style='padding:40px;text-align:center;color:#888;font-family:system-ui'>Escribe HTML para ver el preview…</div>"></iframe>
+            </div>
+          </div>
+        </div>
+
         <!-- HISTORIAL DE CAMPA&Ntilde;AS + ATRIBUCI&Oacute;N -->
         <div class="card" style="margin-top:18px">
           <div class="card-head" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -2652,6 +2711,211 @@
         if (btn) { btn.disabled = false; btn.textContent = 'Enviar campaña real'; }
       }
     }
+
+    // ════════════════════════════════════════════════════════════════
+    // ✨ MODO PRO: HTML + PRODUCTOS SHOPIFY (2026-05-12)
+    // Usa endpoints existentes: /api/marketing/{preview-html,test-html,send-html,segment-counts}
+    // ════════════════════════════════════════════════════════════════
+    let _proPreviewTimer = null;
+
+    async function proRefreshAudience() {
+      const seg = document.getElementById('pro-segment').value;
+      const box = document.getElementById('pro-audience');
+      try {
+        const r = await api('/api/marketing/segment-counts');
+        let n = 0;
+        if (seg === 'all') n = (r.active || 0) + (r.pending_payment || 0) + (r.cancelled || 0);
+        else if (seg === 'active') n = r.active || 0;
+        else if (seg === 'pending_payment') n = r.pending_payment || 0;
+        else if (seg === 'cancelled') n = r.cancelled || 0;
+        else if (seg === 'completed') n = r.completed || 0;
+        box.innerHTML = '<strong style="color:#2563eb">' + n + '</strong> destinatarios estimados';
+      } catch (e) {
+        box.textContent = 'Error: ' + e.message;
+      }
+    }
+
+    function proRefreshPreview() {
+      clearTimeout(_proPreviewTimer);
+      _proPreviewTimer = setTimeout(async () => {
+        const html = document.getElementById('pro-html').value || '<div style="padding:40px;color:#888;text-align:center">Escribe HTML…</div>';
+        const subject = document.getElementById('pro-subject').value || '';
+        const seg = document.getElementById('pro-segment').value;
+        try {
+          const r = await api('/api/marketing/preview-html', {
+            method: 'POST',
+            body: { html, subject, to_email: 'preview@test.com', sample_segment: seg }
+          });
+          const iframe = document.getElementById('pro-preview');
+          if (iframe) iframe.srcdoc = r.html_with_footer || r.html || html;
+        } catch (e) {
+          // Si el endpoint falla, mostrar el html crudo
+          const iframe = document.getElementById('pro-preview');
+          if (iframe) iframe.srcdoc = html;
+        }
+      }, 500);
+    }
+
+    function proInsertVar(name) {
+      const ta = document.getElementById('pro-html');
+      const token = '{{' + name + '}}';
+      const start = ta.selectionStart || ta.value.length;
+      const end = ta.selectionEnd || ta.value.length;
+      ta.value = ta.value.slice(0, start) + token + ta.value.slice(end);
+      ta.focus();
+      ta.setSelectionRange(start + token.length, start + token.length);
+      proRefreshPreview();
+    }
+
+    async function proOpenProductPicker() {
+      let modal = document.getElementById('pro-picker-modal');
+      if (modal) modal.remove();
+      modal = document.createElement('div');
+      modal.id = 'pro-picker-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+      modal.innerHTML = `
+        <div style="background:#fff;border-radius:14px;max-width:720px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.3);overflow:hidden">
+          <div style="padding:18px 22px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;background:#f9fafb">
+            <div>
+              <div style="font-weight:800;font-size:15px">Insertar producto Shopify</div>
+              <div style="font-size:11px;color:#999;margin-top:2px">Se insertará un bloque HTML con imagen, título, precio y CTA</div>
+            </div>
+            <button onclick="document.getElementById('pro-picker-modal').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#999">×</button>
+          </div>
+          <div style="padding:14px 22px">
+            <input id="pro-picker-q" type="text" placeholder="Buscar producto por nombre (ej. creatine, premium…)" oninput="proPickerSearch()" style="width:100%;border:1.5px solid #d4d4d4;border-radius:8px;padding:10px 14px;font-size:13px;outline:none;box-sizing:border-box">
+          </div>
+          <div id="pro-picker-results" style="flex:1;overflow-y:auto;padding:0 22px 22px">
+            <div style="text-align:center;color:#999;padding:40px;font-size:13px">Escribe para buscar productos…</div>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      setTimeout(() => document.getElementById('pro-picker-q')?.focus(), 100);
+      proPickerSearch();
+    }
+
+    let _proPickerTimer = null;
+    function proPickerSearch() {
+      clearTimeout(_proPickerTimer);
+      _proPickerTimer = setTimeout(async () => {
+        const q = document.getElementById('pro-picker-q')?.value || '';
+        const box = document.getElementById('pro-picker-results');
+        if (!box) return;
+        box.innerHTML = '<div style="text-align:center;color:#999;padding:30px">Buscando…</div>';
+        try {
+          const r = await api('/api/products/search?q=' + encodeURIComponent(q) + '&limit=20');
+          const items = r.products || [];
+          if (!items.length) {
+            box.innerHTML = '<div style="text-align:center;color:#999;padding:30px">Sin resultados</div>';
+            return;
+          }
+          box.innerHTML = items.map(p => {
+            const price = p.variants?.[0]?.price || p.price || '?';
+            const img = p.image || '';
+            const handle = p.handle || '';
+            const escTitle = (p.title || '').replace(/"/g, '&quot;');
+            return `
+              <div style="display:flex;align-items:center;gap:12px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;cursor:pointer;transition:background .15s"
+                   onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='#fff'"
+                   onclick="proInsertProductBlock('${escTitle}','${handle}','${img}','${price}')">
+                ${img ? `<img src="${img}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid #eee">` : '<div style="width:60px;height:60px;background:#f3f4f6;border-radius:6px"></div>'}
+                <div style="flex:1">
+                  <div style="font-weight:700;font-size:13px;color:#0a0a0a">${p.title || '?'}</div>
+                  <div style="font-size:11px;color:#666;margin-top:2px">${p.vendor || ''} · S/ ${price}</div>
+                </div>
+                <button style="background:#2563eb;color:#fff;border:none;padding:6px 12px;border-radius:5px;font-weight:700;font-size:11px;cursor:pointer">Insertar</button>
+              </div>`;
+          }).join('');
+        } catch (e) {
+          box.innerHTML = '<div style="text-align:center;color:#dc2626;padding:30px">Error: ' + e.message + '</div>';
+        }
+      }, 300);
+    }
+
+    function proInsertProductBlock(title, handle, image, price) {
+      const url = 'https://labnutrition.com/products/' + handle + '?utm_source=email&utm_medium=campaign&utm_campaign=mailing';
+      const block = `
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:540px;margin:18px auto;background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden">
+  <tr>
+    <td style="padding:18px;text-align:center;background:#fafafa">
+      <img src="${image}" alt="${title.replace(/"/g, '&quot;')}" style="max-width:220px;height:auto;display:block;margin:0 auto;border-radius:6px">
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:18px 22px">
+      <div style="font-size:18px;font-weight:900;color:#0a0a0a;letter-spacing:-.3px;line-height:1.25">${title}</div>
+      <div style="font-size:22px;font-weight:900;color:#bd1718;margin-top:8px">S/ ${price}</div>
+      <a href="${url}" style="display:inline-block;background:#bd1718;color:#fff;text-decoration:none;padding:11px 24px;border-radius:7px;font-weight:800;font-size:13px;letter-spacing:.5px;margin-top:12px">VER PRODUCTO →</a>
+    </td>
+  </tr>
+</table>`;
+      const ta = document.getElementById('pro-html');
+      const start = ta.selectionStart || ta.value.length;
+      const end = ta.selectionEnd || ta.value.length;
+      ta.value = ta.value.slice(0, start) + block + ta.value.slice(end);
+      ta.focus();
+      document.getElementById('pro-picker-modal')?.remove();
+      proRefreshPreview();
+      toast('Producto insertado en el HTML');
+    }
+
+    async function proSendTest() {
+      const html = document.getElementById('pro-html').value.trim();
+      const subject = document.getElementById('pro-subject').value.trim();
+      const preheader = document.getElementById('pro-preheader').value.trim();
+      const to = document.getElementById('pro-test-email').value.trim();
+      const seg = document.getElementById('pro-segment').value;
+      if (!html || !subject || !to) { toast('Falta HTML, asunto o email destino', 'err'); return; }
+      try {
+        const r = await api('/api/marketing/test-html', {
+          method: 'POST',
+          body: { html, subject, preheader, to_email: to, sample_segment: seg }
+        });
+        toast(r.ok ? 'Test enviado a ' + to : 'Error: ' + (r.error || '?'), r.ok ? 'ok' : 'err');
+      } catch (e) { toast('Error: ' + e.message, 'err'); }
+    }
+
+    async function proSendCampaign() {
+      const html = document.getElementById('pro-html').value.trim();
+      const subject = document.getElementById('pro-subject').value.trim();
+      const preheader = document.getElementById('pro-preheader').value.trim();
+      const segment = document.getElementById('pro-segment').value;
+      const resultBox = document.getElementById('pro-result');
+      if (!html || !subject) { toast('Falta HTML o asunto', 'err'); return; }
+      if (!confirm('¿Enviar campaña al segmento "' + segment + '"?\n\nEsta acción es definitiva y manda emails reales a clientes.')) return;
+      try {
+        if (resultBox) {
+          resultBox.style.display = 'block';
+          resultBox.style.background = '#fef3c7';
+          resultBox.style.color = '#92400e';
+          resultBox.textContent = 'Enviando…';
+        }
+        const r = await api('/api/marketing/send-html', {
+          method: 'POST',
+          body: { segment, subject, html, preheader, throttle_ms: 300 }
+        });
+        if (resultBox) {
+          resultBox.style.background = '#dcfce7';
+          resultBox.style.color = '#166534';
+          resultBox.textContent = '✓ Enviado a ' + (r.sent || 0) + ' destinatarios' + (r.failed ? ' · ' + r.failed + ' fallaron' : '');
+        }
+        toast('Campaña enviada: ' + (r.sent || 0));
+      } catch (e) {
+        if (resultBox) {
+          resultBox.style.background = '#fee2e2';
+          resultBox.style.color = '#991b1b';
+          resultBox.textContent = '✗ Error: ' + e.message;
+        }
+        toast('Error: ' + e.message, 'err');
+      }
+    }
+
+    // Hook al cargar el panel Mailing
+    const _origLoadRemarketing = loadRemarketing;
+    loadRemarketing = async function() {
+      await _origLoadRemarketing();
+      try { await proRefreshAudience(); } catch (e) {}
+    };
 
     // ──── HISTORIAL DE CAMPAÑAS + ATRIBUCIÓN ────
     let _cmpCache = [];
