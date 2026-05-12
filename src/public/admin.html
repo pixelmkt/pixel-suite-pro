@@ -953,6 +953,9 @@
                   <optgroup label="📊 Todos">
                     <option value="all_subs">Todos los suscriptores registrados</option>
                   </optgroup>
+                  <optgroup label="📧 Shopify · contactos completos">
+                    <option value="shopify_marketing">Todos los clientes Shopify con opt-in marketing</option>
+                  </optgroup>
                 </select>
                 <div id="ml-audience" style="padding:12px 14px;background:#0A0A0A;color:#fff;border-radius:8px;font-size:13px;font-weight:600">Calculando audiencia…</div>
                 <div id="ml-audience-sample" style="font-size:11px;color:var(--mut);line-height:1.6"></div>
@@ -983,9 +986,12 @@
                   <input id="ml-subject" type="text" placeholder="Hola {{first_name}}, tu suscripción a {{product}}" style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:9px 12px;font-size:13px;margin-top:5px;outline:none;box-sizing:border-box" oninput="mlRefreshPreview()">
                 </div>
                 <div>
-                  <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:flex;justify-content:space-between;align-items:center">
+                  <label style="font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap">
                     <span>Cuerpo (texto plano o HTML completo)</span>
-                    <button type="button" onclick="openProductPicker()" style="background:#2563eb;color:#fff;border:none;padding:4px 10px;border-radius:5px;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:.3px">+ INSERTAR PRODUCTO SHOPIFY</button>
+                    <span style="display:flex;gap:6px">
+                      <button type="button" onclick="openImagePicker()" style="background:#10b981;color:#fff;border:none;padding:4px 10px;border-radius:5px;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:.3px">+ IMAGEN</button>
+                      <button type="button" onclick="openProductPicker()" style="background:#2563eb;color:#fff;border:none;padding:4px 10px;border-radius:5px;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:.3px">+ PRODUCTO SHOPIFY</button>
+                    </span>
                   </label>
                   <textarea id="ml-body" rows="14" placeholder="Modo TEXTO: 'Hola {{first_name}}, gracias por tu compra…'&#10;&#10;Modo HTML: pega tu &lt;table&gt;, &lt;style&gt;, etc — el sistema detecta automáticamente y envía como HTML completo. Usa el botón 'Insertar producto Shopify' para agregar bloques con imagen + precio + link." style="width:100%;border:1.5px solid var(--bdr);border-radius:7px;padding:10px 12px;font-size:12px;margin-top:5px;outline:none;resize:vertical;box-sizing:border-box;font-family:monospace;line-height:1.5" oninput="mlRefreshPreview()"></textarea>
                   <div id="ml-body-mode" style="font-size:10px;color:var(--mut);margin-top:4px;font-style:italic">Modo: TEXTO (se renderiza con el template Black Diamond automáticamente)</div>
@@ -2778,6 +2784,101 @@
       const modeEl = document.getElementById('ml-body-mode');
       if (modeEl) modeEl.innerHTML = '<strong style="color:#2563eb">Modo: HTML</strong> — se envía como HTML completo (no se renderiza con template). Soporta &lt;style&gt;, productos, custom layout.';
       toast('Producto insertado · cambió a modo HTML');
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // INSERTAR IMAGEN (2026-05-12) — modal con URL + dimensiones + link opcional
+    // ════════════════════════════════════════════════════════════════
+    function openImagePicker() {
+      let modal = document.getElementById('ml-img-modal');
+      if (modal) modal.remove();
+      modal = document.createElement('div');
+      modal.id = 'ml-img-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+      modal.innerHTML = `
+        <div style="background:#fff;border-radius:14px;max-width:520px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.3);overflow:hidden">
+          <div style="padding:18px 22px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;background:#f9fafb">
+            <div>
+              <div style="font-weight:800;font-size:15px">Insertar imagen</div>
+              <div style="font-size:11px;color:#999;margin-top:2px">Pega URL pública (Shopify CDN, Unsplash, etc.)</div>
+            </div>
+            <button onclick="document.getElementById('ml-img-modal').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#999">×</button>
+          </div>
+          <div style="padding:18px 22px;display:flex;flex-direction:column;gap:14px">
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px">URL de la imagen <span style="color:#dc2626">*</span></label>
+              <input id="ml-img-url" type="text" placeholder="https://cdn.shopify.com/s/files/.../mi-imagen.png" oninput="mlImgPreview()" style="width:100%;border:1.5px solid #d4d4d4;border-radius:7px;padding:9px 12px;font-size:12px;outline:none;box-sizing:border-box;font-family:monospace;margin-top:5px">
+            </div>
+            <div style="display:flex;gap:10px">
+              <div style="flex:1">
+                <label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px">Ancho px</label>
+                <input id="ml-img-width" type="number" value="600" min="50" max="1200" style="width:100%;border:1.5px solid #d4d4d4;border-radius:7px;padding:9px 12px;font-size:12px;outline:none;box-sizing:border-box;margin-top:5px">
+              </div>
+              <div style="flex:1">
+                <label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px">Alineación</label>
+                <select id="ml-img-align" style="width:100%;border:1.5px solid #d4d4d4;border-radius:7px;padding:9px 12px;font-size:12px;outline:none;box-sizing:border-box;margin-top:5px;background:#fff">
+                  <option value="center" selected>Centrada</option>
+                  <option value="left">Izquierda</option>
+                  <option value="right">Derecha</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px">Texto alternativo (alt) <span style="color:#999;font-weight:400;text-transform:none;font-size:10px">— accesibilidad / SEO</span></label>
+              <input id="ml-img-alt" type="text" placeholder="Promoción Black Friday LAB Nutrition" style="width:100%;border:1.5px solid #d4d4d4;border-radius:7px;padding:9px 12px;font-size:12px;outline:none;box-sizing:border-box;margin-top:5px">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px">Link al hacer click <span style="color:#999;font-weight:400;text-transform:none;font-size:10px">— opcional</span></label>
+              <input id="ml-img-link" type="text" placeholder="https://labnutrition.com/products/..." style="width:100%;border:1.5px solid #d4d4d4;border-radius:7px;padding:9px 12px;font-size:12px;outline:none;box-sizing:border-box;margin-top:5px;font-family:monospace">
+            </div>
+            <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;text-align:center;min-height:80px;display:flex;align-items:center;justify-content:center">
+              <div id="ml-img-preview" style="font-size:11px;color:#999">Pega una URL para ver preview</div>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button onclick="document.getElementById('ml-img-modal').remove()" style="background:#fff;color:#666;border:1.5px solid #d4d4d4;padding:9px 16px;border-radius:7px;font-weight:600;cursor:pointer;font-size:12px">Cancelar</button>
+              <button onclick="mlInsertImg()" style="background:#10b981;color:#fff;border:none;padding:9px 22px;border-radius:7px;font-weight:800;cursor:pointer;font-size:12px">Insertar</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      setTimeout(() => document.getElementById('ml-img-url')?.focus(), 100);
+    }
+
+    function mlImgPreview() {
+      const url = document.getElementById('ml-img-url')?.value?.trim();
+      const box = document.getElementById('ml-img-preview');
+      if (!box) return;
+      if (!url || !/^https?:\/\//i.test(url)) {
+        box.innerHTML = '<span style="color:#999;font-size:11px">URL inválida</span>';
+        return;
+      }
+      box.innerHTML = `<img src="${url}" alt="" style="max-width:100%;max-height:140px;object-fit:contain;border-radius:4px" onerror="this.outerHTML='<span style=color:#dc2626;font-size:11px>Imagen no carga</span>'">`;
+    }
+
+    function mlInsertImg() {
+      const url = document.getElementById('ml-img-url')?.value?.trim() || '';
+      if (!url || !/^https?:\/\//i.test(url)) { toast('URL inválida', 'err'); return; }
+      const width = parseInt(document.getElementById('ml-img-width')?.value || 600);
+      const align = document.getElementById('ml-img-align')?.value || 'center';
+      const alt = (document.getElementById('ml-img-alt')?.value || '').replace(/"/g, '&quot;');
+      const link = (document.getElementById('ml-img-link')?.value || '').trim();
+      const imgTag = `<img src="${url}" alt="${alt}" width="${width}" style="display:block;max-width:${width}px;width:100%;height:auto;border:0;outline:none;margin:${align === 'center' ? '0 auto' : (align === 'left' ? '0 auto 0 0' : '0 0 0 auto')}">`;
+      let block;
+      if (link) {
+        block = `\n<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0"><tr><td align="${align}"><a href="${link}" style="text-decoration:none">${imgTag}</a></td></tr></table>\n`;
+      } else {
+        block = `\n<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0"><tr><td align="${align}">${imgTag}</td></tr></table>\n`;
+      }
+      const ta = document.getElementById('ml-body');
+      const start = ta.selectionStart || ta.value.length;
+      const end = ta.selectionEnd || ta.value.length;
+      ta.value = ta.value.slice(0, start) + block + ta.value.slice(end);
+      ta.focus();
+      document.getElementById('ml-img-modal')?.remove();
+      mlRefreshPreview();
+      const modeEl = document.getElementById('ml-body-mode');
+      if (modeEl) modeEl.innerHTML = '<strong style="color:#2563eb">Modo: HTML</strong> — se envía como HTML completo.';
+      toast('Imagen insertada en el HTML');
     }
 
     // Detectar automáticamente si el body es HTML

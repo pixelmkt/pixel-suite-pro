@@ -6194,7 +6194,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.3.0', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.4.0', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
@@ -8324,6 +8324,64 @@ app.get('/api/admin/dashboard-stats', async (req, res) => {
 /** GET /api/marketing/segment-counts — cuántos clientes hay por segmento (antes de mandar campaña).
  *  Si querés desglose por producto: /api/marketing/segment-counts?breakdown=product
  */
+// 2026-05-12 — Cache de customers Shopify con marketing opt-in (TTL 10min)
+let _shopifyMarketingCache = { customers: [], at: 0 };
+async function getShopifyMarketingCustomers(force = false) {
+    const now = Date.now();
+    if (!force && _shopifyMarketingCache.at && (now - _shopifyMarketingCache.at) < 10 * 60 * 1000) {
+        return _shopifyMarketingCache.customers;
+    }
+    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+    const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+    if (!token) return [];
+
+    const collected = [];
+    let cursor = null;
+    let pages = 0;
+    try {
+        do {
+            // GraphQL: customers con email_marketing_consent state=SUBSCRIBED
+            const q = `
+                query Q($after: String) {
+                    customers(first: 250, after: $after, query: "email_marketing_state:SUBSCRIBED") {
+                        pageInfo { hasNextPage endCursor }
+                        nodes {
+                            id email firstName lastName
+                            emailMarketingConsent { marketingState }
+                        }
+                    }
+                }`;
+            const r = await fetch(`https://${shop}/admin/api/2026-01/graphql.json`, {
+                method: 'POST',
+                headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: q, variables: { after: cursor } })
+            });
+            if (!r.ok) break;
+            const d = await r.json();
+            if (d.errors) { console.warn('[SHOPIFY MARKETING] GraphQL errors:', JSON.stringify(d.errors).slice(0, 200)); break; }
+            const conn = d?.data?.customers || {};
+            for (const c of (conn.nodes || [])) {
+                if (!c.email) continue;
+                const state = c.emailMarketingConsent?.marketingState || '';
+                if (state !== 'SUBSCRIBED') continue;
+                collected.push({
+                    email: c.email,
+                    first_name: c.firstName || '',
+                    last_name: c.lastName || '',
+                    full_name: [c.firstName, c.lastName].filter(Boolean).join(' ').trim() || (c.email.split('@')[0])
+                });
+            }
+            cursor = conn.pageInfo?.hasNextPage ? conn.pageInfo.endCursor : null;
+            pages++;
+        } while (cursor && pages < 20);
+        _shopifyMarketingCache = { customers: collected, at: now };
+        console.log(`[SHOPIFY MARKETING] Cached ${collected.length} customers (marketing opt-in, ${pages} pages)`);
+    } catch (e) {
+        console.warn('[SHOPIFY MARKETING] error:', e.message);
+    }
+    return collected;
+}
+
 app.get('/api/marketing/segment-counts', async (req, res) => {
     try {
         const subs = await db.getSubscriptions().catch(() => []);
@@ -8334,6 +8392,9 @@ app.get('/api/marketing/segment-counts', async (req, res) => {
             seen.add(e); return true;
         });
 
+        // 2026-05-12 — Customers Shopify con marketing opt-in (cache 10min)
+        const shopifyMarketing = await getShopifyMarketingCustomers().catch(() => []);
+
         const result = {
             active: dedup.filter(s => s.status === 'active').length,
             paused: dedup.filter(s => s.status === 'paused').length,
@@ -8341,7 +8402,8 @@ app.get('/api/marketing/segment-counts', async (req, res) => {
             cancelled: dedup.filter(s => s.status === 'cancelled').length,
             pending_payment: dedup.filter(s => s.status === 'pending_payment').length,
             pending_stuck_24h: dedup.filter(s => s.status === 'pending_payment' && s.created_at && (Date.now() - new Date(s.created_at).getTime()) > 24*3600*1000).length,
-            total_unique_emails: dedup.length
+            total_unique_emails: dedup.length,
+            shopify_marketing: shopifyMarketing.length
         };
 
         // Breakdown por producto si lo piden
@@ -8754,13 +8816,38 @@ app.post('/api/marketing/send-html', async (req, res) => {
         const { segment, subject, html, preheader, throttle_ms, dry_run, product_id } = req.body || {};
         if (!segment || !subject || !html) return res.status(400).json({ error: 'segment, subject, html required' });
 
-        const allowedSegments = ['active', 'paused', 'payment_failed', 'cancelled', 'pending_payment', 'all'];
+        const allowedSegments = ['active', 'paused', 'payment_failed', 'cancelled', 'pending_payment', 'all', 'shopify_marketing'];
         if (!allowedSegments.includes(segment)) {
             return res.status(400).json({ error: 'segment invalid', allowed: allowedSegments });
         }
 
         const subs = await db.getSubscriptions().catch(() => []);
-        let filtered = segment === 'all' ? subs : subs.filter(s => s.status === segment);
+        let filtered;
+
+        // 2026-05-12: soporte para segmento Shopify Marketing (todos los customers Shopify
+        // con email_marketing_state=SUBSCRIBED, no solo subs locales).
+        if (segment === 'shopify_marketing') {
+            const shopifyCustomers = await getShopifyMarketingCustomers().catch(() => []);
+            // Adaptar shape para que tenga las mismas keys que un sub local
+            filtered = shopifyCustomers.map(c => ({
+                customer_email: c.email,
+                customer_name: c.full_name || c.first_name || c.email.split('@')[0],
+                first_name: c.first_name || '',
+                last_name: c.last_name || '',
+                status: 'shopify_customer',
+                _shopify_only: true,
+                product_title: 'LAB NUTRITION', // genérico, no hay producto específico
+                frequency_months: 1,
+                permanence_months: 0,
+                cycles_completed: 0,
+                cycles_required: 0,
+                discount_pct: 0,
+                final_price: 0,
+                base_price: 0
+            }));
+        } else {
+            filtered = segment === 'all' ? subs : subs.filter(s => s.status === segment);
+        }
         if (product_id) filtered = filtered.filter(s => String(s.product_id || '') === String(product_id));
         const totalBefore = filtered.length;
 
