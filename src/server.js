@@ -4957,10 +4957,24 @@ cron.schedule('0 14 * * *', async () => {  // 14:00 UTC = 09:00 PET
     }
 }, { timezone: 'America/Lima' });
 
-/* ── SELF-HEALING: crear órdenes Shopify que el webhook no pudo crear ── */
-// Cada 4 horas: busca suscripciones activas con pago confirmado pero sin orden en Shopify
-// y crea la orden automáticamente. Así nunca se pierde un pedido.
+/* ── SELF-HEALING: DESACTIVADO POR PROTOCOLO DE NEGOCIO 2026-05-12 ──
+   El equipo decidió que solo el webhook MP payment con status=approved
+   debe crear órdenes Shopify. UN cobro MP = UNA orden Shopify. Punto.
+
+   Crons paralelos (self-heal + rescue) creaban duplicados de cobros
+   reales (caso Carlos Capristán #9734/#10336, mismo mp_payment_id en
+   ambas). Mantenemos el código del cron por si algún día se reactiva
+   manualmente, pero el cron NUNCA crea orden mientras DISABLE_SELFHEAL_CRON
+   esté unset o sea 'true' (default deshabilitado).
+
+   Cliente con cobro huérfano (MP cobró pero webhook falló): debe
+   resolverse manualmente desde Shopify Admin Duplicate o ticket Plus
+   Support. NO automático. */
 cron.schedule('0 */4 * * *', async () => {
+    if (process.env.DISABLE_SELFHEAL_CRON !== 'false') {
+        console.log('[SELF-HEAL] ⛔ DESACTIVADO por protocolo. Solo webhook MP crea ordenes. Set DISABLE_SELFHEAL_CRON=false para reactivar.');
+        return;
+    }
     console.log('[SELF-HEAL] Scanning for active subs missing Shopify orders...');
     try {
         const allSubs = await db.getSubscriptions({ status: 'active' }).catch(() => []);
@@ -6121,7 +6135,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.9.0', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.0.0', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
@@ -7560,6 +7574,14 @@ async function runDailyBillingCron() {
  * don't support notification_url updates.
  */
 async function runMpPaymentPolling() {
+    // ⛔ DESACTIVADO POR PROTOCOLO DE NEGOCIO 2026-05-12
+    //   Era el tercer path que creaba ordenes ademas del webhook MP.
+    //   Solo el webhook MP payment con status=approved crea ordenes ahora.
+    //   Set MP_POLLING_FORCE=true para reactivar (no recomendado).
+    if (process.env.MP_POLLING_FORCE !== 'true') {
+        console.log('[MP POLLING] ⛔ DESACTIVADO por protocolo. Set MP_POLLING_FORCE=true para reactivar.');
+        return;
+    }
     console.log('[MP POLLING] Starting payment check...');
     let ordersCreated = 0;
 
@@ -7667,6 +7689,13 @@ async function runMpPaymentPolling() {
  * This guarantees NO subscription payment goes without a Shopify order.
  */
 async function runOrderRescue() {
+    // ⛔ DESACTIVADO POR PROTOCOLO DE NEGOCIO 2026-05-12
+    //   Solo el webhook MP payment crea órdenes. Sin excepciones.
+    //   Set RESCUE_CRON_FORCE=true para reactivar manualmente (no recomendado).
+    if (process.env.RESCUE_CRON_FORCE !== 'true') {
+        console.log('[ORDER RESCUE] ⛔ DESACTIVADO por protocolo. Set RESCUE_CRON_FORCE=true para reactivar.');
+        return { rescued: 0, errors: 0, disabled: true };
+    }
     console.log('[ORDER RESCUE] Starting...');
     let rescued = 0, errors = 0;
     try {
