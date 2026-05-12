@@ -1192,6 +1192,132 @@ app.post('/api/admin/subscriptions/:id/force-cancel', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/** POST /api/admin/orders/cancel-phantoms
+ *  2026-05-12 — ADITIVO. Detecta y cancela ordenes Shopify fantasma creadas por el cron
+ *  rescue (bug histórico previo al fix v6.6.0). Una orden fantasma cumple TODOS estos:
+ *
+ *    1. event_type == 'first_order_created'
+ *    2. metadata.rescued == true
+ *    3. NO es el primer event-de-orden de la sub (hay otro event de tipo
+ *       first_order_created, charge_success o manual_order_created ANTES)
+ *
+ *  Eso significa que la sub ya tenía orden válida cuando el rescue cron creó otra
+ *  duplicada (porque getEvents timeó silencioso y asumió "no hay order").
+ *
+ *  Cancela via Shopify Admin API POST /orders/{id}/cancel.json con:
+ *    - reason: "other"
+ *    - email: false (no notifica al cliente, es admin)
+ *    - refund: false (no había cobro MP, no hay nada que refundir)
+ *    - restock: false (no toca inventario)
+ *
+ *  Body: { dry_run: true|false (default true) }
+ *  Response: { dry_run, candidates: [...], cancelled: N, errors: [...] }
+ *
+ *  NO toca: orders reales (charge_success o primera orden de la sub), subs, MP.
+ */
+app.post('/api/admin/orders/cancel-phantoms', async (req, res) => {
+    try {
+        const dryRun = req.body?.dry_run !== false;
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+
+        const ORDER_EVENT_TYPES = new Set(['first_order_created', 'charge_success', 'manual_order_created']);
+        const allSubs = await db.getSubscriptions().catch(() => []);
+
+        const phantoms = [];
+        for (const sub of (Array.isArray(allSubs) ? allSubs : [])) {
+            let events = [];
+            try { events = await db.getEvents(sub.id, 100); } catch (_) { continue; }
+            // Ordenar ASC para identificar cuál orden vino primero
+            const orderEvts = (events || [])
+                .filter(e => ORDER_EVENT_TYPES.has(e.event_type))
+                .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+            if (orderEvts.length < 2) continue;
+            // Los fantasmas: first_order_created rescued:true en posición != 0
+            for (let i = 1; i < orderEvts.length; i++) {
+                const e = orderEvts[i];
+                if (e.event_type !== 'first_order_created') continue;
+                let meta = {};
+                try { meta = JSON.parse(e.metadata || '{}'); } catch {}
+                if (meta.rescued !== true) continue;
+                if (!meta.shopify_order_id) continue;
+                phantoms.push({
+                    sub_id: sub.id,
+                    email: sub.customer_email,
+                    sub_status: sub.status,
+                    cycles_completed: sub.cycles_completed,
+                    phantom_order_id: String(meta.shopify_order_id),
+                    phantom_order_name: meta.order_name || null,
+                    phantom_created_at: e.created_at,
+                    previous_order: orderEvts[0] ? {
+                        type: orderEvts[0].event_type,
+                        created_at: orderEvts[0].created_at,
+                        order_name: (() => { try { return JSON.parse(orderEvts[0].metadata || '{}').order_name; } catch { return null; } })()
+                    } : null
+                });
+            }
+        }
+
+        if (dryRun) {
+            return res.json({
+                dry_run: true,
+                candidates_count: phantoms.length,
+                candidates: phantoms,
+                note: 'DRY RUN: nada se canceló. Re-ejecutar con {"dry_run":false} para cancelar en Shopify.'
+            });
+        }
+
+        // EJECUCIÓN REAL: cancelar uno por uno con rate limit
+        const cancelled = [];
+        const errors = [];
+        for (const p of phantoms) {
+            try {
+                const r = await fetch(`https://${shop}/admin/api/2026-01/orders/${encodeURIComponent(p.phantom_order_id)}/cancel.json`, {
+                    method: 'POST',
+                    headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: 'other', email: false, refund: false, restock: false })
+                });
+                if (r.ok) {
+                    cancelled.push(p);
+                    // Audit event en la sub
+                    await db.createEvent({
+                        subscription_id: p.sub_id,
+                        event_type: 'phantom_order_cancelled',
+                        metadata: JSON.stringify({
+                            shopify_order_id: p.phantom_order_id,
+                            order_name: p.phantom_order_name,
+                            cancelled_at: new Date().toISOString(),
+                            reason: 'duplicate_rescue_no_mp_charge',
+                            by: 'admin_cancel_phantoms_endpoint'
+                        })
+                    }).catch(() => {});
+                    console.log(`[CANCEL-PHANTOMS] ✅ ${p.email} | order ${p.phantom_order_name} cancelled`);
+                } else {
+                    const txt = await r.text();
+                    errors.push({ ...p, http_status: r.status, error: txt.slice(0, 300) });
+                    console.warn(`[CANCEL-PHANTOMS] ❌ ${p.email} | ${p.phantom_order_name}: ${r.status} ${txt.slice(0, 150)}`);
+                }
+            } catch (e) {
+                errors.push({ ...p, error: e.message });
+            }
+            await new Promise(r => setTimeout(r, 400)); // rate limit
+        }
+
+        res.json({
+            dry_run: false,
+            candidates_count: phantoms.length,
+            cancelled_count: cancelled.length,
+            errors_count: errors.length,
+            cancelled,
+            errors
+        });
+    } catch (e) {
+        console.error('[CANCEL-PHANTOMS] Fatal:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 /** POST /api/admin/customers/sync-sub-tags
  *  2026-05-12 — ADITIVO. Sincroniza tags Shopify customers según estado de sub local.
  *  Permite crear Shopify Customer Segments dinámicos por estado de suscripción.
@@ -5975,7 +6101,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.7.0', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.8.0', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
