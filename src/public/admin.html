@@ -4979,13 +4979,40 @@
         if (line) {
           const color = r.mp_status === 'cancelled' ? '#166534' : (r.mp_status === 'authorized' ? '#92400e' : '#666');
           const bg = r.mp_status === 'cancelled' ? '#dcfce7' : (r.mp_status === 'authorized' ? '#fef3c7' : '#f4f4f5');
-          line.innerHTML = `<strong>MP status:</strong> <span style="background:${bg};color:${color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${r.mp_status || 'desconocido'}</span>${r.mp_error ? ' · <span style="color:#dc2626">' + r.mp_error.slice(0,80) + '</span>' : ''}${r.mp_charged_quantity != null ? ' · cobrado ' + r.mp_charged_quantity + 'x' : ''}${r.mp_next_payment_date ? ' · próximo ' + new Date(r.mp_next_payment_date).toLocaleDateString('es-PE') : ''}`;
+          // 2026-05-12: si MP está cancelado, NO mostrar "próximo" (es histórico, MP no lo va a procesar — confunde).
+          const showNext = r.mp_status !== 'cancelled' && r.mp_next_payment_date;
+          line.innerHTML = `<strong>MP status:</strong> <span style="background:${bg};color:${color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${r.mp_status || 'desconocido'}</span>${r.mp_error ? ' · <span style="color:#dc2626">' + r.mp_error.slice(0,80) + '</span>' : ''}${r.mp_charged_quantity != null ? ' · cobrado ' + r.mp_charged_quantity + 'x' : ''}${showNext ? ' · próximo ' + new Date(r.mp_next_payment_date).toLocaleDateString('es-PE') : ''}${r.mp_status === 'cancelled' ? ' · <span style="color:#166534;font-style:italic">no habrá más cobros</span>' : ''}`;
         }
       } catch (e) {
         if (line) line.innerHTML = '<strong style="color:#dc2626">Error consultando MP:</strong> ' + e.message;
       } finally {
         if (btn) { btn.disabled = false; btn.innerText = 'Verificar MP ahora'; }
       }
+    }
+
+    /* 2026-05-12: Re-renderiza el bloque "Estado actual" del modal con los datos
+       FRESCOS del sub local + MP. Usado tras cancelar para que la UI no quede
+       desincronizada (antes: status mostraba "active" aunque sub ya estaba cancelled).
+       Lee directo de _detailSub (que csmExecute refresca al terminar) + MP en vivo. */
+    async function csmRefreshStatusBlock() {
+      const statusBox = document.getElementById('csm-status');
+      if (!statusBox || !_detailSub) return;
+      const s = _detailSub.subscription || {};
+      const isCancelled = s.status === 'cancelled';
+      const isPaused = s.status === 'paused';
+      const statusBg = isCancelled ? '#dcfce7' : (isPaused ? '#fef3c7' : '#fef3c7');
+      const statusColor = isCancelled ? '#166534' : (isPaused ? '#92400e' : '#92400e');
+      // El "próximo cobro" SOLO tiene sentido si la sub está vivita (active). Si está cancelled/paused, no aplica.
+      const showNextCharge = s.status === 'active' && s.next_charge_at;
+      statusBox.innerHTML = `
+        <div><strong>Sub local:</strong> <span style="background:${statusBg};color:${statusColor};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${s.status}</span>${isCancelled && s.cancelled_at ? ' <span style="color:#666;font-size:11px;font-style:italic">desde ' + new Date(s.cancelled_at).toLocaleString('es-PE') + '</span>' : ''}</div>
+        <div><strong>Ciclos:</strong> ${s.cycles_completed || 0}/${s.cycles_required || 0}</div>
+        ${showNextCharge ? `<div><strong>Próximo cobro:</strong> ${new Date(s.next_charge_at).toLocaleString('es-PE')}</div>` : (isCancelled ? `<div style="color:#666;font-size:11.5px;font-style:italic">Sin próximos cobros — suscripción cancelada</div>` : '')}
+        <div><strong>MP preapproval:</strong> <code style="background:#f4f4f5;padding:1px 5px;border-radius:3px;font-size:11px">${s.mp_preapproval_id || '— sin preapproval —'}</code></div>
+        <div id="csm-mp-status-line" style="margin-top:6px;color:#666;font-size:11px;font-style:italic">Estado MP: <em>(presiona "Verificar MP" para consultar)</em></div>
+      `;
+      // Auto-consulta MP para refrescar la línea MP también
+      if (s.mp_preapproval_id) await csmCheckMp();
     }
 
     async function verifyMpStatus() {
@@ -5044,8 +5071,9 @@
             </div>`;
           }
         }
-        // Refresh detail + lista
+        // Refresh detail + lista + bloque "Estado actual" del modal con datos frescos
         await api('/api/admin/subscriptions/' + encodeURIComponent(id)).then(d => { _detailSub = d; renderSubDetail(); });
+        await csmRefreshStatusBlock();
         loadSubs();
         if (btn) btn.innerText = 'Cerrar';
         if (btn) btn.onclick = closeCancelSafeModal;
