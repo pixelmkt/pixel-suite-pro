@@ -6194,7 +6194,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.4.2', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.4.3', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
@@ -8861,11 +8861,86 @@ app.post('/api/marketing/send-html', async (req, res) => {
         const subs = await db.getSubscriptions().catch(() => []);
         let filtered;
 
-        // 2026-05-12: soporte para segmento Shopify Marketing (todos los customers Shopify
-        // con email_marketing_state=SUBSCRIBED, no solo subs locales).
+        // 2026-05-12 FIX: para shopify_marketing — si cache esta caliente, lo usamos sincronico.
+        // Si esta frio (>10s para 5000 customers), respondemos inmediato {accepted:true} y
+        // procesamos en background. Asi el frontend nunca timea.
         if (segment === 'shopify_marketing') {
+            const cacheIsWarm = _shopifyMarketingCache.at && (Date.now() - _shopifyMarketingCache.at) < 10 * 60 * 1000;
+            if (!cacheIsWarm && !dry_run) {
+                // Responder INMEDIATO con accepted=true y procesar todo el flujo en background
+                res.json({
+                    started: true,
+                    accepted_async: true,
+                    recipients_count: 'calculando_en_background',
+                    skipped_unsubscribed: 0,
+                    segment,
+                    subject,
+                    note: 'Cache de Shopify frío — primero pago la pagina (~10s). Envío iniciado en background. Revisá /api/marketing/campaign-summary en unos minutos.'
+                });
+                // Detached — procesar el resto sin bloquear el response
+                setImmediate(async () => {
+                    try {
+                        const shopifyCustomers = await getShopifyMarketingCustomers().catch(() => []);
+                        const detachedFiltered = shopifyCustomers.map(c => ({
+                            customer_email: c.email,
+                            customer_name: c.full_name || c.first_name || c.email.split('@')[0],
+                            first_name: c.first_name || '',
+                            last_name: c.last_name || '',
+                            status: 'shopify_customer',
+                            _shopify_only: true,
+                            product_title: 'LAB NUTRITION',
+                            frequency_months: 1, permanence_months: 0,
+                            cycles_completed: 0, cycles_required: 0,
+                            discount_pct: 0, final_price: 0, base_price: 0
+                        })).filter(s => s.marketing_unsubscribed !== true && s.email_bounced !== true);
+                        const seen = new Set();
+                        const dedupFiltered = detachedFiltered.filter(s => {
+                            const e = (s.customer_email || '').toLowerCase();
+                            if (!e || seen.has(e)) return false;
+                            seen.add(e); return true;
+                        });
+                        const wait = parseInt(throttle_ms) || 250;
+                        const safeHtml = sanitizeMarketingHtml(html);
+                        const startedAt = new Date().toISOString();
+                        let sent = 0, failed = 0;
+                        for (const sub of dedupFiltered) {
+                            try {
+                                const ctx = await buildContextForSub(sub);
+                                let rendered = applyTokens(safeHtml, ctx);
+                                if (preheader) rendered = injectPreheader(rendered, applyTokens(preheader, ctx));
+                                rendered = appendUnsubscribeFooter(rendered, ctx);
+                                const subjectRendered = applyTokens(subject, ctx);
+                                const plainText = htmlToPlainText(rendered);
+                                await sendCampaignEmail({
+                                    to: sub.customer_email,
+                                    subject: subjectRendered,
+                                    html: rendered,
+                                    text: plainText,
+                                    unsubscribeUrl: ctx.unsubscribe_url
+                                });
+                                sent++;
+                            } catch (e) {
+                                failed++;
+                                console.warn('[MARKETING send-html DETACHED] Fallo ' + sub.customer_email + ': ' + e.message);
+                            }
+                            if (wait > 0) await new Promise(r => setTimeout(r, wait));
+                        }
+                        console.log('[MARKETING send-html DETACHED] Done shopify_marketing. Sent:' + sent + ' Failed:' + failed);
+                        if (db?.createEvent) {
+                            db.createEvent({
+                                subscription_id: 'campaign_' + Date.now(),
+                                event_type: 'marketing_campaign_summary',
+                                metadata: JSON.stringify({ segment, subject, sent, failed, started_at: startedAt, ended_at: new Date().toISOString(), detached: true })
+                            }).catch(() => {});
+                        }
+                    } catch (e) {
+                        console.error('[MARKETING send-html DETACHED] Fatal:', e.message);
+                    }
+                });
+                return; // YA respondimos
+            }
+            // Cache caliente o dry_run: path normal sincronico
             const shopifyCustomers = await getShopifyMarketingCustomers().catch(() => []);
-            // Adaptar shape para que tenga las mismas keys que un sub local
             filtered = shopifyCustomers.map(c => ({
                 customer_email: c.email,
                 customer_name: c.full_name || c.first_name || c.email.split('@')[0],
@@ -8873,14 +8948,10 @@ app.post('/api/marketing/send-html', async (req, res) => {
                 last_name: c.last_name || '',
                 status: 'shopify_customer',
                 _shopify_only: true,
-                product_title: 'LAB NUTRITION', // genérico, no hay producto específico
-                frequency_months: 1,
-                permanence_months: 0,
-                cycles_completed: 0,
-                cycles_required: 0,
-                discount_pct: 0,
-                final_price: 0,
-                base_price: 0
+                product_title: 'LAB NUTRITION',
+                frequency_months: 1, permanence_months: 0,
+                cycles_completed: 0, cycles_required: 0,
+                discount_pct: 0, final_price: 0, base_price: 0
             }));
         } else {
             filtered = segment === 'all' ? subs : subs.filter(s => s.status === segment);
