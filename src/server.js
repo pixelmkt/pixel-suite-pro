@@ -4015,14 +4015,29 @@ app.post('/webhooks/mercadopago', async (req, res) => {
                 const alreadyHasOrder = activationEvents.some(e => e.event_type === 'first_order_created');
 
                 if (!alreadyHasOrder) {
-                    // Crear primera orden en Shopify (con retry automático)
+                    // 🔒 FIX 2026-05-12 BUG CAYO RAMOS: NUNCA pasar preapprovalId como
+                    //   mpPaymentId. Antes hacíamos createShopifyOrderFromSub(sub, preapprovalId)
+                    //   y eso escribía preapproval_id en note_attributes.mp_payment_id de la
+                    //   orden, lo cual confundía al dedup (que busca por payment_id real).
+                    //   Caso Cayo: #10324 tenía preapproval_id como mp_payment_id, despues
+                    //   #10399 con payment_id real, dedup no detecto match porque eran IDs
+                    //   distintos. AHORA: buscamos el payment_id real ANTES de crear orden.
+                    //   Si MP no devuelve payment real aún (puede tardar segundos), esperamos
+                    //   al webhook payment que llegará después.
+                    const realMp = await findRealMpPaymentForSub(sub).catch(() => null);
+                    if (!realMp) {
+                        console.log(`[MP WEBHOOK] ⏳ Activación recibida pero MP aún no expone payment real para ${sub.customer_email}. El webhook 'payment' llegará y creará la orden con payment_id real. NO creamos con preapproval_id (evita bug Cayo).`);
+                        // Permitir que el webhook payment cree la orden con el ID correcto
+                    }
                     let firstOrder = null;
-                    for (let attempt = 1; attempt <= 3 && !firstOrder; attempt++) {
-                        firstOrder = await createShopifyOrderFromSub(sub, preapprovalId).catch(e => {
-                            console.error(`[MP WEBHOOK] Order error (attempt ${attempt}/3):`, e.message);
-                            return null;
-                        });
-                        if (!firstOrder && attempt < 3) await new Promise(r => setTimeout(r, 2000));
+                    if (realMp) {
+                        for (let attempt = 1; attempt <= 3 && !firstOrder; attempt++) {
+                            firstOrder = await createShopifyOrderFromSub(sub, realMp.id).catch(e => {
+                                console.error(`[MP WEBHOOK] Order error (attempt ${attempt}/3):`, e.message);
+                                return null;
+                            });
+                            if (!firstOrder && attempt < 3) await new Promise(r => setTimeout(r, 2000));
+                        }
                     }
                     if (firstOrder?.id) {
                         await db.updateSubscription(sub.id, {
@@ -4179,6 +4194,38 @@ app.post('/webhooks/mercadopago', async (req, res) => {
             const nextCharge = new Date();
             nextCharge.setMonth(nextCharge.getMonth() + (parseInt(sub.frequency_months) || 1));
             const isComplete = cyclesCompleted >= (parseInt(sub.cycles_required) || 999);
+
+            // 🔒🔒 GUARD ANTI COBRO TEMPRANO 2026-05-12 (regla de negocio)
+            //   Si llegó un webhook payment Y el último cobro fue HACE MENOS de 28 días,
+            //   este cobro es ANÓMALO (MP cobró demasiado pronto, posible bug MP o test).
+            //   NO crear orden Shopify. Loguear y alertar al admin. Bodega no despacha.
+            //   El cliente puede haber recibido el cargo, pero NO le va a llegar producto
+            //   hasta que admin revise (puede ser refund MP o despacho manual).
+            if (sub.last_charge_at && cyclesCompleted >= 2) {
+                const daysSince = (Date.now() - new Date(sub.last_charge_at).getTime()) / 86400000;
+                if (daysSince > 0 && daysSince < 28) {
+                    console.error(`[MP WEBHOOK] 🚫 COBRO TEMPRANO BLOQUEADO — ${sub.customer_email} | ` +
+                        `last_charge ${daysSince.toFixed(1)}d ago (< 28d). MP cobró pero NO creamos orden Shopify. ` +
+                        `Admin debe revisar: ${sub.id}`);
+                    await db.createEvent({
+                        subscription_id: sub.id,
+                        event_type: 'early_charge_blocked',
+                        metadata: JSON.stringify({
+                            days_since_last_charge: parseFloat(daysSince.toFixed(2)),
+                            mp_payment_id: String(resourceId),
+                            mp_payment_amount: paymentData.transaction_amount,
+                            blocked_at: new Date().toISOString(),
+                            reason: 'Cobro recibido <28d desde last_charge_at - posible cobro temprano MP'
+                        })
+                    }).catch(() => {});
+                    // Marcar sub para revisión admin (sin tocar status active)
+                    await db.updateSubscription(sub.id, {
+                        last_order_error: `Cobro temprano bloqueado (${daysSince.toFixed(1)}d) ${new Date().toISOString()}`,
+                        needs_admin_review: true
+                    }).catch(() => {});
+                    return; // EXIT — no crear orden
+                }
+            }
 
             // Crear orden Shopify (con retry automático)
             let order = null;
@@ -6147,7 +6194,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.2.0', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.3.0', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
