@@ -2677,19 +2677,39 @@
         } else {
           r = await api('/api/mailing/send', { method: 'POST', body: { segment, subject, body, headerTitle } });
         }
-        result.style.background = r.failed > 0 ? '#fff3cd' : '#d1fae5';
-        result.style.border = '1px solid ' + (r.failed > 0 ? '#ffc107' : '#6ee7b7');
-        result.style.color = '#14532d';
-        const sent = r.sent || 0;
-        const total = r.total || sent + (r.failed || 0);
-        result.innerHTML = '<strong>Enviados:</strong> ' + sent + ' / ' + total + (r.failed ? ' · Fallidos: ' + r.failed : '') + (r.errors && r.errors.length ? '<br>Errores: ' + r.errors.map(e => e.email + ' (' + e.error + ')').join(', ') : '');
-        toast('Campaña: ' + sent + '/' + total + ' enviados');
+        // El endpoint send-html responde async con {started:true, recipients_count, estimated_seconds, ...}
+        // El send antiguo responde sync con {sent, failed, total, errors}
+        if (r.started === true) {
+          // Async — campaña corriendo en background
+          result.style.background = '#fef3c7';
+          result.style.border = '1px solid #fcd34d';
+          result.style.color = '#92400e';
+          const ets = r.estimated_seconds || 0;
+          const etm = Math.ceil(ets / 60);
+          result.innerHTML = '<strong>✓ Campaña iniciada en background</strong><br>' +
+            'Destinatarios: <strong>' + (r.recipients_count || 0) + '</strong>' +
+            (r.skipped_unsubscribed ? ' · Skipped (unsub): ' + r.skipped_unsubscribed : '') +
+            '<br>Tiempo estimado: ~' + etm + ' min ' +
+            '<br><small style="opacity:.7">Revisá <a href="/api/marketing/campaign-summary" target="_blank" style="color:#92400e;text-decoration:underline">/api/marketing/campaign-summary</a> en unos minutos para ver resultados finales.</small>';
+          toast('Campaña iniciada: ' + (r.recipients_count || 0) + ' destinatarios');
+        } else {
+          // Sync legacy — esperando sent/failed/total
+          result.style.background = r.failed > 0 ? '#fff3cd' : '#d1fae5';
+          result.style.border = '1px solid ' + (r.failed > 0 ? '#ffc107' : '#6ee7b7');
+          result.style.color = '#14532d';
+          const sent = r.sent || 0;
+          const total = r.total || sent + (r.failed || 0);
+          result.innerHTML = '<strong>Enviados:</strong> ' + sent + ' / ' + total + (r.failed ? ' · Fallidos: ' + r.failed : '') + (r.errors && r.errors.length ? '<br>Errores: ' + r.errors.map(e => e.email + ' (' + e.error + ')').join(', ') : '');
+          toast('Campaña: ' + sent + '/' + total + ' enviados');
+        }
       } catch (e) {
+        // Mostrar error útil aunque e.message sea vacío
+        const errMsg = e.message || e.toString() || 'sin detalle (revisar Network tab del navegador)';
         result.style.background = '#fee2e2';
         result.style.border = '1px solid #fca5a5';
         result.style.color = '#991b1b';
-        result.textContent = 'Error: ' + e.message;
-        toast('Error: ' + e.message, 'err');
+        result.innerHTML = '<strong>Error:</strong> ' + errMsg + '<br><small style="opacity:.7">Si el error está vacío, abrí DevTools → Network → revisá la respuesta de la última request a /api/marketing/send-html</small>';
+        toast('Error: ' + errMsg, 'err');
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Enviar campaña real'; }
       }
