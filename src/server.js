@@ -8580,17 +8580,39 @@ function appendUnsubscribeFooter(html, ctx) {
  */
 app.post('/api/marketing/preview-html', async (req, res) => {
     try {
-        const { segment, html, sample_email, product_id } = req.body || {};
+        const { segment, html, sample_email, sample_segment, to_email, product_id } = req.body || {};
+        const seg = segment || sample_segment;
         if (!html || typeof html !== 'string') return res.status(400).json({ error: 'html required' });
 
         const subs = await db.getSubscriptions().catch(() => []);
-        let pool = subs;
-        if (segment && segment !== 'all') pool = pool.filter(s => s.status === segment);
-        if (product_id) pool = pool.filter(s => String(s.product_id || '') === String(product_id));
-        if (sample_email) pool = subs.filter(s => (s.customer_email || '').toLowerCase() === sample_email.toLowerCase());
-        if (!pool.length) return res.status(404).json({ error: 'No hay subs en el segmento+producto elegido' });
 
-        const sub = pool[0];
+        // 2026-05-12: si llega to_email (el destino del test/preview) y coincide con un
+        //   cliente real, usar ese cliente como sample. Si no, fallback al sample del segmento.
+        //   Esto evita "Hola Luis Miguel Ordoñez" en TODOS los previews.
+        const targetEmail = (sample_email || to_email || '').toLowerCase();
+        let sub = null;
+        if (targetEmail) {
+            sub = subs.find(s => (s.customer_email || '').toLowerCase() === targetEmail);
+        }
+        if (!sub) {
+            let pool = subs;
+            if (seg && seg !== 'all') pool = pool.filter(s => s.status === seg);
+            if (product_id) pool = pool.filter(s => String(s.product_id || '') === String(product_id));
+            sub = pool[0];
+        }
+        // Si no hay match ni pool, devolver preview con tokens genéricos en vez de error
+        if (!sub) {
+            sub = {
+                customer_email: targetEmail || 'preview@test.com',
+                customer_name: 'Cliente',
+                first_name: 'Cliente',
+                product_title: 'Producto',
+                frequency_months: 1, permanence_months: 6, cycles_completed: 0,
+                cycles_required: 6, discount_pct: 0, final_price: 0, base_price: 0,
+                next_charge_at: new Date(Date.now() + 30 * 86400000).toISOString()
+            };
+        }
+
         const ctx = await buildContextForSub(sub);
         const rendered = applyTokens(html, ctx);
         res.json({
@@ -8616,16 +8638,31 @@ app.post('/api/marketing/test-html', async (req, res) => {
         if (!html || !subject || !to_email) return res.status(400).json({ error: 'html, subject, to_email required' });
 
         const subs = await db.getSubscriptions().catch(() => []);
-        let pool = sample_segment && sample_segment !== 'all'
-            ? subs.filter(s => s.status === sample_segment)
-            : subs;
-        if (product_id) pool = pool.filter(s => String(s.product_id || '') === String(product_id));
-        const sample = pool[0] || subs[0];
-        // Si no hay subs, usar contexto vacío de placeholder
+
+        // 2026-05-12: PRIMERO buscar si el to_email coincide con un cliente real.
+        //   Si coincide -> usar SUS datos (su nombre, su producto, etc.). Mucho más útil
+        //   que el "Luis Miguel Ordoñez" genérico para test.
+        //   Si no -> caer al sample del segmento.
+        const emailLower = String(to_email || '').toLowerCase();
+        const realCustomer = subs.find(s => (s.customer_email || '').toLowerCase() === emailLower);
+
+        let sample;
+        if (realCustomer) {
+            sample = realCustomer;
+        } else {
+            let pool = sample_segment && sample_segment !== 'all'
+                ? subs.filter(s => s.status === sample_segment)
+                : subs;
+            if (product_id) pool = pool.filter(s => String(s.product_id || '') === String(product_id));
+            sample = pool[0] || subs[0];
+        }
+
+        // Si no hay subs ni match, usar contexto genérico (sin Luis Miguel)
         const sample_safe = sample || {
             id: 'test_sample',
             customer_email: to_email,
-            customer_name: 'Cliente de Prueba',
+            customer_name: 'Cliente',
+            first_name: 'Cliente',
             product_title: 'Producto Test',
             frequency_months: 1,
             permanence_months: 6,
