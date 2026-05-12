@@ -2686,12 +2686,17 @@
           result.style.color = '#92400e';
           const ets = r.estimated_seconds || 0;
           const etm = Math.ceil(ets / 60);
+          const isAsync = r.accepted_async === true;
+          const recipientsText = isAsync
+            ? '~5000 contactos Shopify (calculando exacto en background)'
+            : ((r.recipients_count || 0) + '');
+          const etmText = isAsync ? '~25 min para terminar todos los envíos' : ('~' + etm + ' min');
           result.innerHTML = '<strong>✓ Campaña iniciada en background</strong><br>' +
-            'Destinatarios: <strong>' + (r.recipients_count || 0) + '</strong>' +
+            'Destinatarios: <strong>' + recipientsText + '</strong>' +
             (r.skipped_unsubscribed ? ' · Skipped (unsub): ' + r.skipped_unsubscribed : '') +
-            '<br>Tiempo estimado: ~' + etm + ' min ' +
+            '<br>Tiempo estimado: ' + etmText +
             '<br><small style="opacity:.7">Revisá <a href="/api/marketing/campaign-summary" target="_blank" style="color:#92400e;text-decoration:underline">/api/marketing/campaign-summary</a> en unos minutos para ver resultados finales.</small>';
-          toast('Campaña iniciada: ' + (r.recipients_count || 0) + ' destinatarios');
+          toast('Campaña iniciada: ' + recipientsText);
         } else {
           // Sync legacy — esperando sent/failed/total
           result.style.background = r.failed > 0 ? '#fff3cd' : '#d1fae5';
