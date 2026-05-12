@@ -6121,7 +6121,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.8.1', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.9.0', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
@@ -7730,6 +7730,43 @@ async function runOrderRescue() {
                             console.log(`[ORDER RESCUE] Auto-resolved address for ${sub.customer_email}`);
                         }
                     }
+                }
+
+                // 🔒🔒🔒 BLINDAJE DEFINITIVO 2026-05-12 — verificación MP irrefutable
+                //   Antes de crear orden, EXIGIR que MP confirme un cobro huérfano.
+                //   Regla: solo creamos orden si #cobros_MP > #orders_locales para esta sub.
+                //   Si MP no responde, NO creamos (mejor pecar de cauteloso).
+                //   Esto elimina al 100% la posibilidad de fantasmas sin cobro real.
+                if (sub.mp_preapproval_id && mp.listPreapprovalPayments) {
+                    let mpPayments = null;
+                    try {
+                        mpPayments = await mp.listPreapprovalPayments(sub.mp_preapproval_id, 30);
+                    } catch (mpErr) {
+                        console.warn(`[ORDER RESCUE] 🛡 NO RESCATAR ${sub.customer_email}: no pude verificar MP (${mpErr.message})`);
+                        continue;
+                    }
+                    if (!Array.isArray(mpPayments)) {
+                        console.warn(`[ORDER RESCUE] 🛡 NO RESCATAR ${sub.customer_email}: MP devolvió payments inválido`);
+                        continue;
+                    }
+                    const realMpCharges = mpPayments.filter(p => p.status === 'processed' || p.status === 'approved').length;
+                    const localOrders = orderEvts.length;
+                    if (realMpCharges <= localOrders) {
+                        console.warn(`[ORDER RESCUE] 🛡 SKIP fantasma-prevention ${sub.customer_email}: MP=${realMpCharges} cobros, local=${localOrders} orders (no hay huérfano)`);
+                        continue;
+                    }
+                    console.log(`[ORDER RESCUE] ✓ MP confirma cobro huérfano legítimo (MP=${realMpCharges}, local=${localOrders}) para ${sub.customer_email}`);
+                } else {
+                    // Sin mp_preapproval_id no podemos verificar MP → NO rescatar (anti-fantasma)
+                    console.warn(`[ORDER RESCUE] 🛡 NO RESCATAR ${sub.customer_email}: sin mp_preapproval_id, no se puede verificar`);
+                    continue;
+                }
+
+                // ☠️ KILL SWITCH 2026-05-12 — si el admin sospecha, env DISABLE_RESCUE_CRON=true
+                //   detiene cualquier creación de orden en este path, incluso si la lógica anterior lo permite.
+                if (process.env.DISABLE_RESCUE_CRON === 'true' || process.env.DISABLE_RESCUE_CRON === '1') {
+                    console.warn(`[ORDER RESCUE] ☠ KILL SWITCH activo, no creo orden para ${sub.customer_email}`);
+                    continue;
                 }
 
                 console.log(`[ORDER RESCUE] ⚠️ ${sub.customer_email} has ${sub.cycles_completed} charges but NO order — attempting rescue...`);
