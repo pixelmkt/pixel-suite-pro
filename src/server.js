@@ -1192,6 +1192,81 @@ app.post('/api/admin/subscriptions/:id/force-cancel', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/** POST /api/admin/subs/backfill-shopify-order-from-gifts
+ *  2026-05-12 — ADITIVO. Repara subs cuyo metaobject quedó con shopify_order_id vacío
+ *  pero gifts_delivered_order_id sí está poblado (el order fue creado, pero solo el segundo
+ *  updateSubscription del webhook MP guardó. El primero — dentro de createShopifyOrderFromSub
+ *  — sí). Una vez backfilleado, el filtro del cron rescue (!s.shopify_order_id) los protege
+ *  de fantasmas futuros.
+ *
+ *  Body: { dry_run: true|false (default true) }
+ *   - dry_run: lista qué se actualizaría sin tocar nada
+ *   - dry_run:false: ejecuta el patch real
+ *
+ *  Response: { dry_run, candidates: [...], updated: number, skipped: number }
+ *
+ *  NO toca: orders Shopify, cron, webhook MP, código de cobro.
+ */
+app.post('/api/admin/subs/backfill-shopify-order-from-gifts', async (req, res) => {
+    try {
+        const dryRun = req.body?.dry_run !== false; // default true
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const candidates = (Array.isArray(allSubs) ? allSubs : []).filter(s =>
+            s.status === 'active' &&
+            !s.shopify_order_id &&
+            !s.shopify_order_name &&
+            s.gifts_delivered_order_id &&
+            s.gifts_delivered_order_name
+        );
+        const report = [];
+        let updated = 0, skipped = 0;
+        for (const s of candidates) {
+            const patch = {
+                shopify_order_id: String(s.gifts_delivered_order_id),
+                shopify_order_name: String(s.gifts_delivered_order_name)
+            };
+            report.push({
+                sub_id: s.id,
+                email: s.customer_email,
+                will_set_shopify_order_id: patch.shopify_order_id,
+                will_set_shopify_order_name: patch.shopify_order_name
+            });
+            if (!dryRun) {
+                try {
+                    await db.updateSubscription(s.id, patch);
+                    await db.createEvent({
+                        subscription_id: s.id,
+                        event_type: 'shopify_order_backfilled',
+                        metadata: JSON.stringify({
+                            shopify_order_id: patch.shopify_order_id,
+                            shopify_order_name: patch.shopify_order_name,
+                            source: 'gifts_delivered_order',
+                            by: 'admin_backfill_endpoint'
+                        })
+                    }).catch(() => {});
+                    updated++;
+                } catch (e) {
+                    skipped++;
+                    console.warn('[BACKFILL] sub', s.id, 'failed:', e.message);
+                }
+            }
+        }
+        res.json({
+            dry_run: dryRun,
+            candidates_count: candidates.length,
+            updated: dryRun ? 0 : updated,
+            skipped: dryRun ? 0 : skipped,
+            note: dryRun
+                ? 'DRY RUN: nada cambió. Re-ejecuta con {"dry_run":false} para aplicar.'
+                : 'Aplicado. Subs ahora tienen shopify_order_id poblado → el cron rescue ya no los toca.',
+            candidates: report
+        });
+    } catch (e) {
+        console.error('[BACKFILL] Fatal:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 /** GET /api/admin/subscriptions/:id/mp-status
  *  2026-05-12 — ADITIVO, READ-ONLY.
  *  Consulta el preapproval directamente en Mercado Pago y devuelve estado real.
@@ -5684,7 +5759,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.5.0', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.6.0', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
@@ -7242,13 +7317,39 @@ async function runOrderRescue() {
         const allSubs = db?.getSubscriptions ? await db.getSubscriptions().catch(() => []) : [];
 
         // === RESCUE 1: Active subs with charges but no order ===
+        // 🔒 FIX 2026-05-12 (anti-fantasmas): guard adicional !s.shopify_order_id.
+        //   ANTES: si la sub ya tenía shopify_order_id guardado pero getEvents() timeaba,
+        //   .catch(()=>[]) devolvía array vacío → hasOrder=false → creaba orden duplicada
+        //   FANTASMA (sin cobro MP detrás). Casos: Jerico #10387, Cayo Ramos #10399,
+        //   n00205406 #9845, y otros 7+. Bodega despachaba doble caja sin cobro real.
+        //   AHORA: si la sub ya tiene shopify_order_id (lo que prueba que createShopifyOrderFromSub
+        //   guardó algo en su día) → la excluimos del filtro de rescue. Solo procesamos las
+        //   verdaderas huérfanas (sub.shopify_order_id vacío).
         const activeWithCharges = allSubs.filter(s =>
             s.status === 'active' &&
-            (parseInt(s.cycles_completed) || 0) > 0
+            (parseInt(s.cycles_completed) || 0) > 0 &&
+            !s.shopify_order_id
         );
         for (const sub of activeWithCharges) {
             try {
-                const events = db?.getEvents ? await db.getEvents(sub.id, 50).catch(() => []) : [];
+                // 🔒 FIX 2026-05-12 (anti-fantasmas): si getEvents falla, SKIP el rescue.
+                //   ANTES: .catch(()=>[]) silenciaba el error y asumía "no hay events" →
+                //   filtro hasOrder=false → creaba fantasma. Ahora si la API metaobjects
+                //   timea, NO rescatamos (mejor pecar de cauteloso que duplicar).
+                let events;
+                let eventsOk = true;
+                if (db?.getEvents) {
+                    try {
+                        events = await db.getEvents(sub.id, 50);
+                    } catch (e) {
+                        console.warn(`[ORDER RESCUE] getEvents fail for ${sub.id}, skip rescue:`, e.message);
+                        eventsOk = false;
+                    }
+                } else {
+                    events = [];
+                }
+                if (!eventsOk) continue;
+                events = events || [];
                 const hasOrder = events.some(e =>
                     e.event_type === 'first_order_created' ||
                     e.event_type === 'charge_success'
