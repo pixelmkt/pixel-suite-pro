@@ -1192,6 +1192,206 @@ app.post('/api/admin/subscriptions/:id/force-cancel', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/** GET /api/admin/subscriptions/:id/mp-status
+ *  2026-05-12 — ADITIVO, READ-ONLY.
+ *  Consulta el preapproval directamente en Mercado Pago y devuelve estado real.
+ *  Útil para verificar antes/después de una cancelación que MP refleje lo esperado.
+ *  No toca metaobjects, no modifica nada. Si MP responde error lo devuelve textual.
+ */
+app.get('/api/admin/subscriptions/:id/mp-status', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Not found' });
+        if (!sub.mp_preapproval_id) {
+            return res.json({
+                ok: true,
+                sub_id: sub.id,
+                has_preapproval: false,
+                note: 'Sub no tiene mp_preapproval_id — nunca llegó a autorizar pago'
+            });
+        }
+        let mpInfo = null;
+        let mpError = null;
+        try {
+            mpInfo = await mp.getSubscription(sub.mp_preapproval_id);
+        } catch (e) {
+            mpError = e.message || String(e);
+        }
+        const mpDashboardUrl = `https://www.mercadopago.com.pe/subscriptions/admin/subscriptions/${sub.mp_preapproval_id}`;
+        return res.json({
+            ok: !mpError,
+            sub_id: sub.id,
+            sub_status_local: sub.status,
+            mp_preapproval_id: sub.mp_preapproval_id,
+            mp_dashboard_url: mpDashboardUrl,
+            mp_status: mpInfo?.status || null,
+            mp_payer_email: mpInfo?.payer_email || null,
+            mp_next_payment_date: mpInfo?.next_payment_date || null,
+            mp_charged_quantity: mpInfo?.summarized?.charged_quantity || 0,
+            mp_pending_charge_quantity: mpInfo?.summarized?.pending_charge_quantity || 0,
+            mp_last_charged_amount: mpInfo?.summarized?.last_charged_amount || null,
+            mp_error: mpError,
+            checked_at: new Date().toISOString()
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/** POST /api/admin/subscriptions/:id/cancel-safe
+ *  2026-05-12 — ADITIVO. Versión segura de force-cancel con verificación MP.
+ *
+ *  Flujo (atómico, con rollback si MP falla):
+ *   1. Lee sub local
+ *   2. Si sub.mp_preapproval_id existe → consulta MP estado actual
+ *   3. Si MP ya está cancelled → marca sub local sin volver a llamar MP
+ *   4. Si MP está activo → llama mp.cancelSubscription(preapproval_id)
+ *   5. Verifica MP DESPUÉS — si status != 'cancelled', NO marca sub (rollback)
+ *   6. Si MP confirma cancelado → marca sub local
+ *   7. Crea event con detalle completo
+ *
+ *  Body: { reason: string, waive_penalty: true|false }
+ *   - reason: motivo del admin (queda en event metadata)
+ *   - waive_penalty: si true, no aplica penalty (force-cancel). Default true.
+ *
+ *  Response: estado pre + post de sub local y MP, evento creado, dashboard link.
+ *  Si algo falla devuelve 500 con detalle y NO deja sub en estado inconsistente.
+ *
+ *  NO toca: webhook MP, orders, crons, otros subs, código de cobro.
+ */
+app.post('/api/admin/subscriptions/:id/cancel-safe', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Not found' });
+
+        const reason = String((req.body && req.body.reason) || 'admin_manual').slice(0, 200);
+        const waivePenalty = req.body?.waive_penalty !== false; // default true
+        const startedAt = new Date().toISOString();
+
+        // Estado inicial (snapshot)
+        const subStatusBefore = sub.status;
+        const mpId = sub.mp_preapproval_id || null;
+
+        let mpStatusBefore = null;
+        let mpStatusAfter = null;
+        let mpCancelCalled = false;
+        let mpCancelOk = false;
+        let mpError = null;
+
+        if (mpId && mp.getSubscription) {
+            // Paso 1: verificar estado actual en MP
+            try {
+                const info = await mp.getSubscription(mpId);
+                mpStatusBefore = info?.status || null;
+            } catch (e) {
+                console.warn('[CANCEL-SAFE] No pude leer estado MP previo:', e.message);
+            }
+
+            // Paso 2: si MP no está cancelado, cancelar
+            if (mpStatusBefore !== 'cancelled' && mp.cancelSubscription) {
+                mpCancelCalled = true;
+                try {
+                    await mp.cancelSubscription(mpId);
+                    mpCancelOk = true;
+                } catch (e) {
+                    mpError = e.message || String(e);
+                    console.error('[CANCEL-SAFE] MP cancel failed:', mpError);
+                }
+
+                // Paso 3: re-verificar MP DESPUÉS
+                if (mpCancelOk) {
+                    try {
+                        const after = await mp.getSubscription(mpId);
+                        mpStatusAfter = after?.status || null;
+                    } catch (e) {
+                        console.warn('[CANCEL-SAFE] No pude verificar estado MP post-cancel:', e.message);
+                    }
+                }
+            } else {
+                mpStatusAfter = mpStatusBefore;
+            }
+        }
+
+        // Rollback condition: si llamamos a MP y no quedó cancelled → NO marcamos local
+        if (mpCancelCalled && mpStatusAfter !== 'cancelled' && mpStatusAfter !== null) {
+            return res.status(502).json({
+                error: 'MP_NO_CANCELO',
+                detail: 'Se llamó a MP pero el preapproval no quedó en status=cancelled. Sub local NO modificada para evitar inconsistencia.',
+                mp_status_before: mpStatusBefore,
+                mp_status_after: mpStatusAfter,
+                mp_error: mpError,
+                mp_preapproval_id: mpId
+            });
+        }
+        if (mpCancelCalled && !mpCancelOk && mpStatusAfter === null) {
+            return res.status(502).json({
+                error: 'MP_LLAMADA_FALLO',
+                detail: 'Llamada a MP.cancel falló y no pude verificar estado actual. Sub local NO modificada. Reintentar.',
+                mp_error: mpError,
+                mp_preapproval_id: mpId
+            });
+        }
+
+        // Llegamos aquí solo si MP quedó cancelled, o no había preapproval, o ya estaba cancelled
+        const finishedAt = new Date().toISOString();
+        await db.updateSubscription(sub.id, {
+            status: 'cancelled',
+            cancelled_at: finishedAt,
+            ...(waivePenalty ? { penalty_status: 'waived', penalty_amount: 0 } : {})
+        });
+
+        // Customer tag en Shopify (no bloqueante)
+        if (sub.customer_id && shopify.tagCustomerAsSubscriber) {
+            shopify.tagCustomerAsSubscriber(sub.customer_id, false).catch(e => console.warn('[CANCEL-SAFE] Shopify tag error:', e.message));
+        }
+
+        // Event de auditoría con todo el contexto
+        await db.createEvent({
+            subscription_id: sub.id,
+            event_type: 'admin_cancel_safe',
+            metadata: JSON.stringify({
+                reason,
+                waive_penalty: waivePenalty,
+                sub_status_before: subStatusBefore,
+                mp_preapproval_id: mpId,
+                mp_status_before: mpStatusBefore,
+                mp_status_after: mpStatusAfter,
+                mp_cancel_called: mpCancelCalled,
+                mp_cancel_ok: mpCancelOk,
+                started_at: startedAt,
+                finished_at: finishedAt
+            })
+        }).catch(() => {});
+
+        // Email de confirmación (no bloqueante)
+        if (notifications?.sendCancellationConfirmation) {
+            notifications.sendCancellationConfirmation(sub).catch(e => console.warn('[CANCEL-SAFE] Email error:', e.message));
+        }
+
+        console.log(`[CANCEL-SAFE] ✅ ${sub.customer_email} | sub:${subStatusBefore}→cancelled | mp:${mpStatusBefore || 'N/A'}→${mpStatusAfter || 'N/A'} | reason:${reason}`);
+
+        res.json({
+            ok: true,
+            sub_id: sub.id,
+            email: sub.customer_email,
+            sub_status_before: subStatusBefore,
+            sub_status_after: 'cancelled',
+            mp_preapproval_id: mpId,
+            mp_status_before: mpStatusBefore,
+            mp_status_after: mpStatusAfter,
+            mp_cancel_called: mpCancelCalled,
+            mp_cancel_ok: mpCancelOk,
+            mp_dashboard_url: mpId ? `https://www.mercadopago.com.pe/subscriptions/admin/subscriptions/${mpId}` : null,
+            waive_penalty: waivePenalty,
+            reason,
+            finished_at: finishedAt
+        });
+    } catch (e) {
+        console.error('[CANCEL-SAFE] Fatal:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 /** DELETE /api/admin/subscriptions/:id — elimina registro (limpieza de duplicados) */
 app.delete('/api/admin/subscriptions/:id', async (req, res) => {
     try {
@@ -5484,7 +5684,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.4.0', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.5.0', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned

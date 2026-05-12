@@ -4835,14 +4835,17 @@
 
     function renderDetailActions(s, preview) {
       preview = preview || {};
-      const info = s.status !== 'cancelled'
+      const isCancelled = s.status === 'cancelled';
+      const isPaused = s.status === 'paused';
+      const isActive = s.status === 'active';
+      const previewBox = !isCancelled
         ? `<div style="padding:14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;margin-bottom:14px">
-             <div style="font-weight:700;font-size:13px;color:#92400e">Preview de cancelación</div>
-             <div style="font-size:12px;color:#78350f;margin-top:4px">Penalidad calculada: <strong>S/ ${(preview.penalty || 0).toFixed(2)}</strong> · Ciclos: ${preview.cycles_completed || 0}/${preview.cycles_required || 0}${preview.within_retracto ? ' · Dentro de retracto 7d' : ''}${preview.completed_permanence ? ' · Permanencia cumplida' : ''}</div>
+             <div style="font-weight:700;font-size:13px;color:#92400e">Preview de cancelación con penalidad</div>
+             <div style="font-size:12px;color:#78350f;margin-top:4px">Si se cancela vía portal cliente: penalidad <strong>S/ ${(preview.penalty || 0).toFixed(2)}</strong> · Ciclos ${preview.cycles_completed || 0}/${preview.cycles_required || 0}${preview.within_retracto ? ' · Dentro de retracto 7d (gratis)' : ''}${preview.completed_permanence ? ' · Permanencia cumplida (gratis)' : ''}</div>
            </div>` : '';
-      return info + `
+      return previewBox + `
         <div style="display:flex;flex-direction:column;gap:12px">
-          ${s.status === 'active' ? `
+          ${isActive ? `
             <div style="padding:16px;border:1px solid #e5e7eb;border-radius:10px">
               <div style="font-weight:700;font-size:13px">Pausar suscripción</div>
               <div style="font-size:12px;color:#666;margin:4px 0 10px">No cobra por N meses. MP paraliza, cliente puede reanudar.</div>
@@ -4852,29 +4855,214 @@
                 <button onclick="doSubAction('pause')" class="btn btn-g" style="background:#0A0A0A;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:600;cursor:pointer;margin-left:auto">Pausar</button>
               </div>
             </div>` : ''}
-          ${s.status === 'paused' ? `
+          ${isPaused ? `
             <div style="padding:16px;border:1px solid #e5e7eb;border-radius:10px">
               <div style="font-weight:700;font-size:13px">Reanudar suscripción</div>
               <div style="font-size:12px;color:#666;margin:4px 0 10px">Vuelve a estado activo, MP reanuda cobros.</div>
               <button onclick="doSubAction('resume')" class="btn btn-g" style="background:#16a34a;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:600;cursor:pointer">Reanudar</button>
             </div>` : ''}
-          ${s.status !== 'cancelled' ? `
-            <div style="padding:16px;border:1px solid #e5e7eb;border-radius:10px">
-              <div style="font-weight:700;font-size:13px">Cancelar normal (con penalidad si aplica)</div>
-              <div style="font-size:12px;color:#666;margin:4px 0 10px">Genera link de pago de penalidad si no cumplió permanencia.</div>
-              <button onclick="doSubAction('cancel')" class="btn" style="background:#fee2e2;color:#991b1b;border:none;padding:8px 18px;border-radius:6px;font-weight:600;cursor:pointer">Cancelar</button>
-            </div>
-            <div style="padding:16px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2">
-              <div style="font-weight:700;font-size:13px;color:#991b1b">Cancelación forzada (admin)</div>
-              <div style="font-size:12px;color:#7f1d1d;margin:4px 0 10px">Sin penalidad. Usa para casos excepcionales (error, reclamo resuelto, cortesía).</div>
-              <button onclick="doSubAction('force-cancel')" class="btn" style="background:#991b1b;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:600;cursor:pointer">Forzar cancelación sin penalidad</button>
-            </div>` : ''}
-          <div style="padding:16px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2">
-            <div style="font-weight:700;font-size:13px;color:#991b1b">Eliminar registro</div>
-            <div style="font-size:12px;color:#7f1d1d;margin:4px 0 10px">Borra completamente de metaobjects. Usa solo para limpiar duplicados o pruebas.</div>
-            <button onclick="doSubAction('delete')" class="btn" style="background:#0A0A0A;color:#fff;border:none;padding:8px 18px;border-radius:6px;font-weight:600;cursor:pointer">Eliminar de la base</button>
+          ${!isCancelled ? `
+            <div style="padding:18px;border:1.5px solid #fecaca;border-radius:12px;background:linear-gradient(180deg,#fef2f2 0%,#fff5f5 100%)">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px">
+                <div style="flex:1">
+                  <div style="font-weight:800;font-size:14px;color:#991b1b;letter-spacing:.2px">Cancelar suscripción</div>
+                  <div style="font-size:12px;color:#7f1d1d;margin-top:3px;line-height:1.5">Detiene cobros futuros en Mercado Pago y marca la sub como <code style="background:#fee2e2;padding:1px 5px;border-radius:3px">cancelled</code>. Verifica MP antes y después — si MP no confirma cancelación, NO modifica la sub local (anti-inconsistencia).</div>
+                </div>
+                <span style="background:#991b1b;color:#fff;padding:3px 9px;border-radius:14px;font-size:10px;font-weight:800;letter-spacing:.5px;white-space:nowrap">v2 SAFE</span>
+              </div>
+              <button onclick="openCancelSafeModal()" style="display:block;width:100%;background:#991b1b;color:#fff;border:none;padding:11px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;letter-spacing:.3px">Abrir asistente de cancelación →</button>
+            </div>` : `
+            <div style="padding:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px">
+              <div style="font-weight:700;font-size:13px;color:#166534">✓ Suscripción cancelada</div>
+              <div style="font-size:11px;color:#15803d;margin-top:3px">${s.cancelled_at ? 'Fecha: ' + new Date(s.cancelled_at).toLocaleString('es-PE') : ''}</div>
+              ${s.mp_preapproval_id ? `<button onclick="verifyMpStatus()" style="margin-top:8px;background:#fff;color:#166534;border:1px solid #86efac;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">Verificar estado en MP</button>` : ''}
+            </div>`}
+          <div style="padding:14px;border:1px solid #e5e7eb;border-radius:10px;background:#fafafa">
+            <div style="font-weight:700;font-size:12px;color:#666">Eliminar registro (limpieza de duplicados)</div>
+            <div style="font-size:11px;color:#888;margin:3px 0 8px">Borra completamente de metaobjects. Usa solo para limpiar duplicados o pruebas. No se puede deshacer.</div>
+            <button onclick="doSubAction('delete')" class="btn" style="background:#fff;color:#666;border:1px solid #d4d4d4;padding:6px 14px;border-radius:6px;font-weight:600;cursor:pointer;font-size:11px">Eliminar de la base</button>
           </div>
         </div>`;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       MODAL CANCELACIÓN SAFE 2026-05-12 — UX moderno + verificación MP
+       Reemplaza confirm() nativo con flujo guiado de 3 pasos:
+        1) Verificar estado actual MP
+        2) Elegir tipo de cancelación + escribir motivo
+        3) Ejecutar y mostrar resultado
+       Aditivo: no rompe doSubAction() — sigue funcionando para los demás botones.
+       ═══════════════════════════════════════════════════════════════════ */
+    function openCancelSafeModal() {
+      if (!_detailSub) return;
+      const s = _detailSub.subscription || {};
+      // Crear o reutilizar el modal
+      let modal = document.getElementById('cancel-safe-modal');
+      if (modal) modal.remove();
+      modal = document.createElement('div');
+      modal.id = 'cancel-safe-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;font-family:DM Sans,sans-serif';
+      modal.innerHTML = `
+        <div style="background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 24px 64px rgba(0,0,0,.3)">
+          <div style="padding:22px 26px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-weight:900;font-size:17px;color:#0a0a0a;letter-spacing:-.2px">Cancelar suscripción</div>
+              <div style="font-size:11px;color:#999;margin-top:2px">${s.customer_email || '?'}</div>
+            </div>
+            <button onclick="closeCancelSafeModal()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#999;padding:0;line-height:1">×</button>
+          </div>
+
+          <div style="padding:22px 26px">
+            <div style="margin-bottom:18px">
+              <div style="font-size:11px;font-weight:800;color:#666;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">Estado actual</div>
+              <div id="csm-status" style="background:#fafafa;border:1px solid #eee;border-radius:8px;padding:12px;font-size:12.5px;line-height:1.7">
+                <div><strong>Sub local:</strong> <span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${s.status}</span></div>
+                <div><strong>Ciclos:</strong> ${s.cycles_completed || 0}/${s.cycles_required || 0}</div>
+                <div><strong>Próximo cobro:</strong> ${s.next_charge_at ? new Date(s.next_charge_at).toLocaleString('es-PE') : '—'}</div>
+                <div><strong>MP preapproval:</strong> <code style="background:#f4f4f5;padding:1px 5px;border-radius:3px;font-size:11px">${s.mp_preapproval_id || '— sin preapproval —'}</code></div>
+                <div id="csm-mp-status-line" style="margin-top:6px;color:#666;font-size:11px;font-style:italic">Estado MP: <em>(presiona "Verificar MP" para consultar)</em></div>
+              </div>
+              ${s.mp_preapproval_id ? `<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+                <button onclick="csmCheckMp()" id="csm-check-btn" style="background:#fff;color:#0a0a0a;border:1.5px solid #d4d4d4;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">Verificar MP ahora</button>
+                <a href="https://www.mercadopago.com.pe/subscriptions/admin/subscriptions/${s.mp_preapproval_id}" target="_blank" rel="noopener" style="background:#fff;color:#0a0a0a;border:1.5px solid #d4d4d4;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block">Ver en MP ↗</a>
+              </div>` : ''}
+            </div>
+
+            <div style="margin-bottom:18px">
+              <div style="font-size:11px;font-weight:800;color:#666;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">Motivo de cancelación</div>
+              <textarea id="csm-reason" rows="2" placeholder="Ej: cliente solicitó por WhatsApp / error de cargo duplicado / cortesía..." style="width:100%;border:1.5px solid #e5e7eb;border-radius:8px;padding:10px;font-size:13px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box"></textarea>
+              <div style="font-size:10px;color:#999;margin-top:4px">Quedará en el historial de eventos de la sub. Máx 200 caracteres.</div>
+            </div>
+
+            <div style="margin-bottom:18px">
+              <div style="font-size:11px;font-weight:800;color:#666;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">Tipo de cancelación</div>
+              <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer;margin-bottom:8px" onmouseover="this.style.borderColor='#991b1b'" onmouseout="this.style.borderColor='#e5e7eb'">
+                <input type="radio" name="csm-mode" value="waive" checked style="margin-top:3px">
+                <div style="flex:1">
+                  <div style="font-weight:700;font-size:13px;color:#0a0a0a">Sin penalidad (admin)</div>
+                  <div style="font-size:11px;color:#666;line-height:1.5;margin-top:2px">Cancela MP + sub. No cobra al cliente. Ideal para errores, reclamos resueltos o cortesía.</div>
+                </div>
+              </label>
+              <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border:1.5px solid #e5e7eb;border-radius:8px;cursor:pointer" onmouseover="this.style.borderColor='#991b1b'" onmouseout="this.style.borderColor='#e5e7eb'">
+                <input type="radio" name="csm-mode" value="penalty" style="margin-top:3px">
+                <div style="flex:1">
+                  <div style="font-weight:700;font-size:13px;color:#0a0a0a">Con penalidad (flujo regular)</div>
+                  <div style="font-size:11px;color:#666;line-height:1.5;margin-top:2px">Calcula penalidad por permanencia anticipada. Si aplica, genera link MP para que el cliente pague el reintegro.</div>
+                </div>
+              </label>
+            </div>
+
+            <div id="csm-result" style="display:none;margin-bottom:14px"></div>
+
+            <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:14px;border-top:1px solid #eee">
+              <button onclick="closeCancelSafeModal()" id="csm-close-btn" style="background:#fff;color:#666;border:1.5px solid #d4d4d4;padding:9px 18px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Cancelar</button>
+              <button onclick="csmExecute()" id="csm-execute-btn" style="background:#991b1b;color:#fff;border:none;padding:9px 22px;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer">Confirmar cancelación</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+    }
+
+    function closeCancelSafeModal() {
+      const m = document.getElementById('cancel-safe-modal');
+      if (m) m.remove();
+    }
+
+    async function csmCheckMp() {
+      if (!_detailSub) return;
+      const id = _detailSub.subscription.id;
+      const btn = document.getElementById('csm-check-btn');
+      const line = document.getElementById('csm-mp-status-line');
+      if (btn) { btn.disabled = true; btn.innerText = 'Consultando MP...'; }
+      try {
+        const r = await api('/api/admin/subscriptions/' + encodeURIComponent(id) + '/mp-status');
+        if (line) {
+          const color = r.mp_status === 'cancelled' ? '#166534' : (r.mp_status === 'authorized' ? '#92400e' : '#666');
+          const bg = r.mp_status === 'cancelled' ? '#dcfce7' : (r.mp_status === 'authorized' ? '#fef3c7' : '#f4f4f5');
+          line.innerHTML = `<strong>MP status:</strong> <span style="background:${bg};color:${color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">${r.mp_status || 'desconocido'}</span>${r.mp_error ? ' · <span style="color:#dc2626">' + r.mp_error.slice(0,80) + '</span>' : ''}${r.mp_charged_quantity != null ? ' · cobrado ' + r.mp_charged_quantity + 'x' : ''}${r.mp_next_payment_date ? ' · próximo ' + new Date(r.mp_next_payment_date).toLocaleDateString('es-PE') : ''}`;
+        }
+      } catch (e) {
+        if (line) line.innerHTML = '<strong style="color:#dc2626">Error consultando MP:</strong> ' + e.message;
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerText = 'Verificar MP ahora'; }
+      }
+    }
+
+    async function verifyMpStatus() {
+      if (!_detailSub) return;
+      const id = _detailSub.subscription.id;
+      try {
+        const r = await api('/api/admin/subscriptions/' + encodeURIComponent(id) + '/mp-status');
+        toast('MP status: ' + (r.mp_status || 'desconocido') + (r.mp_error ? ' — ' + r.mp_error.slice(0,80) : ''), r.mp_status === 'cancelled' ? 'ok' : 'err');
+      } catch (e) {
+        toast('Error MP: ' + e.message, 'err');
+      }
+    }
+
+    async function csmExecute() {
+      if (!_detailSub) return;
+      const id = _detailSub.subscription.id;
+      const reason = (document.getElementById('csm-reason')?.value || '').trim().slice(0, 200);
+      const mode = document.querySelector('input[name="csm-mode"]:checked')?.value || 'waive';
+      if (!reason) { alert('Escribe un motivo (queda en historial).'); return; }
+      const btn = document.getElementById('csm-execute-btn');
+      const closeBtn = document.getElementById('csm-close-btn');
+      const resultBox = document.getElementById('csm-result');
+      if (btn) { btn.disabled = true; btn.innerText = 'Procesando...'; }
+      if (closeBtn) closeBtn.disabled = true;
+
+      try {
+        if (mode === 'penalty') {
+          // Flujo normal: calcula penalidad, genera link si aplica (intocado)
+          const pv = await api('/api/subscriptions/' + encodeURIComponent(id) + '/cancel/preview');
+          const proceed = pv.penalty > 0
+            ? confirm('Penalidad: S/' + pv.penalty.toFixed(2) + '. Se generará link de pago. ¿Continuar?')
+            : confirm('Sin penalidad (retracto/permanencia cumplida). ¿Cancelar?');
+          if (!proceed) { if (btn) { btn.disabled = false; btn.innerText = 'Confirmar cancelación'; } if (closeBtn) closeBtn.disabled = false; return; }
+          const r = await api('/api/subscriptions/' + encodeURIComponent(id) + '/cancel', { method: 'POST', body: { confirm_penalty: pv.penalty > 0 } });
+          if (resultBox) {
+            resultBox.style.display = 'block';
+            resultBox.innerHTML = `<div style="padding:14px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;font-size:12.5px">
+              <strong>✓ Cancelada</strong>${r.penalty ? ' · Penalidad S/' + r.penalty.toFixed(2) : ' sin penalidad'}
+              ${r.penalty_payment_url ? '<br><a href="' + r.penalty_payment_url + '" target="_blank" rel="noopener" style="color:#991b1b;font-weight:700">→ Link de pago de penalidad</a>' : ''}
+            </div>`;
+          }
+        } else {
+          // Flujo SAFE: nuevo endpoint con verificación MP + rollback
+          const r = await api('/api/admin/subscriptions/' + encodeURIComponent(id) + '/cancel-safe', {
+            method: 'POST',
+            body: { reason, waive_penalty: true }
+          });
+          if (resultBox) {
+            resultBox.style.display = 'block';
+            const mpOk = r.mp_preapproval_id ? (r.mp_status_after === 'cancelled') : true;
+            resultBox.innerHTML = `<div style="padding:14px;background:${mpOk ? '#dcfce7' : '#fef3c7'};border:1px solid ${mpOk ? '#86efac' : '#fcd34d'};border-radius:8px;font-size:12.5px;line-height:1.7">
+              <strong>${mpOk ? '✓ Cancelación verificada end-to-end' : '⚠ Cancelada local pero MP no confirmó'}</strong>
+              <div>Sub: <code>${r.sub_status_before}</code> → <code>${r.sub_status_after}</code></div>
+              ${r.mp_preapproval_id ? `<div>MP: <code>${r.mp_status_before || '—'}</code> → <code>${r.mp_status_after || '—'}</code></div>` : '<div style="color:#666;font-size:11px">Sin preapproval MP (no había qué cancelar allá).</div>'}
+              ${r.mp_dashboard_url ? `<div style="margin-top:6px"><a href="${r.mp_dashboard_url}" target="_blank" rel="noopener" style="color:#991b1b;font-weight:700;font-size:11px">Ver preapproval en MP ↗</a></div>` : ''}
+            </div>`;
+          }
+        }
+        // Refresh detail + lista
+        await api('/api/admin/subscriptions/' + encodeURIComponent(id)).then(d => { _detailSub = d; renderSubDetail(); });
+        loadSubs();
+        if (btn) btn.innerText = 'Cerrar';
+        if (btn) btn.onclick = closeCancelSafeModal;
+        if (btn) btn.disabled = false;
+        if (closeBtn) closeBtn.style.display = 'none';
+      } catch (e) {
+        if (resultBox) {
+          resultBox.style.display = 'block';
+          resultBox.innerHTML = `<div style="padding:14px;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;font-size:12.5px;line-height:1.6">
+            <strong style="color:#991b1b">✗ Error — sub NO modificada</strong>
+            <div style="color:#7f1d1d;margin-top:4px">${(e.message || 'Error desconocido').slice(0, 300)}</div>
+            <div style="margin-top:6px;font-size:11px;color:#666">El backend revierte automáticamente cuando MP no confirma cancelación para evitar estados inconsistentes. Verifica MP manualmente y reintenta.</div>
+          </div>`;
+        }
+        if (btn) { btn.disabled = false; btn.innerText = 'Reintentar'; }
+        if (closeBtn) closeBtn.disabled = false;
+      }
     }
 
     async function saveSubDetail() {
@@ -4912,11 +5100,16 @@
     async function doSubAction(action) {
       if (!_detailSub) return;
       const id = _detailSub.subscription.id;
+      // 2026-05-12 — 'cancel' y 'force-cancel' ahora usan el modal openCancelSafeModal().
+      // Aquí solo quedan pause, resume, delete. Mantengo soporte si algún botón legacy llama
+      // con esos valores: redirige al modal nuevo (sin romper retrocompat).
+      if (action === 'cancel' || action === 'force-cancel') {
+        openCancelSafeModal();
+        return;
+      }
       const confirmMsg = {
         pause: null,
         resume: '¿Reanudar esta suscripción?',
-        cancel: '¿Cancelar esta suscripción? Si hay penalidad se generará link de pago.',
-        'force-cancel': '¿Forzar cancelación SIN penalidad? Acción admin, quedará registrada.',
         delete: 'ELIMINARÁ el registro permanentemente. ¿Continuar?'
       }[action];
       if (confirmMsg && !confirm(confirmMsg)) return;
@@ -4928,14 +5121,6 @@
         } else if (action === 'resume') {
           await api('/api/subscriptions/' + encodeURIComponent(id) + '/resume', { method: 'POST' });
           toast('Suscripción reanudada');
-        } else if (action === 'cancel') {
-          const pv = await api('/api/subscriptions/' + encodeURIComponent(id) + '/cancel/preview');
-          if (pv.penalty > 0 && !confirm('Penalidad: S/' + pv.penalty.toFixed(2) + '. ¿Generar link de pago?')) return;
-          const r = await api('/api/subscriptions/' + encodeURIComponent(id) + '/cancel', { method: 'POST', body: { confirm_penalty: pv.penalty > 0 } });
-          toast(r.penalty_payment_url ? 'Cancelada. Link generado: ' + r.penalty_payment_url : 'Cancelada sin penalidad');
-        } else if (action === 'force-cancel') {
-          await api('/api/admin/subscriptions/' + encodeURIComponent(id) + '/force-cancel', { method: 'POST', body: { reason: 'admin_manual' } });
-          toast('Cancelación admin aplicada');
         } else if (action === 'delete') {
           await api('/api/admin/subscriptions/' + encodeURIComponent(id), { method: 'DELETE' });
           toast('Registro eliminado');
