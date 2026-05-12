@@ -1192,6 +1192,222 @@ app.post('/api/admin/subscriptions/:id/force-cancel', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/** POST /api/admin/customers/sync-sub-tags
+ *  2026-05-12 — ADITIVO. Sincroniza tags Shopify customers según estado de sub local.
+ *  Permite crear Shopify Customer Segments dinámicos por estado de suscripción.
+ *
+ *  Tags aplicados (prefijo lab-sub-*, no conflicta con suscriptor-lab legacy):
+ *   - lab-sub-active           → cliente con al menos 1 sub status=active
+ *   - lab-sub-pending          → cliente sin sub active, con al menos 1 pending_payment
+ *   - lab-sub-cancelled        → cliente con todas sus subs cancelled
+ *   - lab-sub-completed        → cliente con sub que cumplió permanencia
+ *
+ *  Lógica de prioridad (cada cliente recibe SOLO 1 tag lab-sub-*):
+ *   active > paused > completed > payment_failed > pending_payment > cancelled
+ *
+ *  Body: { dry_run: true|false (default true) }
+ *
+ *  NO toca: otros tags del customer (suscriptor-lab legacy, custom tags del admin, etc).
+ *  Solo agrega/remueve los lab-sub-* específicos.
+ */
+app.post('/api/admin/customers/sync-sub-tags', async (req, res) => {
+    try {
+        const dryRun = req.body?.dry_run !== false;
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+
+        const PRIORITY = { active: 5, paused: 4, completed: 3, payment_failed: 2, pending_payment: 1, cancelled: 0 };
+        const STATUS_TO_TAG = {
+            active: 'lab-sub-active',
+            paused: 'lab-sub-active',
+            completed: 'lab-sub-completed',
+            payment_failed: 'lab-sub-pending',
+            pending_payment: 'lab-sub-pending',
+            cancelled: 'lab-sub-cancelled'
+        };
+        const ALL_LAB_TAGS = ['lab-sub-active', 'lab-sub-pending', 'lab-sub-cancelled', 'lab-sub-completed'];
+
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const byEmail = new Map();
+        for (const s of (Array.isArray(allSubs) ? allSubs : [])) {
+            const e = (s.customer_email || '').trim().toLowerCase();
+            if (!e) continue;
+            if (!byEmail.has(e)) byEmail.set(e, []);
+            byEmail.get(e).push(s);
+        }
+
+        const report = { tagged_active: 0, tagged_pending: 0, tagged_cancelled: 0, tagged_completed: 0, not_in_shopify: 0, errors: 0, updated: 0, skipped_no_change: 0 };
+        const errors = [];
+        const notInShopify = [];
+
+        for (const [email, arr] of byEmail) {
+            // status agregado por cliente
+            let best = arr[0];
+            for (const s of arr) {
+                if ((PRIORITY[s.status] || 0) > (PRIORITY[best.status] || 0)) best = s;
+            }
+            const targetTag = STATUS_TO_TAG[best.status];
+            if (!targetTag) continue;
+
+            // contador por categoría (incluye los que no están en Shopify pero deberían)
+            if (targetTag === 'lab-sub-active') report.tagged_active++;
+            else if (targetTag === 'lab-sub-pending') report.tagged_pending++;
+            else if (targetTag === 'lab-sub-cancelled') report.tagged_cancelled++;
+            else if (targetTag === 'lab-sub-completed') report.tagged_completed++;
+
+            // Buscar customer en Shopify
+            let customer = null;
+            try {
+                const r = await fetch(`https://${shop}/admin/api/2026-01/customers/search.json?query=email:${encodeURIComponent(email)}&limit=1`, {
+                    headers: { 'X-Shopify-Access-Token': token }
+                });
+                if (r.ok) {
+                    const data = await r.json();
+                    customer = data.customers?.[0] || null;
+                }
+            } catch (e) {
+                errors.push({ email, error: e.message });
+                report.errors++;
+                continue;
+            }
+            if (!customer) {
+                notInShopify.push(email);
+                report.not_in_shopify++;
+                continue;
+            }
+
+            // Diff de tags: quitar todos los lab-sub-*, agregar el target
+            const currentTags = String(customer.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+            const nonLabTags = currentTags.filter(t => !ALL_LAB_TAGS.includes(t));
+            const newTags = [...nonLabTags, targetTag];
+            const currentSorted = [...currentTags].sort().join(',');
+            const newSorted = [...newTags].sort().join(',');
+            if (currentSorted === newSorted) {
+                report.skipped_no_change++;
+                continue;
+            }
+
+            if (dryRun) {
+                report.updated++; // count what would update
+            } else {
+                try {
+                    const r = await fetch(`https://${shop}/admin/api/2026-01/customers/${customer.id}.json`, {
+                        method: 'PUT',
+                        headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ customer: { id: customer.id, tags: newTags.join(', ') } })
+                    });
+                    if (r.ok) report.updated++;
+                    else { report.errors++; errors.push({ email, status: r.status, body: (await r.text()).slice(0, 200) }); }
+                } catch (e) {
+                    report.errors++;
+                    errors.push({ email, error: e.message });
+                }
+                // rate limit: max 4 req/s, durmamos 250ms
+                await new Promise(r => setTimeout(r, 250));
+            }
+        }
+
+        res.json({
+            dry_run: dryRun,
+            total_unique_emails: byEmail.size,
+            ...report,
+            not_in_shopify_emails: notInShopify.slice(0, 10),
+            errors_sample: errors.slice(0, 5),
+            note: dryRun
+                ? 'DRY RUN: nada cambió. Re-ejecuta con {"dry_run":false} para aplicar.'
+                : 'Aplicado. Tags lab-sub-* sincronizados. Usa POST /api/admin/customers/create-sub-segments para crear los Segments Shopify.'
+        });
+    } catch (e) {
+        console.error('[SYNC-TAGS] Fatal:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/** POST /api/admin/customers/create-sub-segments
+ *  2026-05-12 — ADITIVO. Crea 3 Customer Segments nativos de Shopify, basados en los
+ *  tags lab-sub-*. Los segments quedan visibles en Shopify Admin → Customers → Segments
+ *  y se auto-actualizan en tiempo real conforme cambian los tags.
+ *
+ *  Idempotente: si ya existe un segment con el mismo nombre, no crea duplicado.
+ *
+ *  Segments creados:
+ *   - "LAB · Suscriptores activos"        → customer_tags CONTAINS 'lab-sub-active'
+ *   - "LAB · Suscripción pendiente pago"  → customer_tags CONTAINS 'lab-sub-pending'
+ *   - "LAB · Suscripción cancelada"       → customer_tags CONTAINS 'lab-sub-cancelled'
+ *
+ *  Usa GraphQL segmentCreate. No toca segments existentes que no creamos.
+ */
+app.post('/api/admin/customers/create-sub-segments', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+
+        async function gql(query, variables) {
+            const r = await fetch(`https://${shop}/admin/api/2026-01/graphql.json`, {
+                method: 'POST',
+                headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query, variables })
+            });
+            const j = await r.json();
+            if (j.errors) throw new Error(JSON.stringify(j.errors));
+            return j.data;
+        }
+
+        const SEGMENTS = [
+            { name: 'LAB · Suscriptores activos',       query: "customer_tags CONTAINS 'lab-sub-active'" },
+            { name: 'LAB · Suscripción pendiente pago', query: "customer_tags CONTAINS 'lab-sub-pending'" },
+            { name: 'LAB · Suscripción cancelada',      query: "customer_tags CONTAINS 'lab-sub-cancelled'" },
+            { name: 'LAB · Suscripción completada',     query: "customer_tags CONTAINS 'lab-sub-completed'" }
+        ];
+
+        // Buscar segments existentes con prefijo "LAB ·"
+        const existingData = await gql(`
+            query { segments(first: 50, query: "LAB") { nodes { id name query } } }
+        `).catch(() => ({ segments: { nodes: [] } }));
+        const existingByName = new Map();
+        (existingData.segments?.nodes || []).forEach(s => existingByName.set(s.name, s));
+
+        const results = [];
+        for (const seg of SEGMENTS) {
+            if (existingByName.has(seg.name)) {
+                results.push({ name: seg.name, status: 'already_exists', id: existingByName.get(seg.name).id });
+                continue;
+            }
+            try {
+                const data = await gql(`
+                    mutation CreateSeg($name: String!, $query: String!) {
+                        segmentCreate(name: $name, query: $query) {
+                            segment { id name query }
+                            userErrors { field message }
+                        }
+                    }
+                `, { name: seg.name, query: seg.query });
+                const errs = data.segmentCreate?.userErrors || [];
+                if (errs.length) {
+                    results.push({ name: seg.name, status: 'error', error: errs.map(e => e.message).join('; ') });
+                } else {
+                    results.push({ name: seg.name, status: 'created', id: data.segmentCreate?.segment?.id, query: seg.query });
+                }
+            } catch (e) {
+                results.push({ name: seg.name, status: 'error', error: e.message });
+            }
+            await new Promise(r => setTimeout(r, 400));
+        }
+
+        res.json({
+            ok: true,
+            shopify_admin_url: `https://${shop.replace('.myshopify.com', '')}/admin/customers?segment_query=`,
+            segments: results,
+            note: 'Los segments aparecen en Shopify Admin → Customers → Segments. Se auto-actualizan en tiempo real conforme los tags lab-sub-* cambien.'
+        });
+    } catch (e) {
+        console.error('[CREATE-SEGMENTS] Fatal:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 /** POST /api/admin/subs/backfill-shopify-order-from-gifts
  *  2026-05-12 — ADITIVO. Repara subs cuyo metaobject quedó con shopify_order_id vacío
  *  pero gifts_delivered_order_id sí está poblado (el order fue creado, pero solo el segundo
@@ -5759,7 +5975,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.6.0', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '6.7.0', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
