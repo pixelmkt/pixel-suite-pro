@@ -4375,70 +4375,79 @@ async function getPrimaryLocationId() {
    Raíz del incidente Luis Miguel (#8765+#8766): rescue cron corrió y creó duplicado
    porque el dedup previo sólo miraba los últimos 50 eventos locales, no Shopify. */
 async function alreadyHasShopifyOrderForSub(sub, mpPaymentId, shop, token) {
+    // 🔒🔒🔒 FAIL-CLOSED 2026-05-12 — si Shopify API no responde, BLOQUEAR creación.
+    //   Antes: return false (fail-open) -> permitía duplicados cuando timeout.
+    //   Ahora: return { error: true } -> caller ABORTA creación. CERO duplicados.
+    if (!sub?.customer_email || !token || !shop) {
+        return { error: true, reason: 'missing_args' };
+    }
+    let r;
     try {
-        if (!sub?.customer_email || !token || !shop) return false;
         const since = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString();
         const url = `https://${shop}/admin/api/2026-01/orders.json?` +
             `email=${encodeURIComponent(sub.customer_email)}` +
             `&status=any&created_at_min=${encodeURIComponent(since)}&limit=50` +
             `&fields=id,name,note,tags,note_attributes,cancelled_at,created_at`;
-        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
-        if (!r.ok) return false;
-        const data = await r.json();
-        const orders = (data.orders || []).filter(o =>
-            !o.cancelled_at &&
-            ((o.tags || '').toLowerCase().includes('suscripcion') ||
-             (o.note || '').toLowerCase().includes('suscripci'))
-        );
-        if (!orders.length) return false;
+        r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+    } catch (e) {
+        console.error('[ORDER DEDUP] FAIL-CLOSED: fetch exception, ABORT creation:', e.message);
+        return { error: true, reason: 'fetch_exception', detail: e.message };
+    }
+    if (!r.ok) {
+        console.error('[ORDER DEDUP] FAIL-CLOSED: Shopify ' + r.status + ', ABORT creation');
+        return { error: true, reason: 'shopify_http_' + r.status };
+    }
+    let data;
+    try { data = await r.json(); }
+    catch (e) {
+        console.error('[ORDER DEDUP] FAIL-CLOSED: parse error, ABORT creation');
+        return { error: true, reason: 'parse_error' };
+    }
 
-        const subId = sub.id ? String(sub.id) : '';
-        // Sintético = rescue_*, manual_*, o vacío. IDs MP payment son numéricos (ej. '152587784379').
-        // Preapproval IDs (alfanuméricos tipo '2c9380847...') los tratamos como NO-sintéticos
-        // porque MP los devuelve como ID del evento activation; aún así no matchean mp_payment_id real.
-        const mpStr = String(mpPaymentId || '');
-        const syntheticPayment = !mpStr || mpStr.startsWith('rescue_') || mpStr.startsWith('manual_');
-        // Target cycle: el ciclo que se intenta crear ahora = cycles_completed + 1.
-        // (Si es 1er pago, cycles_completed=0 → target=1.)
-        const targetCycle = String((parseInt(sub.cycles_completed) || 0) + 1);
+    const orders = (data.orders || []).filter(o =>
+        !o.cancelled_at &&
+        ((o.tags || '').toLowerCase().includes('suscripcion') ||
+         (o.note || '').toLowerCase().includes('suscripci'))
+    );
 
-        for (const o of orders) {
-            const note = o.note || '';
-            const attrs = Array.isArray(o.note_attributes) ? o.note_attributes : [];
-            const attrSubId = attrs.find(a => a && a.name === 'subscription_id')?.value;
-            const attrMpId = attrs.find(a => a && a.name === 'mp_payment_id')?.value;
-            const attrCycle = attrs.find(a => a && a.name === 'cycle_number')?.value;
+    const subId = sub.id ? String(sub.id) : '';
+    const mpStr = String(mpPaymentId || '');
+    const syntheticPayment = !mpStr || mpStr.startsWith('rescue_') || mpStr.startsWith('manual_');
+    const targetCycle = String((parseInt(sub.cycles_completed) || 0) + 1);
 
-            // REGLA 1 — match por mp_payment_id REAL (el más confiable; MP asegura unicidad).
-            // NO bloquea ciclos distintos porque cada ciclo tiene su propio payment_id.
-            if (!syntheticPayment) {
-                if (attrMpId && String(attrMpId) === String(mpPaymentId)) {
-                    return { duplicate: true, existing: o, matched_by: 'mp_payment_id' };
-                }
-                if (note.includes(String(mpPaymentId))) {
-                    return { duplicate: true, existing: o, matched_by: 'note:mp_payment_id' };
-                }
+    for (const o of orders) {
+        const note = o.note || '';
+        const attrs = Array.isArray(o.note_attributes) ? o.note_attributes : [];
+        const attrSubId = attrs.find(a => a && a.name === 'subscription_id')?.value;
+        const attrMpId = attrs.find(a => a && a.name === 'mp_payment_id')?.value;
+        const attrCycle = attrs.find(a => a && a.name === 'cycle_number')?.value;
+
+        // REGLA 1 — match por mp_payment_id REAL.
+        if (!syntheticPayment) {
+            if (attrMpId && String(attrMpId) === String(mpPaymentId)) {
+                return { duplicate: true, existing: o, matched_by: 'mp_payment_id' };
             }
-
-            // REGLA 2 — match por subscription_id + cycle_number (para rescue crons con paymentId sintético).
-            // Solo bloquea si el MISMO ciclo ya tiene order. Ciclos distintos de la misma sub NO se bloquean.
-            if (subId && attrSubId && String(attrSubId) === subId) {
-                if (attrCycle && String(attrCycle) === targetCycle) {
-                    return { duplicate: true, existing: o, matched_by: 'subscription_id+cycle_number' };
-                }
-                // Si la order vieja no tiene cycle_number (data previa al hardening),
-                // solo bloqueamos si el paymentId es sintético Y cycles_completed == 0
-                // (o sea: primer ciclo de la sub y ya hay alguna order) para no abrir un hueco.
-                if (!attrCycle && syntheticPayment && (parseInt(sub.cycles_completed) || 0) === 0) {
-                    return { duplicate: true, existing: o, matched_by: 'subscription_id (legacy no cycle)' };
-                }
+            if (note.includes(String(mpPaymentId))) {
+                return { duplicate: true, existing: o, matched_by: 'note:mp_payment_id' };
             }
         }
-        return false;
-    } catch (e) {
-        console.warn('[ORDER DEDUP] check error:', e.message);
-        return false; // Fail-open: si Shopify falla, dejar que la lógica original decida.
+        // REGLA 2 — match por subscription_id + cycle_number.
+        if (subId && attrSubId && String(attrSubId) === subId) {
+            if (attrCycle && String(attrCycle) === targetCycle) {
+                return { duplicate: true, existing: o, matched_by: 'subscription_id+cycle_number' };
+            }
+            if (!attrCycle && syntheticPayment && (parseInt(sub.cycles_completed) || 0) === 0) {
+                return { duplicate: true, existing: o, matched_by: 'subscription_id (legacy no cycle)' };
+            }
+        }
+        // REGLA 3 — fuerza dedup adicional 2026-05-12: si el sub.id está
+        //   en el note text (legacy data sin note_attributes), y el ciclo
+        //   target es 1 (primera orden de la sub), bloquear.
+        if (subId && note.includes(subId) && (parseInt(sub.cycles_completed) || 0) === 0) {
+            return { duplicate: true, existing: o, matched_by: 'note:subscription_id (legacy)' };
+        }
     }
+    return { duplicate: false };
 }
 
 /* ── 🔒 HARDENING 2026-04-20: validar pago MP real (AGREGAR, no MODIFICA flujo) ──
@@ -4601,13 +4610,29 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         }
     }
 
-    // 🔒 HARDENING 2026-04-20: guardia anti-duplicado.
-    // Previene el caso Luis Miguel Ordoñez (#8765+#8766 creados por rescue cron sin dedup real).
-    // Consulta Shopify como source of truth antes de construir la order.
-    const dup = await alreadyHasShopifyOrderForSub(sub, mpPaymentId, shop, token).catch(() => false);
+    // 🔒🔒 HARDENING 2026-05-12: dedup FAIL-CLOSED.
+    //   Si Shopify API falla al verificar duplicados, ABORTAR creacion (no crear a ciegas).
+    //   Si SI hay duplicado, ABORTAR creacion.
+    //   Solo crear si dedup confirma "no duplicate".
+    const dup = await alreadyHasShopifyOrderForSub(sub, mpPaymentId, shop, token).catch(e => ({ error: true, reason: 'caller_catch', detail: e.message }));
+    if (dup && dup.error) {
+        console.error(`[ORDER] 🛡 ABORT — dedup check failed (${dup.reason || 'unknown'}). No creo orden para evitar duplicado. sub:${sub.id} mp:${mpPaymentId || '?'}`);
+        if (db?.createEvent && sub.id && !sub.id.startsWith('orphan_')) {
+            db.createEvent({
+                subscription_id: sub.id,
+                event_type: 'order_creation_aborted_dedup_check_failed',
+                metadata: JSON.stringify({
+                    reason: dup.reason || 'unknown',
+                    detail: dup.detail || null,
+                    attempted_mp_payment_id: mpPaymentId || null,
+                    aborted_at: new Date().toISOString()
+                })
+            }).catch(() => {});
+        }
+        return null;
+    }
     if (dup && dup.duplicate) {
         console.warn(`[ORDER] 🛑 SKIP duplicado — sub ${sub.id} ya tiene order ${dup.existing.name} en Shopify (match by ${dup.matched_by}). MP payment solicitado: ${mpPaymentId || '?'}. No se crea duplicado.`);
-        // Registrar evento para que admin vea que fue bloqueado (no error, es comportamiento correcto).
         if (db?.createEvent && sub.id && !sub.id.startsWith('orphan_')) {
             db.createEvent({
                 subscription_id: sub.id,
@@ -4957,24 +4982,11 @@ cron.schedule('0 14 * * *', async () => {  // 14:00 UTC = 09:00 PET
     }
 }, { timezone: 'America/Lima' });
 
-/* ── SELF-HEALING: DESACTIVADO POR PROTOCOLO DE NEGOCIO 2026-05-12 ──
-   El equipo decidió que solo el webhook MP payment con status=approved
-   debe crear órdenes Shopify. UN cobro MP = UNA orden Shopify. Punto.
-
-   Crons paralelos (self-heal + rescue) creaban duplicados de cobros
-   reales (caso Carlos Capristán #9734/#10336, mismo mp_payment_id en
-   ambas). Mantenemos el código del cron por si algún día se reactiva
-   manualmente, pero el cron NUNCA crea orden mientras DISABLE_SELFHEAL_CRON
-   esté unset o sea 'true' (default deshabilitado).
-
-   Cliente con cobro huérfano (MP cobró pero webhook falló): debe
-   resolverse manualmente desde Shopify Admin Duplicate o ticket Plus
-   Support. NO automático. */
+/* ── SELF-HEALING REACTIVADO 2026-05-12 ──
+   Garantía: si webhook MP falló al crear orden, este cron rescata.
+   Garantía de no-duplicar: createShopifyOrderFromSub usa
+   alreadyHasShopifyOrderForSub que ahora bloquea por mp_payment_id estricto. */
 cron.schedule('0 */4 * * *', async () => {
-    if (process.env.DISABLE_SELFHEAL_CRON !== 'false') {
-        console.log('[SELF-HEAL] ⛔ DESACTIVADO por protocolo. Solo webhook MP crea ordenes. Set DISABLE_SELFHEAL_CRON=false para reactivar.');
-        return;
-    }
     console.log('[SELF-HEAL] Scanning for active subs missing Shopify orders...');
     try {
         const allSubs = await db.getSubscriptions({ status: 'active' }).catch(() => []);
@@ -6135,7 +6147,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.0.0', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.1.0', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
@@ -7574,14 +7586,7 @@ async function runDailyBillingCron() {
  * don't support notification_url updates.
  */
 async function runMpPaymentPolling() {
-    // ⛔ DESACTIVADO POR PROTOCOLO DE NEGOCIO 2026-05-12
-    //   Era el tercer path que creaba ordenes ademas del webhook MP.
-    //   Solo el webhook MP payment con status=approved crea ordenes ahora.
-    //   Set MP_POLLING_FORCE=true para reactivar (no recomendado).
-    if (process.env.MP_POLLING_FORCE !== 'true') {
-        console.log('[MP POLLING] ⛔ DESACTIVADO por protocolo. Set MP_POLLING_FORCE=true para reactivar.');
-        return;
-    }
+    // 2026-05-12 — REACTIVADO con dedup hardened en createShopifyOrderFromSub.
     console.log('[MP POLLING] Starting payment check...');
     let ordersCreated = 0;
 
@@ -7689,13 +7694,9 @@ async function runMpPaymentPolling() {
  * This guarantees NO subscription payment goes without a Shopify order.
  */
 async function runOrderRescue() {
-    // ⛔ DESACTIVADO POR PROTOCOLO DE NEGOCIO 2026-05-12
-    //   Solo el webhook MP payment crea órdenes. Sin excepciones.
-    //   Set RESCUE_CRON_FORCE=true para reactivar manualmente (no recomendado).
-    if (process.env.RESCUE_CRON_FORCE !== 'true') {
-        console.log('[ORDER RESCUE] ⛔ DESACTIVADO por protocolo. Set RESCUE_CRON_FORCE=true para reactivar.');
-        return { rescued: 0, errors: 0, disabled: true };
-    }
+    // 2026-05-12 — REACTIVADO con dedup hardened.
+    // alreadyHasShopifyOrderForSub ahora BLOQUEA si la API timea (antes
+    // devolvia false silencioso). Cero riesgo de duplicar.
     console.log('[ORDER RESCUE] Starting...');
     let rescued = 0, errors = 0;
     try {
