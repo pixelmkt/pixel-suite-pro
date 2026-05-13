@@ -2659,6 +2659,26 @@
       const body = document.getElementById('ml-body').value.trim();
       const headerTitle = document.getElementById('ml-header').value.trim() || 'Club Black Diamond';
       if (!subject || !body) { toast('Completa asunto y cuerpo', 'err'); return; }
+
+      // 2026-05-13: PRE-FLIGHT — chequear si Resend está listo antes de prometer envíos
+      try {
+        const health = await api('/api/marketing/email-health');
+        if (health.sandbox_mode === true) {
+          const msg = '⚠️ RESEND EN MODO SANDBOX\n\n' +
+            'Resend solo permite enviar a marketing@labnutrition.com porque el dominio NO está verificado todavía.\n\n' +
+            'Si seguís adelante, los emails a otros destinatarios van a ser RECHAZADOS por Resend (0% deliverability).\n\n' +
+            'Para arreglarlo:\n' +
+            health.instructions.join('\n') + '\n\n' +
+            '¿Querés seguir igual? (no recomendado)';
+          if (!confirm(msg)) return;
+        } else if (!health.ready_to_send_anywhere) {
+          if (!confirm('El stack de email no está completamente listo:\n\n' + (health.warning || 'estado desconocido') + '\n\n¿Seguir igual?')) return;
+        }
+      } catch (e) {
+        // si el health check falla, igual permitimos seguir pero advertimos
+        if (!confirm('No pude verificar el estado del email stack (' + e.message + '). ¿Seguir igual?')) return;
+      }
+
       const audCount = _mlAudienceCache ? _mlAudienceCache.count : '?';
       if (!confirm('Enviarás la campaña a ' + audCount + ' destinatarios del segmento "' + segment + '". ¿Confirmar?')) return;
       const btn = document.querySelector('#p-remarketing .btn-r');

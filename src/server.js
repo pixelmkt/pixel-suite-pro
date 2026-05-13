@@ -6194,7 +6194,7 @@ app.get('/api/portal/:email', async (req, res) => {
    The /api/webhooks/mercadopago alias (line ~1859) also forwards there. */
 
 /* ── Health check ── */
-app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.4.4', ts: new Date() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', port: PORT, version: '7.5.0', ts: new Date() }));
 
 /* ══════════════════════════════════════════════════
    🎁 BACKFILL GIFTS — para subs creadas antes del 15/4 sin gifts_planned
@@ -8381,6 +8381,59 @@ async function getShopifyMarketingCustomers(force = false) {
     }
     return collected;
 }
+
+/**
+ * 2026-05-13 — Health check de email sending stack.
+ *  Devuelve si Resend está en modo sandbox o tiene dominio verificado.
+ *  Permite al frontend bloquear el botón "Enviar campaña real" cuando
+ *  el setup no está listo.
+ *
+ *  Logic:
+ *  - Si RESEND_FROM contiene "@resend.dev" → SANDBOX (solo testing)
+ *  - Si RESEND_API_KEY no está set → SOLO_SMTP
+ *  - Manda un email de prueba A LA MISMA CUENTA y mira el resultado de Resend
+ */
+app.get('/api/marketing/email-health', async (req, res) => {
+    try {
+        const resendKey = process.env.RESEND_API_KEY;
+        const resendFrom = process.env.RESEND_FROM || '';
+        const smtpUser = process.env.SMTP_USER || '';
+        const fromMatch = resendFrom.match(/<([^>]+)>/);
+        const fromEmail = fromMatch ? fromMatch[1] : '';
+        const fromDomain = fromEmail.split('@')[1] || '';
+        const isSandbox = fromEmail.endsWith('@resend.dev') || fromDomain === 'resend.dev';
+
+        const status = {
+            ts: new Date().toISOString(),
+            stack: resendKey ? 'resend' : (smtpUser ? 'smtp_fallback' : 'none'),
+            from_configured: resendFrom || '(no configurado)',
+            from_email: fromEmail,
+            from_domain: fromDomain,
+            sandbox_mode: isSandbox,
+            ready_to_send_anywhere: !isSandbox && !!resendKey,
+            warning: null,
+            instructions: null
+        };
+
+        if (!resendKey) {
+            status.warning = 'RESEND_API_KEY no configurado. Se va a usar SMTP fallback si está disponible.';
+        } else if (isSandbox) {
+            status.warning = 'Resend está en modo SANDBOX. Solo podés enviar a marketing@labnutrition.com (la cuenta dueña). Para enviar a cualquier otro email, verificá un dominio en Resend.';
+            status.instructions = [
+                '1. https://resend.com/domains → Add Domain → labnutrition.com',
+                '2. Cargar los 3 DNS records que Resend muestra (MX + 2 TXT) en GoDaddy',
+                '3. Esperar verificación (5-30 min) hasta que aparezca "Verified" en Resend',
+                '4. En Ajustes del admin, cambiar RESEND_FROM a "Club Black Diamond" <club@labnutrition.com>',
+                '5. Volver a este endpoint para confirmar ready_to_send_anywhere=true'
+            ];
+        } else {
+            status.ok_msg = '✓ Email stack listo para mandar a cualquier destinatario. Dominio: ' + fromDomain;
+        }
+        res.json(status);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
 
 app.get('/api/marketing/segment-counts', async (req, res) => {
     try {
