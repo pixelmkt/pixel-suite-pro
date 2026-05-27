@@ -4576,6 +4576,30 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
                 }
             } catch (_) {}
         }
+        // 🔧 FIX 2026-05-27 (C): AUTO-RESOLVE DNI desde MP payer info
+        //   Si DNI sigue faltando después de buscar en Shopify customer/order anterior,
+        //   intentamos obtenerlo del MP payment payer (identification.number). MP suele
+        //   tener este dato cuando el comprador completa el formulario de tarjeta.
+        //   Reduce drásticamente el caso "DNI faltante bloquea pedido" (caso Jimenez).
+        if ((!sub.dni || String(sub.dni).trim().length < 8) && mpPaymentId &&
+            !String(mpPaymentId).startsWith('rescue_') &&
+            !String(mpPaymentId).startsWith('manual_') &&
+            !String(mpPaymentId).startsWith('selfheal_') &&
+            mp?.getPayment) {
+            try {
+                const paymentMP = await mp.getPayment(mpPaymentId).catch(() => null);
+                const idNum = paymentMP?.payer?.identification?.number;
+                if (idNum && String(idNum).trim().length >= 8) {
+                    sub.dni = String(idNum).trim();
+                    const idType = paymentMP?.payer?.identification?.type;
+                    if (idType === 'RUC' || idType === '06') sub.tipo_documento = '06';
+                    if (db?.updateSubscription && sub.id && !sub.id.startsWith('orphan_')) {
+                        db.updateSubscription(sub.id, { dni: sub.dni, tipo_documento: sub.tipo_documento || '01' }).catch(() => {});
+                    }
+                    console.log(`[ORDER] Auto-resolved DNI for ${sub.customer_email} from MP payer: ${sub.dni} (${idType || '01'})`);
+                }
+            } catch (_) {}
+        }
         // Re-check after auto-resolve
         shipCheck = assertSubShippable(sub);
         if (!shipCheck.ok) {
@@ -5055,8 +5079,12 @@ cron.schedule('0 14 * * *', async () => {  // 14:00 UTC = 09:00 PET
 /* ── SELF-HEALING REACTIVADO 2026-05-12 ──
    Garantía: si webhook MP falló al crear orden, este cron rescata.
    Garantía de no-duplicar: createShopifyOrderFromSub usa
-   alreadyHasShopifyOrderForSub que ahora bloquea por mp_payment_id estricto. */
-cron.schedule('0 */4 * * *', async () => {
+   alreadyHasShopifyOrderForSub que ahora bloquea por mp_payment_id estricto.
+   🔧 FIX 2026-05-27 (A): frecuencia 4h → 30 min para reducir lag máximo
+   entre cobro MP y pedido visible al cliente (4h → 30 min). El filtro
+   estricto de candidatos (últimos 7 días + sin gifts redundantes) mantiene
+   el costo Shopify API bajo. */
+cron.schedule('*/30 * * * *', async () => {
     console.log('[SELF-HEAL] Scanning for active subs missing Shopify orders...');
     try {
         const allSubs = await db.getSubscriptions({ status: 'active' }).catch(() => []);
@@ -5112,6 +5140,56 @@ cron.schedule('0 */4 * * *', async () => {
         console.log(`[SELF-HEAL] Done: ${created} created, ${failed} failed`);
     } catch (e) {
         console.error('[SELF-HEAL] Error:', e.message);
+    }
+}, { timezone: 'America/Lima' });
+
+/* ── ORPHAN DETECTOR (Fix B 2026-05-27) ────────────────────────
+   Cada 30 min escanea subs activated hace >30 min SIN shopify_order_id
+   vinculado. NO crea pedidos (eso lo hace el self-heal); SOLO alerta
+   con WARNING en logs + event 'orphan_detected' en la sub para que sea
+   visible en admin panel. Sirve como tripwire si el self-heal falla. */
+cron.schedule('*/30 * * * *', async () => {
+    try {
+        const allSubs = await db.getSubscriptions({ status: 'active' }).catch(() => []);
+        const now = Date.now();
+        const orphans = (Array.isArray(allSubs) ? allSubs : []).filter(s => {
+            const activated = s.activated_at ? new Date(s.activated_at).getTime() : 0;
+            const minutesAgo = activated ? (now - activated) / (1000 * 60) : 0;
+            return s.status === 'active'
+                && s.mp_preapproval_id
+                && (parseInt(s.cycles_completed) || 0) >= 1
+                && !s.shopify_order_id
+                && minutesAgo > 30
+                && minutesAgo < 60 * 24 * 7; // últimas 7d, evita ruido histórico
+        });
+        if (!orphans.length) return;
+        console.warn(`[ORPHAN DETECTOR] ⚠️  ${orphans.length} sub(s) activated >30min SIN shopify_order_id:`);
+        for (const s of orphans) {
+            console.warn(`  - ${s.id} | ${s.customer_email} | activated ${s.activated_at} | cycles ${s.cycles_completed}/${s.cycles_required}`);
+            // Idempotente: evita spam de eventos repitiendo cada 30 min
+            try {
+                const recent = db?.getEvents ? await db.getEvents(s.id, 5).catch(() => []) : [];
+                const alreadyAlerted = (recent || []).some(e =>
+                    e.event_type === 'orphan_detected' &&
+                    (now - new Date(e.created_at || 0).getTime()) < 60 * 60 * 1000 // ya alertado en última hora
+                );
+                if (!alreadyAlerted && db?.createEvent) {
+                    db.createEvent({
+                        subscription_id: s.id,
+                        event_type: 'orphan_detected',
+                        metadata: JSON.stringify({
+                            detected_at: new Date().toISOString(),
+                            activated_at: s.activated_at,
+                            cycles: `${s.cycles_completed}/${s.cycles_required}`,
+                            customer_email: s.customer_email,
+                            hint: 'Ejecutar POST /api/admin/subs/backfill-shopify-order-from-gifts o POST /api/admin/subscriptions/:id/retry-order'
+                        })
+                    }).catch(() => {});
+                }
+            } catch (_) {}
+        }
+    } catch (e) {
+        console.error('[ORPHAN DETECTOR] Error:', e.message);
     }
 }, { timezone: 'America/Lima' });
 
