@@ -4962,9 +4962,19 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
                 gifts_delivered: true,
                 gifts_delivered_at: new Date().toISOString(),
                 gifts_delivered_order_id: String(order.id),
-                gifts_delivered_order_name: '#' + order.order_number
+                gifts_delivered_order_name: '#' + order.order_number,
+                // 🔧 FIX 2026-05-27: vinculación shopify_order_* atómica en el mismo update.
+                //   ANTES: solo gifts_delivered_* se actualizaba acá; shopify_order_* dependía
+                //   del callsite (webhook MP, retry-order, etc.) y podía perderse por race con
+                //   metaobjects eventually-consistent o por callsites que no lo actualizaban
+                //   (retry-order, recoverOrdersForEmail, orphan rescue). Casos reportados:
+                //   Alexandra (#10969), Sebastian (#11203), Marco Antonio (#11246).
+                //   AHORA: garantizamos vinculación en cada creación exitosa de orden con regalo,
+                //   en una sola operación atómica con gifts_delivered_*.
+                shopify_order_id: String(order.id),
+                shopify_order_name: '#' + order.order_number
             });
-            console.log(`[ORDER] 🎁 Marked gifts_delivered=true for sub ${sub.id} (order #${order.order_number})`);
+            console.log(`[ORDER] 🎁 Marked gifts_delivered=true + shopify_order linked for sub ${sub.id} (order #${order.order_number})`);
         } catch (e) {
             console.warn('[ORDER] mark gifts_delivered error:', e.message);
         }
@@ -4979,6 +4989,19 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
                     mp_payment_id: mpPaymentId || null
                 })
             }).catch(() => {});
+        }
+    } else if (db?.updateSubscription && sub.id && !String(sub.id).startsWith('orphan_')) {
+        // 🔧 FIX 2026-05-27: caso SIN regalo (sub pre-15/abr sin gifts_planned, o cobros
+        //   recurrentes mes 2+). Garantizamos vinculación shopify_order_* aunque el callsite
+        //   (webhook MP, retry-order, etc.) no lo haga o falle. Idempotente: si el callsite
+        //   también actualiza, el segundo write sobre los mismos valores no rompe nada.
+        try {
+            await db.updateSubscription(sub.id, {
+                shopify_order_id: String(order.id),
+                shopify_order_name: '#' + order.order_number
+            });
+        } catch (e) {
+            console.warn('[ORDER] link shopify_order (no-gift case) error:', e.message);
         }
     }
 
