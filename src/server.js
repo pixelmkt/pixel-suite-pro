@@ -1338,6 +1338,137 @@ app.post('/api/admin/orders/cancel-phantoms', async (req, res) => {
     }
 });
 
+/** POST /api/admin/orders/cancel-rejected-phantom
+ *  2026-05-28 — ADITIVO. Cancela UNA orden Shopify fantasma TARGETED (no auto-detecta),
+ *  respaldada por un pago MP REJECTED. Distinta de /cancel-phantoms (ese cubre duplicados
+ *  del rescue cron con meta.rescued:true). Esta cubre el bug histórico de leer el status
+ *  TOP-LEVEL de authorized_payments ('processed'/'scheduled') como si fuera approved, que
+ *  creó órdenes "Pagado" sobre cobros realmente rechazados.
+ *
+ *  DOBLE GUARD obligatorio — IMPOSIBLE cancelar una orden con pago approved:
+ *    GUARD 1: la orden existe, NO está ya cancelada, y su note_attribute mp_payment_id
+ *             === expected_rejected_payment_id (lo que envía el admin, verificado a mano).
+ *    GUARD 2: mp.getPayment(expected_rejected_payment_id).status === 'rejected' EN VIVO.
+ *  Si cualquiera falla → 409 y NO cancela.
+ *
+ *  Cancela con el MISMO mecanismo probado de /cancel-phantoms:
+ *    cancel.json { reason:'other', email:false, refund:false, restock:false }.
+ *  Correcciones locales OPCIONALES: true_cycles (corrige cycles_completed inflado por el
+ *  fantasma) y relink_order_id/name (re-vincula shopify_order_id a la orden legítima de
+ *  abril, manteniendo el gate !shopify_order_id del self-heal en false). Registra event
+ *  'phantom_order_cancelled' para auditoría.
+ *
+ *  Body: { order_id, sub_id?, expected_rejected_payment_id, true_cycles?,
+ *          relink_order_id?, relink_order_name?, dry_run? (default true) }
+ *  NO toca webhook, crons, creación de órdenes ni funciones MP. */
+app.post('/api/admin/orders/cancel-rejected-phantom', async (req, res) => {
+    try {
+        const b = req.body || {};
+        const dryRun = b.dry_run !== false; // default TRUE (seguro)
+        const orderId = String(b.order_id || '').trim();
+        const subId = String(b.sub_id || '').trim();
+        const expectedRej = String(b.expected_rejected_payment_id || '').trim();
+        if (!orderId || !expectedRej) {
+            return res.status(400).json({ error: 'Faltan order_id y/o expected_rejected_payment_id' });
+        }
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'Shopify token not configured' });
+        if (!mp?.getPayment) return res.status(500).json({ error: 'MP no configurado (getPayment ausente) — fail-closed, no se cancela' });
+
+        // ── Traer la orden de Shopify
+        const getUrl = `https://${shop}/admin/api/2026-01/orders/${encodeURIComponent(orderId)}.json?fields=id,name,cancelled_at,financial_status,total_price,note_attributes,email`;
+        const gr = await fetch(getUrl, { headers: { 'X-Shopify-Access-Token': token } });
+        if (!gr.ok) return res.status(502).json({ error: `Shopify GET order ${gr.status}` });
+        const gd = await gr.json();
+        const order = gd.order;
+        if (!order) return res.status(404).json({ error: 'Orden no encontrada en Shopify' });
+
+        // Idempotencia: si ya está cancelada → no-op OK (re-ejecutable sin riesgo)
+        if (order.cancelled_at) {
+            return res.json({ ok: true, already_cancelled: true, order: { id: String(order.id), name: order.name, cancelled_at: order.cancelled_at } });
+        }
+
+        // GUARD 1 — el mp_payment_id de la orden debe coincidir EXACTO con el rechazado que envía el admin
+        const attrs = Array.isArray(order.note_attributes) ? order.note_attributes : [];
+        const orderMpId = (attrs.find(a => a && a.name === 'mp_payment_id') || {}).value || null;
+        if (String(orderMpId || '') !== expectedRej) {
+            return res.status(409).json({
+                error: 'GUARD1_FALLA: el mp_payment_id de la orden NO coincide con expected_rejected_payment_id. NO se cancela.',
+                order_mp_payment_id: orderMpId, expected: expectedRej
+            });
+        }
+
+        // GUARD 2 — el payment DEBE estar rejected en MP, verificado en vivo (fail-closed)
+        let pd = null;
+        try { pd = await mp.getPayment(expectedRej); }
+        catch (e) { return res.status(502).json({ error: 'No se pudo verificar el payment en MP (fail-closed, no se cancela): ' + e.message }); }
+        if (!pd || pd.status !== 'rejected') {
+            return res.status(409).json({
+                error: 'GUARD2_FALLA: el payment NO está rejected en MP. NO se cancela (protección anti-cancelación de orden legítima).',
+                mp_status: pd?.status || null, mp_status_detail: pd?.status_detail || null
+            });
+        }
+
+        const verified = {
+            order: { id: String(order.id), name: order.name, financial_status: order.financial_status, total_price: order.total_price },
+            mp_payment_id: orderMpId, mp_status: pd.status, mp_status_detail: pd.status_detail || null, amount: pd.transaction_amount || null
+        };
+
+        if (dryRun) {
+            return res.json({ ok: true, dry_run: true, guards_passed: true, would_cancel: verified, note: 'DRY RUN: nada se canceló. Re-ejecutar con dry_run:false para cancelar.' });
+        }
+
+        // ── Cancelar (mecanismo idéntico al probado en /cancel-phantoms)
+        const cr = await fetch(`https://${shop}/admin/api/2026-01/orders/${encodeURIComponent(orderId)}/cancel.json`, {
+            method: 'POST',
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: 'other', email: false, refund: false, restock: false })
+        });
+        if (!cr.ok) {
+            const txt = await cr.text();
+            return res.status(502).json({ error: `Shopify cancel ${cr.status}`, detail: txt.slice(0, 400), verified });
+        }
+
+        // ── Correcciones locales OPCIONALES + auditoría
+        const out = { ok: true, cancelled: verified };
+        if (subId && db?.getSubscription) {
+            const sub = await db.getSubscription(subId).catch(() => null);
+            if (sub && db.updateSubscription) {
+                const upd = {};
+                if (b.true_cycles !== undefined && b.true_cycles !== null && /^\d+$/.test(String(b.true_cycles))) {
+                    upd.cycles_completed = parseInt(b.true_cycles, 10);
+                }
+                if (b.relink_order_id) {
+                    upd.shopify_order_id = String(b.relink_order_id);
+                    if (b.relink_order_name) upd.shopify_order_name = String(b.relink_order_name);
+                }
+                if (Object.keys(upd).length) {
+                    await db.updateSubscription(subId, upd).catch(() => {});
+                    out.sub_updated = upd;
+                }
+            }
+            if (db.createEvent) {
+                await db.createEvent({
+                    subscription_id: subId,
+                    event_type: 'phantom_order_cancelled',
+                    metadata: JSON.stringify({
+                        shopify_order_id: String(order.id), order_name: order.name,
+                        mp_payment_id: orderMpId, mp_status: pd.status, mp_status_detail: pd.status_detail || null,
+                        amount: pd.transaction_amount || null, cancelled_at: new Date().toISOString(),
+                        reason: 'rejected_mp_payment_phantom', by: 'admin_cancel_rejected_phantom_endpoint'
+                    })
+                }).catch(() => {});
+            }
+        }
+        console.log(`[CANCEL-REJECTED-PHANTOM] OK ${order.name} (${orderId}) cancelled — mp ${orderMpId} status=${pd.status}`);
+        res.json(out);
+    } catch (e) {
+        console.error('[CANCEL-REJECTED-PHANTOM] Fatal:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 /** POST /api/admin/customers/sync-sub-tags
  *  2026-05-12 — ADITIVO. Sincroniza tags Shopify customers según estado de sub local.
  *  Permite crear Shopify Customer Segments dinámicos por estado de suscripción.
