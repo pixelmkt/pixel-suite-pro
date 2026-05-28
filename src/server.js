@@ -5335,11 +5335,58 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         }
     };
 
-    const r = await fetch(`https://${shop}/admin/api/2026-01/orders.json`, {
+    let r = await fetch(`https://${shop}/admin/api/2026-01/orders.json`, {
         method: 'POST',
         headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
         body: JSON.stringify(orderBody)
     });
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // 🛡 HARDENING 2026-05-28 — FAIL-SOFT DE REGALO (pedido pagado SIEMPRE entra)
+    //   PROBLEMA: el regalo se agrega como line item dentro del MISMO POST del pedido.
+    //   Si una variante de regalo queda inválida (producto archivado/borrado, variante
+    //   eliminada), Shopify rechaza el pedido COMPLETO → cliente COBRADO sin pedido
+    //   creado = el peor escenario. El regalo es un extra de cortesía; jamás debe tumbar
+    //   la orden del producto que el cliente pagó.
+    //   SOLUCIÓN (aditiva, solo en el path de error): si el POST falla Y la orden llevaba
+    //   regalo, reintentamos UNA vez SIN los line items de regalo. Si entra, marcamos la
+    //   sub needs_admin_review + evento 'gift_skipped_failsoft' para que el equipo mande el
+    //   regalo manualmente y corrija la config. NO marcamos gifts_delivered (el regalo NO
+    //   se entregó). El ciclo>0 + el dedup impiden re-intentos/duplicados después.
+    //   Camino feliz intacto: si la orden con regalo entra a la primera, esto no corre.
+    // ════════════════════════════════════════════════════════════════════════════
+    if (!r.ok && shouldDeliverGifts && giftLineItems.length > 0) {
+        const errTxt = await r.text().catch(() => '');
+        console.warn(`[ORDER] ⚠️ POST de orden falló (${r.status}) con regalo incluido para ${sub.customer_email}. Reintentando SIN regalo (fail-soft). Error: ${errTxt.slice(0, 220)}`);
+        const noGiftBody = JSON.parse(JSON.stringify(orderBody));
+        // Quitar SOLO los line items marcados como regalo (_gift=true). El producto pagado queda.
+        noGiftBody.order.line_items = (noGiftBody.order.line_items || []).filter(li =>
+            !(Array.isArray(li.properties) && li.properties.some(p => p && p.name === '_gift' && String(p.value) === 'true'))
+        );
+        // Limpiar el note_attribute de auditoría de regalo y taggear para ubicación rápida en admin.
+        if (Array.isArray(noGiftBody.order.note_attributes)) {
+            noGiftBody.order.note_attributes = noGiftBody.order.note_attributes.filter(a => a.name !== 'gift_included');
+        }
+        noGiftBody.order.tags = (noGiftBody.order.tags ? noGiftBody.order.tags + ',' : '') + 'regalo_omitido_revisar';
+        r = await fetch(`https://${shop}/admin/api/2026-01/orders.json`, {
+            method: 'POST',
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify(noGiftBody)
+        });
+        if (r.ok) {
+            shouldDeliverGifts = false; // el regalo NO se entregó → no marcar gifts_delivered abajo
+            console.warn(`[ORDER] ✅ Orden creada SIN regalo (fail-soft) para ${sub.customer_email}. Sub marcada para revisión de regalo.`);
+            if (db?.updateSubscription && sub.id && !String(sub.id).startsWith('orphan_')) {
+                db.updateSubscription(sub.id, {
+                    needs_admin_review: true,
+                    last_order_error: `Regalo omitido por variante inválida (fail-soft) ${new Date().toISOString()}`
+                }).catch(() => {});
+            }
+            if (db?.createEvent && sub.id && !String(sub.id).startsWith('orphan_')) {
+                db.createEvent({ subscription_id: sub.id, event_type: 'gift_skipped_failsoft', metadata: JSON.stringify({ gifts: sub.gifts_planned || [], reason: errTxt.slice(0, 220), at: new Date().toISOString() }) }).catch(() => {});
+            }
+        }
+    }
 
     if (!r.ok) {
         const err = await r.text();
