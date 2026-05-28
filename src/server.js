@@ -1399,7 +1399,15 @@ app.post('/api/admin/orders/cancel-rejected-phantom', async (req, res) => {
             });
         }
 
-        // GUARD 2 — el payment DEBE estar rejected en MP, verificado en vivo (fail-closed)
+        // GUARD 2 — el payment DEBE estar rejected en MP, verificado en vivo (fail-closed).
+        //   En este backend el MP_ACCESS_TOKEN vive en Shopify y se carga lazy. Lo aseguramos
+        //   ANTES de getPayment, mismo patron que findRealMpPaymentForSub (linea ~4660).
+        if (!process.env.MP_ACCESS_TOKEN) {
+            try {
+                const dyn = await readFromShopify().catch(() => ({}));
+                if (dyn?.mp_access_token) process.env.MP_ACCESS_TOKEN = dyn.mp_access_token;
+            } catch {}
+        }
         let pd = null;
         try { pd = await mp.getPayment(expectedRej); }
         catch (e) { return res.status(502).json({ error: 'No se pudo verificar el payment en MP (fail-closed, no se cancela): ' + e.message }); }
