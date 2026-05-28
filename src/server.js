@@ -3029,7 +3029,7 @@ app.get('/api/products/search', async (req, res) => {
                             status
                             featuredImage { url }
                             totalInventory
-                            variants(first: 3) {
+                            variants(first: 100) {
                                 edges {
                                     node { id title sku price inventoryQuantity }
                                 }
