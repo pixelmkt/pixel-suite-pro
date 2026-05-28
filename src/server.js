@@ -2274,6 +2274,75 @@ app.get('/api/admin/audit/orders-vs-mp-real-status', async (req, res) => {
     } catch (e) { console.error('[AUDIT MP-REAL]', e); res.status(500).json({ error: e.message }); }
 });
 
+/** GET /api/admin/audit/sub-order-trace?subs=sub_a,sub_b — READ-ONLY.
+ *  Para cada sub: devuelve el registro local (cycles_completed, last_charge_at, shopify_order_*)
+ *  + TODAS las órdenes Shopify del email del cliente con los VALORES de note_attributes
+ *  (mp_payment_id, cycle_number, subscription_id, mp_preapproval_id) + created_at + financial_status
+ *  + cancelled_at. Sirve para clasificar definitivamente si una orden está respaldada por un pago
+ *  approved (legítima) o rejected (fantasma). NO cancela ni modifica NADA. */
+app.get('/api/admin/audit/sub-order-trace', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'No Shopify token' });
+        const subIds = String(req.query.subs || '').split(',').map(s => s.trim()).filter(Boolean);
+        if (!subIds.length) return res.status(400).json({ error: 'Pasa ?subs=sub_a,sub_b separados por coma' });
+
+        const WANT = ['mp_payment_id', 'mp_preapproval_id', 'cycle_number', 'subscription_id', 'gift_included'];
+        const out = [];
+        for (const sid of subIds) {
+            try {
+                const sub = await db.getSubscription(sid).catch(() => null);
+                if (!sub) { out.push({ sub_id: sid, error: 'Sub no encontrada localmente' }); continue; }
+                const local = {
+                    sub_id: sub.id,
+                    customer_email: sub.customer_email,
+                    status: sub.status,
+                    cycles_completed: sub.cycles_completed,
+                    last_charge_at: sub.last_charge_at || null,
+                    mp_preapproval_id: sub.mp_preapproval_id || null,
+                    shopify_order_id: sub.shopify_order_id || null,
+                    shopify_order_name: sub.shopify_order_name || null
+                };
+                // Todas las órdenes del email (status=any) para detectar duplicados / cuál es cada ciclo
+                let orders = [];
+                if (sub.customer_email) {
+                    const url = `https://${shop}/admin/api/2026-01/orders.json?status=any&email=${encodeURIComponent(sub.customer_email)}&limit=50&fields=id,name,order_number,created_at,cancelled_at,financial_status,total_price,note_attributes`;
+                    const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': token } });
+                    if (r.ok) {
+                        const data = await r.json();
+                        orders = (data.orders || []).map(o => {
+                            const attrs = {};
+                            (o.note_attributes || []).forEach(a => { if (WANT.includes(a.name)) attrs[a.name] = a.value; });
+                            const belongs = attrs.subscription_id === sub.id ||
+                                (sub.mp_preapproval_id && attrs.mp_preapproval_id === sub.mp_preapproval_id) ||
+                                String(o.id) === String(sub.shopify_order_id) ||
+                                o.name === sub.shopify_order_name;
+                            return {
+                                name: o.name,
+                                id: String(o.id),
+                                created_at: o.created_at,
+                                cancelled_at: o.cancelled_at || null,
+                                financial_status: o.financial_status,
+                                total_price: o.total_price,
+                                mp_payment_id: attrs.mp_payment_id || null,
+                                cycle_number: attrs.cycle_number || null,
+                                subscription_id: attrs.subscription_id || null,
+                                mp_preapproval_id: attrs.mp_preapproval_id || null,
+                                belongs_to_this_sub: !!belongs
+                            };
+                        }).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+                    } else {
+                        orders = { error: `Shopify ${r.status}` };
+                    }
+                }
+                out.push({ local, orders });
+            } catch (e) { out.push({ sub_id: sid, error: e.message }); }
+        }
+        res.json({ traced: out.length, results: out, note: 'Solo lectura. No se canceló ni modificó nada.' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /** GET /api/admin/subs-incomplete — lista suscripciones a las que les falta DNI o dirección.
  *  Se usan para que el admin recupere los datos del cliente antes de la siguiente carga MP.
  *  Solo lectura. No modifica nada. */
