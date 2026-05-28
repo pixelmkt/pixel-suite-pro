@@ -2191,6 +2191,85 @@ app.get('/api/admin/orders/audit-subscriptions', async (req, res) => {
     } catch (e) { console.error('[AUDIT]', e); res.status(500).json({ error: e.message }); }
 });
 
+/** GET /api/admin/audit/orders-vs-mp-real-status — RECONCILIACIÓN (solo lectura, NO cancela nada).
+ *  Para cada suscripción con shopify_order_id vinculado, consulta el status REAL de sus cobros
+ *  MP vía mp.getPayment (no el status 'processed' del authorized_payment, que es engañoso).
+ *  Detecta el caso #11251: ORDEN EXISTE pero el cobro MP que la respaldaba quedó 'rejected'.
+ *  No modifica nada — solo reporta para que el admin decida. Cap defensivo de llamadas a MP.
+ *  Query: ?limit=200 (subs a revisar) &maxPaymentsPerSub=6 */
+app.get('/api/admin/audit/orders-vs-mp-real-status', async (req, res) => {
+    try {
+        let mpToken = process.env.MP_ACCESS_TOKEN;
+        if (!mpToken) {
+            try { const dyn = await readFromShopify().catch(() => ({})); if (dyn?.mp_access_token) { process.env.MP_ACCESS_TOKEN = dyn.mp_access_token; mpToken = dyn.mp_access_token; } } catch {}
+        }
+        if (!mpToken) return res.status(500).json({ error: 'No MP_ACCESS_TOKEN disponible' });
+        const limit = Math.min(parseInt(req.query.limit) || 200, 500);
+        const maxPay = Math.min(parseInt(req.query.maxPaymentsPerSub) || 6, 12);
+
+        const all = await db.getSubscriptions().catch(() => []);
+        // Solo nos interesan las que TIENEN orden vinculada y un preapproval para consultar MP.
+        const targets = all
+            .filter(s => (s.shopify_order_id || s.shopify_order_name) && s.mp_preapproval_id)
+            .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+            .slice(0, limit);
+
+        const phantom = [];      // 🔴 orden existe pero NINGÚN cobro real approved
+        const latestRejected = []; // 🟠 último intento rejected (informativo)
+        const okList = [];       // ✅ al menos un cobro real approved
+        const errors = [];       // ⚪ no se pudo verificar en MP
+        let mpCalls = 0;
+
+        for (const s of targets) {
+            try {
+                const r = await fetch(`https://api.mercadopago.com/authorized_payments/search?preapproval_id=${s.mp_preapproval_id}`, { headers: { Authorization: `Bearer ${mpToken}` } });
+                if (!r.ok) { errors.push({ sub: s.id, email: s.customer_email, order: s.shopify_order_name, reason: `MP search ${r.status}` }); continue; }
+                const data = await r.json();
+                const recs = (data?.results || [])
+                    .sort((a, b) => new Date(b.date_created) - new Date(a.date_created))
+                    .slice(0, maxPay);
+                let approvedCount = 0, rejectedCount = 0;
+                let latestReal = null;
+                const detail = [];
+                for (const rec of recs) {
+                    const pid = String(rec.payment?.id || rec.id || '');
+                    let realStatus = rec.payment?.status || null;
+                    if (/^\d+$/.test(pid) && mp?.getPayment) {
+                        mpCalls++;
+                        const pd = await mp.getPayment(pid).catch(() => null);
+                        if (pd) realStatus = pd.status;
+                    }
+                    if (latestReal === null) latestReal = realStatus;
+                    if (realStatus === 'approved') approvedCount++;
+                    else if (realStatus === 'rejected') rejectedCount++;
+                    detail.push({ payment_id: pid, authorized_payment_status: rec.status, real_status: realStatus, amount: rec.transaction_amount, date: rec.date_created });
+                }
+                const row = { sub: s.id, email: s.customer_email, order: s.shopify_order_name, order_id: s.shopify_order_id, cycles_completed: s.cycles_completed, approved: approvedCount, rejected: rejectedCount, latest_real_status: latestReal, payments: detail };
+                if (approvedCount === 0 && rejectedCount > 0) phantom.push(row);
+                else if (latestReal === 'rejected') latestRejected.push(row);
+                else okList.push(row);
+            } catch (e) {
+                errors.push({ sub: s.id, email: s.customer_email, order: s.shopify_order_name, reason: e.message });
+            }
+        }
+
+        res.json({
+            scanned: targets.length,
+            mp_getpayment_calls: mpCalls,
+            summary: {
+                phantom_orders_no_approved_payment: phantom.length,
+                latest_charge_rejected_but_has_approved_history: latestRejected.length,
+                ok_has_approved_payment: okList.length,
+                could_not_verify: errors.length
+            },
+            phantom_orders: phantom,          // 🔴 ÓRDENES A REVISAR — sin ningún cobro real approved
+            latest_rejected: latestRejected,  // 🟠 informativo (último intento falló, pero tienen historial OK)
+            errors,
+            note: 'Solo lectura. No se canceló ni modificó nada. phantom_orders = órdenes Shopify cuyo respaldo MP NO está approved (revisar y decidir).'
+        });
+    } catch (e) { console.error('[AUDIT MP-REAL]', e); res.status(500).json({ error: e.message }); }
+});
+
 /** GET /api/admin/subs-incomplete — lista suscripciones a las que les falta DNI o dirección.
  *  Se usan para que el admin recupere los datos del cliente antes de la siguiente carga MP.
  *  Solo lectura. No modifica nada. */
@@ -4517,16 +4596,35 @@ async function findRealMpPaymentForSub(sub) {
         });
         if (!r.ok) return null;
         const data = await r.json();
-        const approved = (data?.results || [])
-            .filter(p => p.payment?.status === 'approved' || p.status === 'processed')
-            .sort((a, b) => new Date(b.date_created) - new Date(a.date_created));
-        if (!approved.length) return null;
-        const latest = approved[0];
-        return {
-            id: String(latest.payment?.id || latest.id),
-            amount: latest.transaction_amount,
-            date_created: latest.date_created
-        };
+        // 🔒🔒 HARDENING 2026-05-28 — NUNCA devolver un payment que no esté REALMENTE approved.
+        //   ANTES: aceptábamos `p.status === 'processed'`. PERO en authorized_payments el
+        //   status de nivel superior ('processed'/'authorized') significa "MP procesó el
+        //   intento", NO "el cobro se aprobó". El cobro real vive en p.payment.status y
+        //   puede quedar 'rejected' (fondos insuficientes / decline diferido). Devolver ese
+        //   id generaba pedidos fantasma "Pagado" sin plata real (caso #11251 Verónica).
+        //   AHORA: tomamos candidatos (más reciente primero) y verificamos el status REAL
+        //   vía mp.getPayment(); devolvemos el PRIMERO que esté 'approved'. Si ninguno → null.
+        const candidates = (data?.results || [])
+            .filter(p => p.payment?.status === 'approved' || p.status === 'processed' || p.status === 'authorized')
+            .sort((a, b) => new Date(b.date_created) - new Date(a.date_created))
+            .slice(0, 6); // cap defensivo: solo revisamos los 6 más recientes
+        if (!candidates.length) return null;
+        for (const c of candidates) {
+            const realId = String(c.payment?.id || c.id || '');
+            if (!/^\d+$/.test(realId)) continue; // necesitamos un payment id numérico real
+            if (mp?.getPayment) {
+                const pd = await mp.getPayment(realId).catch(() => null);
+                if (pd && pd.status === 'approved') {
+                    return { id: realId, amount: pd.transaction_amount ?? c.transaction_amount, date_created: c.date_created };
+                }
+                continue; // este candidato NO está approved en MP → probamos el siguiente
+            }
+            // Sin acceso a getPayment: solo confiar si el search ya marcó payment.status === 'approved'
+            if (c.payment?.status === 'approved') {
+                return { id: realId, amount: c.transaction_amount, date_created: c.date_created };
+            }
+        }
+        return null; // ningún candidato verificó como approved → no hay payment real respaldando
     } catch (e) {
         console.warn('[MP PAYMENT LOOKUP] error:', e.message);
         return null;
@@ -4744,6 +4842,68 @@ async function createShopifyOrderFromSub(sub, mpPaymentId) {
         }
         console.log(`[ORDER] ✅ Reemplazando paymentId sintético '${mpIdStr || '(vacío)'}' por real ${realPay.id} (S/${realPay.amount}) desde MP`);
         mpPaymentId = realPay.id;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // 🔒🔒🔒 HARDENING 2026-05-28 — VERIFICACIÓN REAL DE APROBACIÓN MP (CHOKEPOINT ÚNICO)
+    //   PROBLEMA RAÍZ (caso #11251 Verónica): MP puede reportar un intento como
+    //   'processed' / 'authorized' en authorized_payments y luego el cobro real quedar
+    //   'rejected' (fondos insuficientes, decline diferido). El status del
+    //   authorized_payment NO es el status real del cobro. Crear orden sobre eso = pedido
+    //   fantasma marcado "Pagado" sin plata real → descuadre, despacho indebido, riesgo legal.
+    //
+    //   SOLUCIÓN DEFINITIVA: antes de crear CUALQUIER orden, resolvemos el payment a un id
+    //   numérico real y confirmamos mp.getPayment().status === 'approved' EN TIEMPO REAL.
+    //   - Si llega un preapproval_id (alfanumérico) o id no numérico → lo resolvemos al
+    //     último payment REAL approved vía findRealMpPaymentForSub (ya endurecida).
+    //   - FAIL-CLOSED: si MP no responde, o el payment no está approved → NO se crea orden.
+    //     Los crons self-heal reintentarán cuando MP confirme. Preferimos demorar un pedido
+    //     legítimo unos minutos antes que crear un pedido fantasma.
+    //   Cubre TODOS los paths: webhook recurrente, retry-order, create-order, recover,
+    //   batch, crons de rescate y activación. Es ADITIVO: barrera nueva, no altera cómo se
+    //   arma la orden más abajo. Es el único punto por el que pasan los 8 callers.
+    // ════════════════════════════════════════════════════════════════════════════
+    if (mp?.getPayment) {
+        let _verId = String(mpPaymentId || '');
+        // Si no es un payment id numérico real (preapproval id, vacío, etc.) → resolver.
+        if (!/^\d+$/.test(_verId)) {
+            const _real = await findRealMpPaymentForSub(sub).catch(() => null);
+            if (_real?.id && /^\d+$/.test(String(_real.id))) _verId = String(_real.id);
+        }
+        // Debe quedar un id numérico para poder verificar el cobro en MP.
+        if (!/^\d+$/.test(_verId)) {
+            console.error(`[ORDER] 🚫 BLOQUEADO — sin payment MP numérico verificable para sub ${sub.id} (${sub.customer_email}). mpPaymentId entrante='${String(mpPaymentId || '')}'. NO se crea orden (sin respaldo MP real).`);
+            if (db?.updateSubscription && sub.id && !String(sub.id).startsWith('orphan_')) {
+                db.updateSubscription(sub.id, { last_order_error: `Sin payment MP numérico verificable (${new Date().toISOString()})`, needs_admin_review: true }).catch(() => {});
+            }
+            if (db?.createEvent && sub.id && !String(sub.id).startsWith('orphan_')) {
+                db.createEvent({ subscription_id: sub.id, event_type: 'order_blocked_unresolved_payment', metadata: JSON.stringify({ incoming_mp: String(mpPaymentId || ''), at: new Date().toISOString() }) }).catch(() => {});
+            }
+            return null;
+        }
+        // Verificación REAL del cobro en MP.
+        let _pd = null;
+        try { _pd = await mp.getPayment(_verId); }
+        catch (e) {
+            console.error(`[ORDER] 🛡 ABORT (fail-closed) — no se pudo verificar payment ${_verId} en MP (${e.message}). NO se crea orden; los crons reintentarán.`);
+            if (db?.updateSubscription && sub.id && !String(sub.id).startsWith('orphan_')) {
+                db.updateSubscription(sub.id, { last_order_error: `No se pudo verificar payment ${_verId} en MP (${new Date().toISOString()})`, needs_admin_review: true }).catch(() => {});
+            }
+            return null;
+        }
+        if (!_pd || _pd.status !== 'approved') {
+            console.error(`[ORDER] 🚫 BLOQUEADO — payment ${_verId} NO está approved en MP (status=${_pd?.status || 'null'}, detail=${_pd?.status_detail || '-'}). NO se crea orden. sub ${sub.id} ${sub.customer_email}. Caso típico: fondos insuficientes / rechazo diferido.`);
+            if (db?.updateSubscription && sub.id && !String(sub.id).startsWith('orphan_')) {
+                db.updateSubscription(sub.id, { last_order_error: `Payment ${_verId} no approved (status=${_pd?.status || 'null'}) ${new Date().toISOString()}`, needs_admin_review: true }).catch(() => {});
+            }
+            if (db?.createEvent && sub.id && !String(sub.id).startsWith('orphan_')) {
+                db.createEvent({ subscription_id: sub.id, event_type: 'order_blocked_payment_not_approved', metadata: JSON.stringify({ mp_payment_id: _verId, mp_status: _pd?.status || null, mp_status_detail: _pd?.status_detail || null, amount: _pd?.transaction_amount || null, at: new Date().toISOString() }) }).catch(() => {});
+            }
+            return null;
+        }
+        // ✅ Cobro confirmado approved. Usamos el id real verificado en la orden (trazabilidad).
+        mpPaymentId = _verId;
+        console.log(`[ORDER] ✅ Payment ${_verId} verificado APPROVED en MP (S/${_pd.transaction_amount}). Procediendo a crear orden para ${sub.customer_email}.`);
     }
 
     // Resolver dirección de envío
