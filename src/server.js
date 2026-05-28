@@ -2216,6 +2216,7 @@ app.get('/api/admin/audit/orders-vs-mp-real-status', async (req, res) => {
 
         const phantom = [];      // 🔴 orden existe pero NINGÚN cobro real approved
         const latestRejected = []; // 🟠 último intento rejected (informativo)
+        const anyRejected = [];  // 🟠 cualquier sub con >=1 intento rejected (para cruzar contra pedidos)
         const okList = [];       // ✅ al menos un cobro real approved
         const errors = [];       // ⚪ no se pudo verificar en MP
         let mpCalls = 0;
@@ -2245,6 +2246,7 @@ app.get('/api/admin/audit/orders-vs-mp-real-status', async (req, res) => {
                     detail.push({ payment_id: pid, authorized_payment_status: rec.status, real_status: realStatus, amount: rec.transaction_amount, date: rec.date_created });
                 }
                 const row = { sub: s.id, email: s.customer_email, order: s.shopify_order_name, order_id: s.shopify_order_id, cycles_completed: s.cycles_completed, approved: approvedCount, rejected: rejectedCount, latest_real_status: latestReal, payments: detail };
+                if (rejectedCount > 0) anyRejected.push(row); // cualquier rejected → a revisar manualmente
                 if (approvedCount === 0 && rejectedCount > 0) phantom.push(row);
                 else if (latestReal === 'rejected') latestRejected.push(row);
                 else okList.push(row);
@@ -2258,11 +2260,13 @@ app.get('/api/admin/audit/orders-vs-mp-real-status', async (req, res) => {
             mp_getpayment_calls: mpCalls,
             summary: {
                 phantom_orders_no_approved_payment: phantom.length,
+                subs_with_any_rejected_attempt: anyRejected.length,
                 latest_charge_rejected_but_has_approved_history: latestRejected.length,
                 ok_has_approved_payment: okList.length,
                 could_not_verify: errors.length
             },
             phantom_orders: phantom,          // 🔴 ÓRDENES A REVISAR — sin ningún cobro real approved
+            subs_with_rejected: anyRejected,  // 🟠 TODA sub con >=1 cobro rejected (cruzar payment_id rejected contra el pedido)
             latest_rejected: latestRejected,  // 🟠 informativo (último intento falló, pero tienen historial OK)
             errors,
             note: 'Solo lectura. No se canceló ni modificó nada. phantom_orders = órdenes Shopify cuyo respaldo MP NO está approved (revisar y decidir).'
