@@ -928,14 +928,59 @@ app.put('/api/admin/subscription-variant-allowlist', async (req, res) => {
 app.get('/api/subscriptions/customer/:customerId', async (req, res) => {
     try {
         const subs = await db.getSubscriptions();
-        const key = req.params.customerId;
+        const key = String(req.params.customerId || '');
         const keyLower = key.toLowerCase();
-        // Match by customer_id (Shopify numeric ID) OR email (case-insensitive)
-        const filtered = subs.filter(s =>
-            s.customer_id === key ||
-            (s.customer_email || '').toLowerCase() === keyLower
-        );
-        res.json(filtered);
+        const isNumericId = /^\d+$/.test(key);
+
+        const matched = new Map();
+        const add = (s) => { if (s && s.id != null) matched.set(String(s.id), s); };
+
+        // Base (comportamiento original, intacto): por customer_id o email exacto
+        subs.forEach(s => {
+            if (s.customer_id != null && String(s.customer_id) === key) add(s);
+            else if ((s.customer_email || '').toLowerCase() === keyLower) add(s);
+        });
+
+        // 🔒 FIX 2026-05-29 — RAÍZ del "no aparecen las suscripciones en el portal":
+        //   las subs se guardan con el email del CHECKOUT (MP), que muchas veces NO es el
+        //   email de la cuenta Shopify, y casi nunca tienen customer_id. Cuando el portal
+        //   manda el customer_id numérico (lo único que SIEMPRE tiene), resolvemos contra
+        //   Shopify: email de la cuenta + TODOS sus pedidos, y matcheamos las subs por
+        //   email-de-cuenta, email-de-pedido o por shopify_order ligada al cliente (link
+        //   a prueba de balas). ADITIVO: solo SUMA matches; no quita ni toca MP/cron/webhook.
+        if (isNumericId) {
+            try {
+                const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+                const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+                if (token) {
+                    const emails = new Set();
+                    const orderNames = new Set();
+                    const orderIds = new Set();
+                    const H = { 'X-Shopify-Access-Token': token };
+                    // 1) Email de la cuenta del cliente
+                    const cr = await fetch(`https://${shop}/admin/api/2026-01/customers/${key}.json?fields=id,email`, { headers: H }).catch(() => null);
+                    if (cr && cr.ok) { const cd = await cr.json(); if (cd.customer && cd.customer.email) emails.add(String(cd.customer.email).toLowerCase()); }
+                    // 2) Todos los pedidos del cliente → nombres/ids de orden + emails de pedido
+                    const or = await fetch(`https://${shop}/admin/api/2026-01/customers/${key}/orders.json?status=any&limit=250&fields=id,name,email`, { headers: H }).catch(() => null);
+                    if (or && or.ok) {
+                        const od = await or.json();
+                        (od.orders || []).forEach(o => {
+                            if (o.name) orderNames.add(String(o.name));
+                            if (o.id != null) orderIds.add(String(o.id));
+                            if (o.email) emails.add(String(o.email).toLowerCase());
+                        });
+                    }
+                    subs.forEach(s => {
+                        const se = (s.customer_email || '').toLowerCase();
+                        if (se && emails.has(se)) add(s);
+                        else if (s.shopify_order_name && orderNames.has(String(s.shopify_order_name))) add(s);
+                        else if (s.shopify_order_id != null && orderIds.has(String(s.shopify_order_id))) add(s);
+                    });
+                }
+            } catch (e) { console.warn('[PORTAL MATCH] resolve failed:', e.message); }
+        }
+
+        res.json(Array.from(matched.values()));
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
