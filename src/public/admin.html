@@ -2075,7 +2075,7 @@
         <button class="btn btn-g btn-sm" onclick="loadSubs()">↻ Actualizar</button>
       </div>
       <div class="content">
-        <div class="search-box"><input id="sub-search" placeholder="Buscar por email o producto..."
+        <div class="search-box"><input id="sub-search" placeholder="Buscar por nombre, email, producto, DNI o pedido..."
             oninput="filterSubs(this.value)"></div>
         <div class="filter-pills">
           <span class="pill active" onclick="setSubFilter('all',this)">Todos</span>
@@ -4351,7 +4351,16 @@
       if (_subFilter !== 'all') subs = subs.filter(s => s.status === _subFilter);
       if (_subSearch) subs = subs.filter(s =>
         (s.customer_email || '').toLowerCase().includes(_subSearch) ||
-        (s.product_title || '').toLowerCase().includes(_subSearch)
+        (s.product_title || '').toLowerCase().includes(_subSearch) ||
+        // FIX 2026-05-28: la búsqueda antes ignoraba el NOMBRE del cliente, así que
+        // buscar "Brandon"/"Ramírez" devolvía vacío aunque la sub existiera. Aditivo:
+        // ahora también matchea nombre, teléfono, DNI, preapproval MP y nº de pedido.
+        (s.customer_name || '').toLowerCase().includes(_subSearch) ||
+        (s.customer_phone || '').toString().toLowerCase().includes(_subSearch) ||
+        (s.dni || '').toString().toLowerCase().includes(_subSearch) ||
+        (s.mp_preapproval_id || '').toLowerCase().includes(_subSearch) ||
+        (s.shopify_order_name || '').toLowerCase().includes(_subSearch) ||
+        (s.shopify_order_id || '').toString().toLowerCase().includes(_subSearch)
       );
       document.getElementById('subs-table').innerHTML = subs.length
         ? subs.map(s => `<tr>
