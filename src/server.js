@@ -2989,12 +2989,17 @@ app.post('/api/products/:id/config', async (req, res) => {
         const id = req.params.id;
         const settings = await readFromShopify() || readFromFile() || {};
         if (!settings.product_configs || typeof settings.product_configs !== 'object' || Array.isArray(settings.product_configs)) settings.product_configs = {};
+        // 🔒 FIX 2026-05-29: MERGE con la config existente para NO perder campos que el admin
+        //   no envía en este guardado (ej. guardar planes NO debe borrar eligible_variant_ids,
+        //   y viceversa). Antes sobrescribía con { ...req.body } → se "rompía info" del producto
+        //   en cada save parcial. Aditivo y seguro: req.body solo pisa las llaves que envía.
+        const prevCfg = (settings.product_configs[id] && typeof settings.product_configs[id] === 'object') ? settings.product_configs[id] : {};
         // Migrate old format if it exists
         if (typeof settings[id] === 'object' && settings[id]?.plans) {
-            settings.product_configs[id] = { ...settings[id], ...req.body, updated_at: new Date().toISOString() };
+            settings.product_configs[id] = { ...settings[id], ...prevCfg, ...req.body, updated_at: new Date().toISOString() };
             delete settings[id]; // Remove old key to clean up
         } else {
-            settings.product_configs[id] = { ...req.body, updated_at: new Date().toISOString() };
+            settings.product_configs[id] = { ...prevCfg, ...req.body, updated_at: new Date().toISOString() };
         }
         const saved = await saveToShopify(settings);
         saveToFile(settings);
