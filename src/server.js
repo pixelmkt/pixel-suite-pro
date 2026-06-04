@@ -2187,6 +2187,42 @@ app.post('/api/admin/orders/:id/cancel', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/** POST /api/admin/orders/:id/patch-attribute — Actualiza UN note_attribute de una orden.
+ *  Body: { name: string, value: string }
+ *  Útil para corregir cycle_number mal etiquetado (caso afernandezgaldos donde
+ *  la primera orden quedó marcada cycle_number="2" en vez de "1", bloqueando
+ *  el dedup del cobro real cycle 2).
+ *  Lee la orden, hace merge del attribute, hace PUT a Shopify. */
+app.post('/api/admin/orders/:id/patch-attribute', async (req, res) => {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return res.status(500).json({ error: 'No Shopify token' });
+        const { name, value } = req.body || {};
+        if (!name) return res.status(400).json({ error: 'Missing name' });
+        // 1) GET order to read existing note_attributes
+        const getUrl = `https://${shop}/admin/api/2026-01/orders/${req.params.id}.json?fields=id,name,note_attributes`;
+        const gr = await fetch(getUrl, { headers: { 'X-Shopify-Access-Token': token } });
+        if (!gr.ok) return res.status(gr.status).json({ error: `Shopify GET ${gr.status}: ${await gr.text()}` });
+        const gd = await gr.json();
+        const existing = Array.isArray(gd.order?.note_attributes) ? gd.order.note_attributes.slice() : [];
+        const idx = existing.findIndex(a => a && a.name === name);
+        const before = idx >= 0 ? existing[idx].value : null;
+        if (idx >= 0) existing[idx] = { name, value: String(value || '') };
+        else existing.push({ name, value: String(value || '') });
+        // 2) PUT order with updated note_attributes
+        const putUrl = `https://${shop}/admin/api/2026-01/orders/${req.params.id}.json`;
+        const pr = await fetch(putUrl, {
+            method: 'PUT',
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order: { id: parseInt(req.params.id), note_attributes: existing } })
+        });
+        if (!pr.ok) return res.status(pr.status).json({ error: `Shopify PUT ${pr.status}: ${await pr.text()}` });
+        const pd = await pr.json();
+        res.json({ success: true, order_id: pd.order?.id, name: pd.order?.name, attribute: { name, before, after: String(value || '') }, note_attributes: pd.order?.note_attributes });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /** GET /api/admin/shopify/locations — READ-ONLY: lista todas las locations de Shopify
  *  Para que el usuario identifique cuál es la de Navasoft y la configure en env var.
  */
