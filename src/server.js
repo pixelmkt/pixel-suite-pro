@@ -5707,6 +5707,14 @@ app.get('/portal/:customerId', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'portal.html'));
 });
 
+/* Portal V2 — nueva landing real del suscriptor (2026-06-04) */
+app.get('/portal/v2', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'portal-v2.html'));
+});
+app.get('/mi-suscripcion', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'portal-v2.html'));
+});
+
 /* ═══════════════════════════════════════════════
    📣 MARKETING API
 ═══════════════════════════════════════════════ */
@@ -6610,6 +6618,204 @@ app.post('/api/settings/test-mp', async (req, res) => {
    FIX 2026-04-11: Specific routes MUST come BEFORE the :email catch-all,
    otherwise Express captures "subscription" as an email parameter.
 ═══════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════
+   🔐 PORTAL V2 — Magic link auth + dashboard real (2026-06-04)
+   Backend del nuevo portal del suscriptor. Endpoints firmados con HMAC.
+   - POST /api/portal/v2/request-link {email}: envía magic link 30min
+   - GET  /api/portal/v2/me?token=jwt: data agregada del cliente
+   - POST /api/portal/v2/sub/:id/pause con token
+   - POST /api/portal/v2/sub/:id/cancel con token (con preview de penalidad)
+   - POST /api/portal/v2/sub/:id/resume con token
+   ═══════════════════════════════════════════════════════════════════ */
+const _PORTAL_V2_SECRET = process.env.PORTAL_V2_SECRET
+    || process.env.SHOPIFY_API_SECRET
+    || 'pixel-portal-v2-default-secret-rotate-me';
+
+function _portalV2SignToken(payload) {
+    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+    const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const sig = crypto.createHmac('sha256', _PORTAL_V2_SECRET).update(`${header}.${body}`).digest('base64url');
+    return `${header}.${body}.${sig}`;
+}
+
+function _portalV2VerifyToken(token) {
+    try {
+        const [header, body, sig] = String(token || '').split('.');
+        if (!header || !body || !sig) return null;
+        const expected = crypto.createHmac('sha256', _PORTAL_V2_SECRET).update(`${header}.${body}`).digest('base64url');
+        if (expected !== sig) return null;
+        const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+        if (payload.exp && payload.exp < Date.now()) return null; // expired
+        return payload;
+    } catch { return null; }
+}
+
+/* POST /api/portal/v2/request-link {email} — manda magic link 30 min */
+app.post('/api/portal/v2/request-link', async (req, res) => {
+    try {
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        if (!email || !email.includes('@')) return res.status(400).json({ error: 'Email inválido' });
+
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const subs = allSubs.filter(s => (s.customer_email || '').toLowerCase() === email);
+        if (!subs.length) {
+            // Return success anyway (no enumeration) but DON'T send email
+            return res.json({ success: true, message: 'Si existe una cuenta, te enviamos el link.' });
+        }
+
+        const token = _portalV2SignToken({
+            email,
+            sub_ids: subs.map(s => s.id),
+            iat: Date.now(),
+            exp: Date.now() + 30 * 60 * 1000 // 30 min
+        });
+        const portalUrl = `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/portal/v2?token=${encodeURIComponent(token)}`;
+
+        // Send via Resend (if configured)
+        if (process.env.RESEND_API_KEY) {
+            const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;padding:20px;background:#f5f5f5">
+                <div style="max-width:560px;margin:0 auto;background:#fff;padding:32px;border-radius:12px">
+                    <div style="text-align:center;margin-bottom:24px">
+                        <h1 style="color:#E30613;font-size:24px;margin:0;text-transform:uppercase;letter-spacing:1px">LAB NUTRITION</h1>
+                    </div>
+                    <h2 style="color:#0A0A0A;font-size:20px;margin:0 0 16px">Tu acceso al portal</h2>
+                    <p style="color:#444;line-height:1.6">Haz clic en el botón para gestionar tu suscripción:</p>
+                    <div style="text-align:center;margin:32px 0">
+                        <a href="${portalUrl}" style="display:inline-block;background:#E30613;color:#fff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:700;text-transform:uppercase;letter-spacing:1px">Ingresar al portal</a>
+                    </div>
+                    <p style="color:#888;font-size:13px;line-height:1.6">Este link es válido por 30 minutos. Si no fuiste tú, ignora este correo.</p>
+                </div>
+            </body></html>`;
+            await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from: process.env.RESEND_FROM || 'LAB NUTRITION <onboarding@resend.dev>',
+                    to: [email],
+                    subject: 'Tu acceso al portal LAB NUTRITION',
+                    html
+                })
+            }).catch(e => console.warn('[PORTAL V2] Resend error:', e.message));
+        }
+        if (db.createEvent && subs[0]) {
+            await db.createEvent({ subscription_id: subs[0].id, event_type: 'portal_link_requested', metadata: JSON.stringify({ email, at: new Date().toISOString() }) }).catch(() => {});
+        }
+        res.json({ success: true, message: 'Si existe una cuenta, te enviamos el link.' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* GET /api/portal/v2/me?token=xxx — data agregada del cliente */
+app.get('/api/portal/v2/me', async (req, res) => {
+    try {
+        const payload = _portalV2VerifyToken(req.query.token);
+        if (!payload) return res.status(401).json({ error: 'Token inválido o expirado' });
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const mySubs = allSubs.filter(s => payload.sub_ids.includes(s.id));
+        // Read available products (eligible_products)
+        const settings = await readFromShopify() || readFromFile() || {};
+        const availableProducts = (settings.eligible_products || []).filter(p => p && p.shopify_product_id);
+        // Sanitize subs (no tokens, no internal IDs)
+        const sanitized = mySubs.map(s => ({
+            id: s.id,
+            product_title: s.product_title,
+            product_image: s.product_image,
+            status: s.status,
+            cycles_completed: parseInt(s.cycles_completed || 0),
+            cycles_required: parseInt(s.cycles_required || 0),
+            frequency_months: s.frequency_months,
+            permanence_months: s.permanence_months,
+            base_price: s.base_price,
+            final_price: s.final_price,
+            shipping_cost: s.shipping_cost,
+            mp_total_amount: s.mp_total_amount,
+            discount_pct: s.discount_pct,
+            next_charge_at: s.next_charge_at,
+            last_charge_at: s.last_charge_at,
+            activated_at: s.activated_at,
+            shopify_order_name: s.shopify_order_name,
+            shipping_address: s.shipping_address || null,
+            dni: s.dni,
+            paused_until: s.paused_until || null
+        }));
+        res.json({
+            email: payload.email,
+            subscriptions: sanitized,
+            available_products: availableProducts
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* POST /api/portal/v2/sub/:id/pause — pausa con token */
+app.post('/api/portal/v2/sub/:id/pause', async (req, res) => {
+    try {
+        const payload = _portalV2VerifyToken(req.query.token);
+        if (!payload || !payload.sub_ids.includes(req.params.id)) return res.status(401).json({ error: 'No autorizado' });
+        const { pauseMonths = 1 } = req.body || {};
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub || sub.status !== 'active') return res.status(400).json({ error: 'No se puede pausar' });
+        if (mp.pauseSubscription) await mp.pauseSubscription(sub.mp_preapproval_id).catch(() => {});
+        const pausedUntil = new Date();
+        pausedUntil.setMonth(pausedUntil.getMonth() + parseInt(pauseMonths));
+        await db.updateSubscription(sub.id, { status: 'paused', paused_until: pausedUntil.toISOString() });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'paused_by_customer', metadata: JSON.stringify({ pause_months: pauseMonths, via: 'portal_v2' }) }).catch(() => {});
+        res.json({ success: true, pausedUntil });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* POST /api/portal/v2/sub/:id/resume — reanuda con token */
+app.post('/api/portal/v2/sub/:id/resume', async (req, res) => {
+    try {
+        const payload = _portalV2VerifyToken(req.query.token);
+        if (!payload || !payload.sub_ids.includes(req.params.id)) return res.status(401).json({ error: 'No autorizado' });
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub || sub.status !== 'paused') return res.status(400).json({ error: 'No está pausada' });
+        if (mp.resumeSubscription) await mp.resumeSubscription(sub.mp_preapproval_id).catch(() => {});
+        await db.updateSubscription(sub.id, { status: 'active', paused_until: null });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'resumed_by_customer', metadata: JSON.stringify({ via: 'portal_v2' }) }).catch(() => {});
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* GET /api/portal/v2/sub/:id/cancel-preview — preview de penalidad (no cancela) */
+app.get('/api/portal/v2/sub/:id/cancel-preview', async (req, res) => {
+    try {
+        const payload = _portalV2VerifyToken(req.query.token);
+        if (!payload || !payload.sub_ids.includes(req.params.id)) return res.status(401).json({ error: 'No autorizado' });
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Not found' });
+        const cyclesCompleted = parseInt(sub.cycles_completed || 0);
+        const cyclesRequired = parseInt(sub.cycles_required || 0);
+        const monthlyDiscount = ((parseFloat(sub.base_price || 0) - parseFloat(sub.final_price || 0)) || 0);
+        const penalty = cyclesCompleted < cyclesRequired ? monthlyDiscount * cyclesCompleted : 0;
+        res.json({
+            sub_id: sub.id,
+            cycles_completed: cyclesCompleted,
+            cycles_required: cyclesRequired,
+            permanence_completed: cyclesCompleted >= cyclesRequired,
+            monthly_discount: monthlyDiscount,
+            penalty,
+            message: penalty > 0
+                ? `Para cancelar antes de completar la permanencia debes reintegrar S/${penalty.toFixed(2)} (el descuento recibido durante ${cyclesCompleted} meses). No es una multa — es la devolución del beneficio de un compromiso no completado.`
+                : 'Puedes cancelar sin penalidad — ya completaste tu permanencia.'
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* POST /api/portal/v2/sub/:id/cancel — cancela con token (después de preview) */
+app.post('/api/portal/v2/sub/:id/cancel', async (req, res) => {
+    try {
+        const payload = _portalV2VerifyToken(req.query.token);
+        if (!payload || !payload.sub_ids.includes(req.params.id)) return res.status(401).json({ error: 'No autorizado' });
+        const sub = await db.getSubscription(req.params.id);
+        if (!sub) return res.status(404).json({ error: 'Not found' });
+        if (sub.status === 'cancelled') return res.json({ success: true, already_cancelled: true });
+        if (mp.cancelSubscription) await mp.cancelSubscription(sub.mp_preapproval_id).catch(() => {});
+        await db.updateSubscription(sub.id, { status: 'cancelled', cancelled_at: new Date().toISOString(), cancelled_by: 'customer' });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'cancelled_by_customer', metadata: JSON.stringify({ via: 'portal_v2', cycles_completed: parseInt(sub.cycles_completed || 0) }) }).catch(() => {});
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 /* GET /api/portal/subscription/:id/history — MUST be before :email route */
 app.get('/api/portal/subscription/:id/history', async (req, res) => {
