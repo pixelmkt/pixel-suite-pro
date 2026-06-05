@@ -156,6 +156,20 @@ async function cancelSubscription(preapprovalId) {
     return sub.update({ id: preapprovalId, body: { status: 'cancelled' } });
 }
 
+/* 🔒 NUEVO 2026-06-04: actualizar monto de preapproval activo.
+   MP permite cambiar transaction_amount sin re-autorización del cliente.
+   Frequency y start_date NO son editables en preapproval activo. */
+async function updateSubscriptionAmount(preapprovalId, newAmount) {
+    const mp = getMP();
+    const sub = new PreApproval(mp);
+    const amount = parseFloat(parseFloat(newAmount).toFixed(2));
+    if (!amount || amount <= 0) throw new Error('Invalid amount');
+    return sub.update({
+        id: preapprovalId,
+        body: { auto_recurring: { transaction_amount: amount, currency_id: 'PEN' } }
+    });
+}
+
 async function getPayment(paymentId) {
     const mp = getMP();
     const payment = new Payment(mp);
@@ -232,6 +246,7 @@ module.exports = {
     createSubscription,
     getSubscription,
     ensureNotificationUrl,
+    updateSubscriptionAmount,
     pauseSubscription,
     resumeSubscription,
     cancelSubscription,

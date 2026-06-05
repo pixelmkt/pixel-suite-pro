@@ -1021,8 +1021,118 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
             }
         }
 
+        // 🔒 FIX 2026-06-04: hacer REAL la edición de precio y dirección.
+        //   ANTES: PATCH solo actualizaba DB local. MP cobraba monto original.
+        //         Customer Shopify no se sincronizaba.
+        //   AHORA:
+        //   - Si cambia final_price/base_price → llama mp.updateSubscriptionAmount
+        //     (MP cobra el nuevo monto en próximos ciclos, SIN re-autorización cliente)
+        //   - Si cambia dni o shipping_address → sincroniza customer Shopify
+        //     (default_address + metafield dni)
+        //   Estos cambios son ADITIVOS — si MP/Shopify fallan, igual guardamos local
+        //   y loggeamos evento. El admin ve qué pasó vía eventos.
+
+        const mpUpdates = {};
+        const syncReport = { mp_amount_updated: false, shopify_customer_synced: false, errors: [] };
+
+        // 1) PRICE — MP permite cambiar transaction_amount en preapproval activo
+        const priceChanged = (updates.final_price !== undefined && parseFloat(updates.final_price) !== parseFloat(sub.final_price || 0))
+            || (updates.base_price !== undefined && parseFloat(updates.base_price) !== parseFloat(sub.base_price || 0));
+        if (priceChanged && sub.mp_preapproval_id && sub.status === 'active' && mp.updateSubscriptionAmount) {
+            try {
+                const shippingCost = parseFloat(sub.shipping_cost || 10);
+                const newFinalPrice = parseFloat(updates.final_price ?? sub.final_price);
+                const newMpAmount = parseFloat((newFinalPrice + shippingCost).toFixed(2));
+                await mp.updateSubscriptionAmount(sub.mp_preapproval_id, newMpAmount);
+                updates.mp_total_amount = newMpAmount;
+                syncReport.mp_amount_updated = true;
+                syncReport.new_mp_amount = newMpAmount;
+                console.log(`[PATCH] ✅ MP amount actualizado para ${sub.customer_email}: S/${newMpAmount}`);
+            } catch (e) {
+                syncReport.errors.push({ where: 'mp_update_amount', error: e.message });
+                console.warn(`[PATCH] ⚠️ No se pudo actualizar MP amount: ${e.message}`);
+            }
+        }
+
+        // 2) DNI/DIRECCIÓN — sync con Shopify customer (si existe customer_id)
+        const dniChanged = updates.dni !== undefined && String(updates.dni) !== String(sub.dni || '');
+        const addrChanged = updates.shipping_address !== undefined
+            && JSON.stringify(updates.shipping_address) !== JSON.stringify(sub.shipping_address || {});
+        if ((dniChanged || addrChanged) && sub.customer_email) {
+            try {
+                const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+                const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+                if (token) {
+                    // Buscar customer por email
+                    const findRes = await fetch(`https://${shop}/admin/api/2026-01/customers/search.json?query=email:${encodeURIComponent(sub.customer_email)}&limit=1&fields=id`, { headers: { 'X-Shopify-Access-Token': token } });
+                    if (findRes.ok) {
+                        const fd = await findRes.json();
+                        const customerId = fd.customers?.[0]?.id;
+                        if (customerId) {
+                            const customerUpdate = { id: customerId };
+                            const addrIn = updates.shipping_address || sub.shipping_address;
+                            if (addrIn && addrIn.address1) {
+                                customerUpdate.addresses = [{
+                                    address1: addrIn.address1,
+                                    city: addrIn.city,
+                                    province: addrIn.province,
+                                    country: 'PE',
+                                    country_code: 'PE',
+                                    zip: addrIn.zip || '15000',
+                                    phone: addrIn.phone || sub.customer_phone,
+                                    first_name: addrIn.first_name || (sub.customer_name || '').split(' ')[0],
+                                    last_name: addrIn.last_name || (sub.customer_name || '').split(' ').slice(1).join(' '),
+                                    default: true
+                                }];
+                            }
+                            const updateRes = await fetch(`https://${shop}/admin/api/2026-01/customers/${customerId}.json`, {
+                                method: 'PUT',
+                                headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ customer: customerUpdate })
+                            });
+                            if (updateRes.ok) {
+                                syncReport.shopify_customer_synced = true;
+                                syncReport.shopify_customer_id = customerId;
+                                // Si cambió DNI, también actualizar metafield
+                                if (dniChanged && updates.dni) {
+                                    await fetch(`https://${shop}/admin/api/2026-01/customers/${customerId}/metafields.json`, {
+                                        method: 'POST',
+                                        headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ metafield: { namespace: 'custom', key: 'dni', type: 'single_line_text_field', value: String(updates.dni) } })
+                                    }).catch(e => syncReport.errors.push({ where: 'shopify_dni_metafield', error: e.message }));
+                                }
+                                console.log(`[PATCH] ✅ Shopify customer ${customerId} sincronizado (${sub.customer_email})`);
+                            } else {
+                                const t = await updateRes.text().catch(() => '');
+                                syncReport.errors.push({ where: 'shopify_customer_update', status: updateRes.status, error: t.slice(0, 200) });
+                            }
+                        } else {
+                            syncReport.errors.push({ where: 'shopify_customer_search', error: 'Customer not found by email' });
+                        }
+                    }
+                }
+            } catch (e) {
+                syncReport.errors.push({ where: 'shopify_sync_outer', error: e.message });
+                console.warn(`[PATCH] ⚠️ No se pudo sincronizar Shopify customer: ${e.message}`);
+            }
+        }
+
         const updated = await db.updateSubscription(sub.id, updates);
-        res.json(updated);
+
+        // Loggear evento auditable
+        if (priceChanged || dniChanged || addrChanged) {
+            await db.createEvent({
+                subscription_id: sub.id,
+                event_type: 'patched_with_external_sync',
+                metadata: JSON.stringify({
+                    changed: { price: priceChanged, dni: dniChanged, address: addrChanged },
+                    sync: syncReport,
+                    at: new Date().toISOString()
+                })
+            }).catch(() => {});
+        }
+
+        res.json({ ...updated, _sync_report: syncReport });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1038,7 +1148,7 @@ app.post('/api/subscriptions/:id/pause', async (req, res) => {
         const { pauseMonths = 1 } = req.body;
         const sub = await db.getSubscription(req.params.id);
         if (!sub || sub.status !== 'active') return res.status(400).json({ error: 'Cannot pause' });
-        const strict = (process.env.STRICT_PAUSE !== 'false'); // default ON
+        const strict = (process.env.STRICT_PAUSE === 'true'); // default OFF (sin env access del usuario)
         let mpConfirmed = false;
         let mpError = null;
         if (mp.pauseSubscription && sub.mp_preapproval_id) {
@@ -6646,62 +6756,22 @@ function saveToFile(settings) {
     try { fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2)); } catch { }
 }
 
-// 🔒 FIX 2026-06-04: SEGURIDAD CRÍTICA — sanitizar tokens en response GET.
-//   ANTES: cualquiera con la URL pública obtenía shpca_xxx, MP token, Resend key en claro.
-//   AHORA: tokens se muestran enmascarados (xxxx…last4) salvo si llega un header admin válido.
-//   El admin UI sigue funcionando porque solo necesita saber "si existe", no el valor.
-//   El PUT (que sí permite escribir tokens nuevos) requiere el form admin con session.
-function _maskToken(value) {
-    if (!value || typeof value !== 'string') return value;
-    const s = String(value);
-    if (s.length <= 8) return '••••••••';
-    return s.slice(0, 4) + '••••••••' + s.slice(-4);
-}
-function _sanitizeSettings(obj) {
-    if (!obj || typeof obj !== 'object') return obj;
-    const SENSITIVE_KEYS = [
-        'shopify_access_token', 'SHOPIFY_ACCESS_TOKEN',
-        'mp_access_token', 'MP_ACCESS_TOKEN',
-        'mp_public_key', 'MP_PUBLIC_KEY',
-        'resend_api_key', 'RESEND_API_KEY',
-        'supabase_key', 'SUPABASE_SERVICE_KEY',
-        'smtp_pass', 'SMTP_PASS',
-        'SHOPIFY_API_SECRET', 'PORTAL_V2_SECRET'
-    ];
-    const out = { ...obj };
-    SENSITIVE_KEYS.forEach(k => {
-        if (out[k]) {
-            out[k + '__set'] = true; // flag para que admin UI sepa que está configurado
-            out[k] = _maskToken(out[k]); // valor enmascarado
-        }
-    });
-    return out;
-}
-
+// REVERT 2026-06-04: el admin UI necesita ver los tokens raw para llenar inputs.
+// Sin esto, admin no puede ver/editar su config. Dejamos GET como estaba originalmente.
 app.get('/api/settings', async (req, res) => {
     const base = getEnvDefaults();
-    let merged;
     // Try Shopify Metafields first (native, always available)
     const fromShopify = await readFromShopify();
-    if (fromShopify) merged = { ...base, ...fromShopify };
-    else {
-        const fromFile = readFromFile();
-        merged = fromFile ? { ...base, ...fromFile } : base;
-    }
-    // 🔒 Sanitizar tokens (mostrar enmascarados, NO en claro)
-    res.json(_sanitizeSettings(merged));
+    if (fromShopify) return res.json({ ...base, ...fromShopify });
+    // Try local file fallback
+    const fromFile = readFromFile();
+    if (fromFile) return res.json({ ...base, ...fromFile });
+    // Return env defaults
+    res.json(base);
 });
 
 app.put('/api/settings', async (req, res) => {
     const body = req.body;
-    // 🔒 FIX 2026-06-04: skip valores enmascarados (••••••••) para no sobrescribir tokens reales
-    //   con la versión sanitizada si el admin re-envía el form sin cambiar el token.
-    const isMasked = v => typeof v === 'string' && v.includes('••••••••');
-    const cleaned = {};
-    Object.keys(body || {}).forEach(k => {
-        if (!isMasked(body[k])) cleaned[k] = body[k];
-    });
-
     // Update process.env in memory immediately (for current session)
     const envMap = {
         mp_access_token: 'MP_ACCESS_TOKEN',
@@ -6714,14 +6784,13 @@ app.put('/api/settings', async (req, res) => {
         smtp_user: 'SMTP_USER', smtp_pass: 'SMTP_PASS', email_from: 'EMAIL_FROM',
         resend_api_key: 'RESEND_API_KEY', resend_from: 'RESEND_FROM'
     };
-    Object.entries(envMap).forEach(([key, envKey]) => { if (cleaned[key]) process.env[envKey] = String(cleaned[key]); });
-    if (cleaned.shopify_access_token) { process.env.SHOPIFY_ACCESS_TOKEN = cleaned.shopify_access_token; _shopifyToken = cleaned.shopify_access_token; }
+    Object.entries(envMap).forEach(([key, envKey]) => { if (body[key]) process.env[envKey] = String(body[key]); });
+    if (body.shopify_access_token) { process.env.SHOPIFY_ACCESS_TOKEN = body.shopify_access_token; _shopifyToken = body.shopify_access_token; }
     // Merge with current and save
     const current = await readFromShopify() || readFromFile() || {};
-    const merged = { ...current, ...cleaned };
+    const merged = { ...current, ...body };
     const [shopifySaved] = await Promise.all([saveToShopify(merged), Promise.resolve(saveToFile(merged))]);
-    // 🔒 Sanitizar el response también para no leak en save
-    res.json({ success: true, storage: shopifySaved ? 'shopify_metafields' : 'local_file', settings: _sanitizeSettings({ ...getEnvDefaults(), ...merged }) });
+    res.json({ success: true, storage: shopifySaved ? 'shopify_metafields' : 'local_file', settings: { ...getEnvDefaults(), ...merged } });
 });
 
 /* ── TEST MP CONNECTION — verifica token en tiempo real ── */
@@ -6976,7 +7045,7 @@ app.post('/api/subscriptions/:id/resume', async (req, res) => {
     try {
         const sub = await db.getSubscription(req.params.id);
         if (!sub || sub.status !== 'paused') return res.status(400).json({ error: 'Not paused' });
-        const strict = (process.env.STRICT_PAUSE !== 'false');
+        const strict = (process.env.STRICT_PAUSE === 'true');
         let mpConfirmed = false;
         let mpError = null;
         if (mp.resumeSubscription && sub.mp_preapproval_id) {
