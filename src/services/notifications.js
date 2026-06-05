@@ -430,6 +430,7 @@ async function sendCancellationConfirmation(sub) {
 /* ─── PREVIEW: genera HTML de todas las plantillas para visualizar ─── */
 function getPreviewHTML(templateName) {
     const mockSub = {
+        id: 'sub_preview_demo',
         customer_name: 'Jorge Luis Torres Morales',
         customer_email: 'ejemplo@email.com',
         product_title: 'CREATINE MICRONIZED BLACK LIMITED EDITION',
@@ -458,6 +459,10 @@ function getPreviewHTML(templateName) {
       <div class="detail-row total-row"><span class="detail-label">Cobro mensual</span><span class="detail-value">${formatPrice(parseFloat(mockSub.final_price) + 10)}</span></div>
     </div>
     <div class="success-box"><strong>Pr&oacute;ximo env&iacute;o:</strong> ${formatDate(mockSub.next_charge_at)}</div>
+    <div style="text-align:center;margin:32px 0">
+      <a href="${_portalUrl(mockSub)}" style="display:inline-block;background:#E30613;color:#fff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:14px">Gestionar mi suscripci&oacute;n</a>
+    </div>
+    <p class="muted" style="text-align:center;font-size:12px">Pausa, cancela, cambia direcci&oacute;n y ve tu historial desde tu portal personal.</p>
     <div class="divider"></div>
     <p class="muted" style="text-align:center">Bienvenido al club. &mdash; Equipo LAB NUTRITION</p>
   `, { headerTitle: 'Bienvenido al Club Black Diamond', headerIcon: 'Programa de Suscripci\u00f3n Exclusivo' }),
@@ -475,6 +480,9 @@ function getPreviewHTML(templateName) {
     </div>
     <div class="info-box"><strong>Direcci&oacute;n de env&iacute;o</strong><br>Augusto Tamayo 180<br>San Isidro, Lima</div>
     <div class="alert-box"><strong>Fecha de cobro:</strong> ${formatDate(mockSub.next_charge_at)}</div>
+    <div style="text-align:center;margin:28px 0">
+      <a href="${_portalUrl(mockSub)}" style="display:inline-block;background:#E30613;color:#fff;padding:13px 32px;border-radius:8px;text-decoration:none;font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:13px">Cambiar direcci&oacute;n o pausar</a>
+    </div>
   `, { headerTitle: 'Tu pedido est&aacute; por llegar', headerIcon: 'Club Black Diamond' }),
 
         charge_success: () => baseHTML(`
@@ -490,6 +498,9 @@ function getPreviewHTML(templateName) {
       <div class="detail-row total-row"><span class="detail-label">Total cobrado</span><span class="detail-value">${formatPrice(parseFloat(mockSub.final_price) + 10)}</span></div>
     </div>
     <div class="success-box"><strong>Progreso:</strong> Ciclo 2 de 6</div>
+    <div style="text-align:center;margin:28px 0">
+      <a href="${_portalUrl(mockSub)}" style="display:inline-block;background:#E30613;color:#fff;padding:13px 32px;border-radius:8px;text-decoration:none;font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:13px">Ver mi suscripci&oacute;n</a>
+    </div>
   `, { headerTitle: 'Pago confirmado', headerIcon: 'Club Black Diamond' }),
 
         charge_failed: () => baseHTML(`
