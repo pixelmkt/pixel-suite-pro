@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mi Suscripción — LAB NUTRITION</title>
+<meta name="theme-color" content="#E30613">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --red:#E30613;--red-dark:#B00510;--black:#0A0A0A;--white:#fff;
+  --gray-50:#FAFAFA;--gray-100:#F5F5F5;--gray-200:#E5E5E5;
+  --gray-500:#6B7280;--gray-700:#374151;--gray-900:#111827;
+  --green:#10B981;--amber:#F59E0B;--shadow:0 1px 3px rgba(0,0,0,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',-apple-system,sans-serif;background:var(--gray-50);color:var(--gray-900);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.container{max-width:960px;margin:0 auto;padding:24px 20px 80px}
+.brand-bar{background:var(--white);border-bottom:1px solid var(--gray-200);padding:14px 20px;text-align:center}
+.brand-bar .logo{color:var(--red);font-weight:900;letter-spacing:2px;font-size:14px}
+.brand-bar .sub{color:var(--gray-500);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;margin-top:2px}
+
+.loader-wrap{display:flex;justify-content:center;align-items:center;min-height:50vh}
+.loader{width:32px;height:32px;border:3px solid var(--gray-200);border-top-color:var(--red);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.hero{margin:24px 0 22px}
+.hero-greeting{font-size:13px;color:var(--gray-500);font-weight:500;margin-bottom:4px}
+.hero-name{font-size:24px;font-weight:900;letter-spacing:-.5px}
+
+.alert{background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:18px 20px;margin-bottom:22px}
+.alert-title{color:#991B1B;font-size:14px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.alert-text{color:#7F1D1D;font-size:13px;line-height:1.55;margin-bottom:12px}
+.alert-btn{display:inline-block;background:var(--red);color:#fff;padding:10px 22px;border-radius:8px;font-weight:700;text-decoration:none;font-size:13px;letter-spacing:.5px}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}
+.stat{background:var(--white);border:1px solid var(--gray-200);border-radius:12px;padding:14px 16px}
+.stat-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--gray-500);margin-bottom:4px}
+.stat-value{font-size:18px;font-weight:800;color:var(--gray-900)}
+.stat-value.accent{color:var(--red)}
+
+.section{margin-bottom:32px}
+.section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--gray-500);margin-bottom:14px}
+
+.sub-card{background:var(--white);border:1px solid var(--gray-200);border-radius:14px;margin-bottom:14px;overflow:hidden}
+.sub-card.is-paused{background:#FFFBEB;border-color:#FCD34D}
+.sub-card.has-issue{border-color:#FECACA;background:#FFF8F8}
+
+.sub-head{padding:18px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--gray-100)}
+.sub-img{width:56px;height:56px;background:var(--gray-100);border-radius:10px;flex-shrink:0;background-size:cover;background-position:center}
+.sub-info{flex:1;min-width:0}
+.sub-name{font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px}
+.sub-meta{font-size:12px;color:var(--gray-500)}
+.sub-status{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:4px 10px;border-radius:20px}
+.sub-status::before{content:'';width:6px;height:6px;border-radius:50%}
+.sub-status.active{background:#ECFDF5;color:#047857}.sub-status.active::before{background:var(--green)}
+.sub-status.paused{background:#FFFBEB;color:#92400E}.sub-status.paused::before{background:var(--amber)}
+.sub-status.cancelled{background:#FEE2E2;color:#991B1B}.sub-status.cancelled::before{background:var(--red)}
+
+.sub-body{padding:18px 20px}
+.sub-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.sub-field-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--gray-500);margin-bottom:4px}
+.sub-field-value{font-size:14px;font-weight:600}
+
+.progress-wrap{margin-bottom:14px}
+.progress-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--gray-500)}
+.progress-bar{height:8px;background:var(--gray-100);border-radius:100px;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--red),var(--red-dark));border-radius:100px;transition:width .3s}
+
+.payment-alert{background:#FEE2E2;border:1px solid #FCA5A5;border-radius:8px;padding:12px 14px;margin-top:14px;font-size:13px;color:#991B1B}
+.payment-alert a{color:#991B1B;font-weight:800;text-decoration:underline}
+
+.not-member{background:var(--white);border:1px solid var(--gray-200);border-radius:14px;padding:40px 24px;text-align:center}
+.not-member-icon{font-size:64px;margin-bottom:12px;opacity:.6}
+.not-member-title{font-size:22px;font-weight:900;margin-bottom:8px;color:var(--gray-900)}
+.not-member-text{color:var(--gray-500);font-size:14px;line-height:1.6;max-width:420px;margin:0 auto 24px}
+.not-member-btn{display:inline-block;background:var(--red);color:#fff;padding:14px 36px;border-radius:10px;font-weight:800;text-decoration:none;letter-spacing:.5px;text-transform:uppercase;font-size:13px}
+
+@media (max-width:560px){
+  .sub-grid{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .hero-name{font-size:20px}
+  .sub-head{padding:14px}
+  .sub-body{padding:14px}
+}
+</style>
+</head>
+<body>
+
+<div class="brand-bar">
+  <div class="logo">LAB NUTRITION</div>
+  <div class="sub">Mi Suscripción</div>
+</div>
+
+<div class="container">
+  <div id="view-loading" class="loader-wrap"><div class="loader"></div></div>
+  <div id="view-content" style="display:none"></div>
+</div>
+
+<script>
+async function loadData(){
+  try {
+    // App Proxy reescribe URL — quitar /apps/account-suscripcion para fetch interno
+    // Pero como esto vive en labnutrition.pe/apps/account-suscripcion, el fetch relativo "me" funciona
+    const r = await fetch('me' + location.search);
+    const d = await r.json();
+    document.getElementById('view-loading').style.display = 'none';
+    document.getElementById('view-content').style.display = 'block';
+    render(d);
+  } catch (e) {
+    document.getElementById('view-loading').innerHTML = '<div style="color:#666;text-align:center"><p>Error cargando tus suscripciones.</p><p style="font-size:12px">' + e.message + '</p></div>';
+  }
+}
+
+function fmt(d){ return d ? new Date(d).toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'}) : '—'; }
+function money(n){ return 'S/ ' + (parseFloat(n||0)).toFixed(2); }
+function statusLabel(s){ return {active:'Activa',paused:'Pausada',cancelled:'Cancelada',completed:'Completada'}[s] || s; }
+
+function render(d){
+  const c = document.getElementById('view-content');
+  if (!d.is_member) {
+    c.innerHTML = `
+      <div class="hero">
+        <div class="hero-greeting">${d.name ? 'Hola ' + d.name.split(' ')[0] + ',' : 'Hola'}</div>
+        <div class="hero-name">Aún no tienes una suscripción</div>
+      </div>
+      <div class="not-member">
+        <div class="not-member-icon">🌱</div>
+        <div class="not-member-title">¡Únete al Club!</div>
+        <div class="not-member-text">Suscribete a tus suplementos favoritos y recibí descuentos exclusivos, regalos en tu primer pedido y entrega automática cada mes.</div>
+        <a href="/collections/suscripciones" class="not-member-btn">Ver productos suscribibles</a>
+      </div>`;
+    return;
+  }
+  const subs = d.subscriptions || [];
+  const active = subs.filter(s => s.status==='active').length;
+  const paused = subs.filter(s => s.status==='paused').length;
+  const totalCycles = subs.reduce((a,s)=>a + s.cycles_completed, 0);
+  const mrr = subs.filter(s => s.status==='active').reduce((a,s)=>a + parseFloat(s.mp_total_amount || s.final_price || 0), 0);
+  const hasIssue = subs.some(s => s.needs_payment_update);
+  let html = `
+    <div class="hero">
+      <div class="hero-greeting">${d.name ? 'Hola ' + d.name.split(' ')[0] + ',' : 'Hola'}</div>
+      <div class="hero-name">Tus suscripciones</div>
+    </div>`;
+  if (hasIssue) {
+    const issueSub = subs.find(s => s.needs_payment_update);
+    html += `
+      <div class="alert">
+        <div class="alert-title">⚠️ Acción requerida</div>
+        <div class="alert-text">Hubo un problema al cobrar tu suscripción <strong>${issueSub.product_title}</strong>. Por favor actualiza tu tarjeta para mantenerla activa.</div>
+        <a href="${issueSub.mp_update_url}" target="_blank" rel="noopener" class="alert-btn">Actualizar tarjeta en MercadoPago →</a>
+      </div>`;
+  }
+  html += `
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Activas</div><div class="stat-value">${active}</div></div>
+      <div class="stat"><div class="stat-label">Pausadas</div><div class="stat-value">${paused}</div></div>
+      <div class="stat"><div class="stat-label">Pedidos</div><div class="stat-value">${totalCycles}</div></div>
+      <div class="stat"><div class="stat-label">Mensual</div><div class="stat-value accent">${money(mrr)}</div></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Mis Suscripciones</div>
+      ${subs.map(renderSub).join('')}
+    </div>
+    <p style="text-align:center;color:#888;font-size:12px;margin-top:32px">Para pausar o cancelar tu suscripción, contáctanos por WhatsApp o respondé los emails que te enviamos.</p>`;
+  c.innerHTML = html;
+}
+
+function renderSub(s){
+  const cyclesPct = s.cycles_required ? Math.min(100, (s.cycles_completed / s.cycles_required) * 100) : 0;
+  const isPaused = s.status === 'paused';
+  const isCancelled = s.status === 'cancelled';
+  const isCompleted = s.cycles_completed >= s.cycles_required && s.cycles_required > 0;
+  const total = s.mp_total_amount || s.final_price || 0;
+  const classes = ['sub-card'];
+  if (isPaused) classes.push('is-paused');
+  if (s.needs_payment_update) classes.push('has-issue');
+  return `
+    <div class="${classes.join(' ')}">
+      <div class="sub-head">
+        <div class="sub-img" style="background-image:url('${s.product_image || ''}')"></div>
+        <div class="sub-info">
+          <div class="sub-name">${s.product_title || '—'}</div>
+          <div class="sub-meta">Cada ${s.frequency_months || 1} ${(s.frequency_months||1)===1?'mes':'meses'} · Compromiso ${s.permanence_months || s.cycles_required || '?'} meses</div>
+        </div>
+        <span class="sub-status ${isCompleted?'active':s.status}">${statusLabel(isCompleted?'completed':s.status)}</span>
+      </div>
+      <div class="sub-body">
+        <div class="progress-wrap">
+          <div class="progress-head"><span>Avance</span><span>${s.cycles_completed} de ${s.cycles_required||'?'}</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${cyclesPct}%"></div></div>
+        </div>
+        <div class="sub-grid">
+          <div><div class="sub-field-label">Próximo cobro</div><div class="sub-field-value">${isPaused?'En pausa':(isCancelled||isCompleted?'—':fmt(s.next_charge_at))}</div></div>
+          <div><div class="sub-field-label">Monto</div><div class="sub-field-value" style="color:#E30613">${money(total)}</div></div>
+          <div><div class="sub-field-label">Última entrega</div><div class="sub-field-value">${s.shopify_order_name || '—'}</div></div>
+          <div><div class="sub-field-label">Última fecha</div><div class="sub-field-value">${fmt(s.last_charge_at)}</div></div>
+        </div>
+        ${s.needs_payment_update ? `<div class="payment-alert">⚠️ Cobro rechazado. <a href="${s.mp_update_url}" target="_blank" rel="noopener">Actualizá tu tarjeta</a> en MercadoPago para reactivar el cobro.</div>` : ''}
+      </div>
+    </div>`;
+}
+
+loadData();
+</script>
+
+</body>
+</html>

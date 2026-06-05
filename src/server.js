@@ -10699,6 +10699,375 @@ app.get('/api/admin/products-health-check', async (req, res) => {
     }
 });
 
+/* ═══════════════════════════════════════════════════════════════════
+   🆕 2026-06-05 — DUNNING SYSTEM (cobros rechazados + auto-emails)
+   + APP PROXY HANDLER (portal dentro de labnutrition.pe)
+   + UPDATE CARD endpoints
+   ADITIVO. No toca webhooks, dedup, ni flujos existentes.
+   ═══════════════════════════════════════════════════════════════════ */
+
+// ── Helper: Verify App Proxy HMAC (Shopify firma cada request)
+function _verifyAppProxyHmac(query) {
+    const secret = process.env.SHOPIFY_API_SECRET;
+    if (!secret) return { ok: false, mode: 'off', reason: 'No SHOPIFY_API_SECRET' };
+    const { signature, ...params } = query;
+    if (!signature) return { ok: false, mode: process.env.APP_PROXY_VERIFY || 'warn', reason: 'No signature' };
+    const sorted = Object.keys(params).sort()
+        .map(k => `${k}=${Array.isArray(params[k]) ? params[k].join(',') : params[k]}`)
+        .join('');
+    const computed = crypto.createHmac('sha256', secret).update(sorted).digest('hex');
+    return { ok: computed === signature, mode: process.env.APP_PROXY_VERIFY || 'warn', computed: computed.slice(0,8), got: signature.slice(0,8) };
+}
+
+// ── Helper: build MP customer dashboard URL for a sub (para update card)
+function _mpCustomerDashboardUrl(preapprovalId) {
+    return `https://www.mercadopago.com.pe/subscriptions/details/${preapprovalId}`;
+}
+
+// ── Helper: send dunning email (Resend HTTP API)
+async function _sendDunningEmail(sub, dayNumber, mpDashboardUrl, portalUrl) {
+    if (!process.env.RESEND_API_KEY) return { sent: false, reason: 'No RESEND_API_KEY' };
+    const subjects = {
+        0: '⚠️ Tu pago no se procesó — LAB NUTRITION',
+        3: 'Recordatorio: tu suscripción está pausada por falta de pago',
+        7: 'Última semana para actualizar tu tarjeta',
+        14: 'Tu suscripción será pausada hoy'
+    };
+    const introMsgs = {
+        0: 'Tuvimos un problema al cobrar tu suscripción este mes. Tu tarjeta fue rechazada por el banco.',
+        3: 'Hace 3 días intentamos cobrar tu suscripción y fue rechazada. Por favor actualiza tu tarjeta para no perder tu plan.',
+        7: 'Han pasado 7 días desde que intentamos cobrar tu suscripción. Te quedan 7 días antes de que se pause automáticamente.',
+        14: 'Han pasado 14 días desde el cobro rechazado. Tu suscripción quedará pausada hoy. Para reactivarla, actualiza tu tarjeta en MercadoPago.'
+    };
+    const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;margin:0">
+<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.05)">
+  <div style="background:#0A0A0A;padding:24px;text-align:center">
+    <h1 style="color:#E30613;font-size:24px;margin:0;letter-spacing:2px;font-weight:900">LAB NUTRITION</h1>
+  </div>
+  <div style="padding:32px 28px">
+    <h2 style="color:#0A0A0A;font-size:20px;margin:0 0 16px;font-weight:800">Hola ${(sub.customer_name || 'cliente').split(' ')[0]},</h2>
+    <p style="color:#374151;line-height:1.6;margin:0 0 18px;font-size:15px">${introMsgs[dayNumber] || introMsgs[0]}</p>
+    <div style="background:#FEF2F2;border-left:4px solid #E30613;padding:16px 18px;border-radius:6px;margin:0 0 22px">
+      <strong style="color:#0A0A0A">Plan:</strong> ${sub.product_title || 'Tu suscripción'}<br>
+      <strong style="color:#0A0A0A">Monto:</strong> S/${(sub.mp_total_amount || sub.final_price || 0)}<br>
+      <strong style="color:#0A0A0A">Frecuencia:</strong> Cada ${sub.frequency_months || 1} mes${(sub.frequency_months || 1) > 1 ? 'es' : ''}
+    </div>
+    <p style="color:#374151;line-height:1.6;margin:0 0 22px;font-size:15px"><strong>¿Qué hacer?</strong> Actualizá tu tarjeta en 1 minuto desde MercadoPago. Tu próximo intento será automático.</p>
+    <div style="text-align:center;margin:28px 0">
+      <a href="${mpDashboardUrl}" style="display:inline-block;background:#E30613;color:#fff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px;letter-spacing:1px;text-transform:uppercase">Actualizar tarjeta</a>
+    </div>
+    <p style="color:#666;font-size:13px;line-height:1.5;text-align:center;margin:18px 0 0">
+      O entrá a <a href="${portalUrl}" style="color:#E30613;text-decoration:none">tu portal de cliente</a> para gestionar tu suscripción
+    </p>
+    <hr style="border:none;border-top:1px solid #E5E5E5;margin:28px 0 18px">
+    <p style="color:#888;font-size:12px;text-align:center;margin:0">¿Necesitas ayuda? Respondé este correo o escribinos por WhatsApp.</p>
+  </div>
+</div>
+</body></html>`;
+    try {
+        const r = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                from: process.env.RESEND_FROM || 'LAB NUTRITION <onboarding@resend.dev>',
+                to: [sub.customer_email],
+                subject: subjects[dayNumber] || subjects[0],
+                html
+            })
+        });
+        return { sent: r.ok, status: r.status };
+    } catch (e) { return { sent: false, error: e.message }; }
+}
+
+/* ── Función: detectar cobros rechazados en MP (cada 4h) ── */
+async function runDunningDetection() {
+    console.log('[DUNNING] Detection start');
+    let detected = 0, emailsSent = 0, errors = 0;
+    try {
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const targets = (Array.isArray(allSubs) ? allSubs : [])
+            .filter(s => s.status === 'active' && s.mp_preapproval_id);
+        const mpToken = process.env.MP_ACCESS_TOKEN;
+        if (!mpToken) { console.warn('[DUNNING] No MP token, skipping'); return; }
+        const BACKEND = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
+        for (const sub of targets) {
+            try {
+                const payments = await mp.listPreapprovalPayments(sub.mp_preapproval_id, 5).catch(() => []);
+                if (!payments.length) continue;
+                // Get latest payment with real status (use mp.getPayment for accuracy)
+                const latest = payments[0];
+                const pid = latest.payment_id || latest.id;
+                if (!pid || !/^\d+$/.test(String(pid))) continue;
+                let realStatus = latest.status;
+                const pd = await mp.getPayment(String(pid)).catch(() => null);
+                if (pd) realStatus = pd.status;
+                if (realStatus !== 'rejected') continue;
+                // Idempotency: skip if already processed this payment_id
+                const events = await db.getEvents(sub.id).catch(() => []);
+                const already = (events || []).some(e => {
+                    if (e.event_type !== 'payment_rejected') return false;
+                    try { const m = typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata; return String(m.payment_id) === String(pid); } catch { return false; }
+                });
+                if (already) continue;
+                // Loggea evento
+                await db.createEvent({
+                    subscription_id: sub.id,
+                    event_type: 'payment_rejected',
+                    metadata: JSON.stringify({
+                        payment_id: String(pid),
+                        amount: latest.transaction_amount,
+                        rejected_at: latest.date_created || new Date().toISOString(),
+                        status_detail: pd?.status_detail || latest.status_detail || null,
+                        detected_at: new Date().toISOString(),
+                        cycle: (parseInt(sub.cycles_completed)||0) + 1
+                    })
+                }).catch(() => {});
+                // Marca sub
+                await db.updateSubscription(sub.id, { needs_payment_update: true, last_payment_failed_at: new Date().toISOString() }).catch(() => {});
+                // Manda primer email
+                const mpUrl = _mpCustomerDashboardUrl(sub.mp_preapproval_id);
+                const portalUrl = `${BACKEND}/portal/v2`;
+                const emailRes = await _sendDunningEmail(sub, 0, mpUrl, portalUrl);
+                if (emailRes.sent) {
+                    emailsSent++;
+                    await db.createEvent({
+                        subscription_id: sub.id,
+                        event_type: 'dunning_email_sent',
+                        metadata: JSON.stringify({ day: 0, payment_id: String(pid), at: new Date().toISOString() })
+                    }).catch(() => {});
+                }
+                detected++;
+                console.log(`[DUNNING] ${sub.customer_email} - payment ${pid} rejected, email sent: ${emailRes.sent}`);
+            } catch (e) {
+                errors++;
+                console.warn('[DUNNING]', sub.id, e.message);
+            }
+            await new Promise(r => setTimeout(r, 300)); // rate limit MP
+        }
+        console.log(`[DUNNING] Done: detected=${detected}, emails=${emailsSent}, errors=${errors}`);
+    } catch (e) { console.error('[DUNNING] Top-level error:', e.message); }
+}
+
+/* ── Función: follow-up emails día 3, 7, 14 + auto-pause (daily 10:30am) ── */
+async function runDunningFollowups() {
+    console.log('[DUNNING-FU] Followups start');
+    let sent = 0, paused = 0;
+    try {
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const needsUpdate = (Array.isArray(allSubs) ? allSubs : [])
+            .filter(s => s.status === 'active' && s.needs_payment_update === true);
+        const BACKEND = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
+        for (const sub of needsUpdate) {
+            try {
+                const events = await db.getEvents(sub.id).catch(() => []);
+                const rejectionEvent = (events || []).find(e => e.event_type === 'payment_rejected');
+                if (!rejectionEvent) continue;
+                const daysSince = Math.floor((Date.now() - new Date(rejectionEvent.created_at || rejectionEvent.metadata?.detected_at || Date.now()).getTime()) / 86400000);
+                const milestone = [3, 7, 14].find(d => daysSince === d);
+                if (milestone) {
+                    const alreadySent = (events || []).some(e => {
+                        if (e.event_type !== 'dunning_email_sent') return false;
+                        try { const m = typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata; return Number(m.day) === milestone; } catch { return false; }
+                    });
+                    if (!alreadySent) {
+                        const mpUrl = _mpCustomerDashboardUrl(sub.mp_preapproval_id);
+                        const portalUrl = `${BACKEND}/portal/v2`;
+                        const r = await _sendDunningEmail(sub, milestone, mpUrl, portalUrl);
+                        if (r.sent) {
+                            sent++;
+                            await db.createEvent({
+                                subscription_id: sub.id,
+                                event_type: 'dunning_email_sent',
+                                metadata: JSON.stringify({ day: milestone, at: new Date().toISOString() })
+                            }).catch(() => {});
+                        }
+                    }
+                }
+                // Auto-pause day 14+
+                if (daysSince >= 14 && sub.status === 'active') {
+                    if (mp.pauseSubscription) await mp.pauseSubscription(sub.mp_preapproval_id).catch(() => {});
+                    await db.updateSubscription(sub.id, { status: 'paused', paused_reason: 'auto_payment_failed', paused_at: new Date().toISOString() });
+                    await db.createEvent({
+                        subscription_id: sub.id,
+                        event_type: 'auto_paused_payment_failed',
+                        metadata: JSON.stringify({ days_since_rejection: daysSince, at: new Date().toISOString() })
+                    }).catch(() => {});
+                    paused++;
+                }
+            } catch (e) { console.warn('[DUNNING-FU]', sub.id, e.message); }
+        }
+        console.log(`[DUNNING-FU] Done: emails=${sent}, paused=${paused}`);
+    } catch (e) { console.error('[DUNNING-FU] Top-level error:', e.message); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   📍 ADMIN: lista de cobros fallidos pendientes acción
+   ═══════════════════════════════════════════════════════════════════ */
+app.get('/api/admin/failed-payments', async (req, res) => {
+    try {
+        const all = await db.getSubscriptions().catch(() => []);
+        const candidates = (Array.isArray(all) ? all : [])
+            .filter(s => s.needs_payment_update === true || s.paused_reason === 'auto_payment_failed');
+        const enriched = await Promise.all(candidates.map(async s => {
+            const events = await db.getEvents(s.id).catch(() => []);
+            const reject = (events || []).find(e => e.event_type === 'payment_rejected');
+            const emailsSent = (events || []).filter(e => e.event_type === 'dunning_email_sent');
+            const daysSince = reject ? Math.floor((Date.now() - new Date(reject.created_at).getTime()) / 86400000) : null;
+            let metadata = {};
+            try { metadata = typeof reject?.metadata === 'string' ? JSON.parse(reject.metadata) : (reject?.metadata || {}); } catch {}
+            return {
+                sub_id: s.id,
+                email: s.customer_email,
+                name: s.customer_name,
+                phone: s.customer_phone,
+                product: s.product_title,
+                status: s.status,
+                cycles: `${s.cycles_completed || 0}/${s.cycles_required || '?'}`,
+                amount_failed: metadata.amount || s.mp_total_amount || s.final_price,
+                rejection_date: reject?.created_at || metadata.detected_at || null,
+                days_since: daysSince,
+                emails_sent: emailsSent.length,
+                emails_dates: emailsSent.map(e => {
+                    try { const m = typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata; return `day ${m.day}`; } catch { return '?'; }
+                }),
+                payment_id: metadata.payment_id,
+                status_detail: metadata.status_detail,
+                mp_preapproval_id: s.mp_preapproval_id,
+                mp_update_url: s.mp_preapproval_id ? _mpCustomerDashboardUrl(s.mp_preapproval_id) : null,
+                auto_paused: s.paused_reason === 'auto_payment_failed'
+            };
+        }));
+        enriched.sort((a, b) => (b.days_since || 0) - (a.days_since || 0));
+        res.json({ total: enriched.length, items: enriched });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* POST /api/admin/failed-payments/:sub_id/resend-email — admin re-envía email manualmente */
+app.post('/api/admin/failed-payments/:sub_id/resend-email', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.sub_id);
+        if (!sub) return res.status(404).json({ error: 'Sub not found' });
+        const BACKEND = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
+        const mpUrl = _mpCustomerDashboardUrl(sub.mp_preapproval_id);
+        const portalUrl = `${BACKEND}/portal/v2`;
+        const r = await _sendDunningEmail(sub, 0, mpUrl, portalUrl);
+        await db.createEvent({
+            subscription_id: sub.id,
+            event_type: 'dunning_email_sent_manual',
+            metadata: JSON.stringify({ day: 0, by: 'admin', at: new Date().toISOString(), email_status: r.status })
+        }).catch(() => {});
+        res.json({ success: r.sent, ...r });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* POST /api/admin/failed-payments/:sub_id/clear-flag — admin marca caso resuelto */
+app.post('/api/admin/failed-payments/:sub_id/clear-flag', async (req, res) => {
+    try {
+        await db.updateSubscription(req.params.sub_id, { needs_payment_update: false, paused_reason: null });
+        await db.createEvent({
+            subscription_id: req.params.sub_id,
+            event_type: 'payment_issue_cleared',
+            metadata: JSON.stringify({ by: 'admin', at: new Date().toISOString() })
+        }).catch(() => {});
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ═══════════════════════════════════════════════════════════════════
+   🆕 APP PROXY HANDLER (portal dentro de labnutrition.pe)
+   Shopify enruta labnutrition.pe/apps/account-suscripcion/* aquí.
+   Configurar en Partners: subpath_prefix=apps, subpath=account-suscripcion,
+   proxy_url=https://pixel-suite-pro-production.up.railway.app/apps/account-suscripcion
+   ═══════════════════════════════════════════════════════════════════ */
+
+// HTML page (responsive, Lab Nutrition branded)
+app.get('/apps/account-suscripcion', async (req, res) => {
+    const hmac = _verifyAppProxyHmac(req.query);
+    if (!hmac.ok && hmac.mode === 'enforce') return res.status(401).type('html').send('<h1>Acceso no autorizado</h1>');
+    const customerId = req.query.logged_in_customer_id || '';
+    res.set('Content-Type', 'application/liquid');
+    res.sendFile(path.join(__dirname, 'public', 'portal-shopify.html'));
+});
+
+// JSON: subs by customer_id (App Proxy authenticated)
+app.get('/apps/account-suscripcion/me', async (req, res) => {
+    const hmac = _verifyAppProxyHmac(req.query);
+    if (!hmac.ok && hmac.mode === 'enforce') return res.status(401).json({ error: 'Unauthorized' });
+    const customerId = String(req.query.logged_in_customer_id || '');
+    if (!customerId) return res.json({ is_member: false, customer_id: null, subscriptions: [] });
+    // Buscar customer en Shopify para obtener email
+    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+    const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+    let customerEmail = null, customerName = null;
+    if (token) {
+        try {
+            const r = await fetch(`https://${shop}/admin/api/2026-01/customers/${customerId}.json?fields=id,email,first_name,last_name`, { headers: { 'X-Shopify-Access-Token': token } });
+            if (r.ok) {
+                const d = await r.json();
+                customerEmail = d.customer?.email;
+                customerName = `${d.customer?.first_name || ''} ${d.customer?.last_name || ''}`.trim();
+            }
+        } catch {}
+    }
+    if (!customerEmail) return res.json({ is_member: false, customer_id: customerId, name: customerName, subscriptions: [] });
+    const allSubs = await db.getSubscriptions().catch(() => []);
+    const mySubs = (Array.isArray(allSubs) ? allSubs : [])
+        .filter(s => (s.customer_email || '').toLowerCase() === customerEmail.toLowerCase() && s.status !== 'pending_payment')
+        .map(s => ({
+            id: s.id,
+            product_title: s.product_title,
+            product_image: s.product_image,
+            status: s.status,
+            cycles_completed: parseInt(s.cycles_completed || 0),
+            cycles_required: parseInt(s.cycles_required || 0),
+            frequency_months: s.frequency_months,
+            permanence_months: s.permanence_months,
+            base_price: s.base_price,
+            final_price: s.final_price,
+            mp_total_amount: s.mp_total_amount,
+            next_charge_at: s.next_charge_at,
+            last_charge_at: s.last_charge_at,
+            shopify_order_name: s.shopify_order_name,
+            needs_payment_update: !!s.needs_payment_update,
+            mp_update_url: s.mp_preapproval_id ? _mpCustomerDashboardUrl(s.mp_preapproval_id) : null
+        }));
+    res.json({
+        is_member: mySubs.length > 0,
+        customer_id: customerId,
+        email: customerEmail,
+        name: customerName,
+        subscriptions: mySubs
+    });
+});
+
+/* ═══════════════════════════════════════════════════════════════════
+   🆕 UPDATE CARD page + endpoint
+   /portal/v2/update-card?token=xxx — vista web del problema + deep link MP
+   ═══════════════════════════════════════════════════════════════════ */
+
+app.get('/portal/v2/update-card', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'portal-update-card.html'));
+});
+
+app.get('/api/portal/v2/update-card-info', async (req, res) => {
+    try {
+        const payload = _portalV2VerifyToken(req.query.token);
+        if (!payload) return res.status(401).json({ error: 'Token inválido o expirado' });
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const mySubs = (Array.isArray(allSubs) ? allSubs : [])
+            .filter(s => payload.sub_ids.includes(s.id) && s.needs_payment_update)
+            .map(s => ({
+                id: s.id,
+                product_title: s.product_title,
+                amount: s.mp_total_amount || s.final_price,
+                cycles: `${s.cycles_completed || 0}/${s.cycles_required || '?'}`,
+                mp_update_url: s.mp_preapproval_id ? _mpCustomerDashboardUrl(s.mp_preapproval_id) : null,
+                last_payment_failed_at: s.last_payment_failed_at || null
+            }));
+        res.json({ email: payload.email, subscriptions_pending_update: mySubs });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ── Catch-all: serve admin.html for Shopify embedded app (must be LAST) ── */
 app.get('*', (req, res) => {
     // Evita capturar paths que parecen archivos estáticos faltantes (404 limpio)
@@ -10717,6 +11086,20 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
     }
     // ── Hidrata env vars persistidos en Shopify metafield (SMTP/Resend/etc.) ──
     // Permite que la key Resend configurada vía PUT /api/settings sobreviva a redeploys.
+    try {
+        // 🆕 2026-06-05 — Cargar también token Shopify + MP desde settings si no están en env
+        const envMapFull = {
+            shopify_access_token: 'SHOPIFY_ACCESS_TOKEN',
+            mp_access_token: 'MP_ACCESS_TOKEN',
+            smtp_host: 'SMTP_HOST', smtp_port: 'SMTP_PORT',
+            smtp_user: 'SMTP_USER', smtp_pass: 'SMTP_PASS', email_from: 'EMAIL_FROM',
+            resend_api_key: 'RESEND_API_KEY', resend_from: 'RESEND_FROM'
+        };
+        const persisted2 = await readFromShopify().catch(() => null) || readFromFile() || {};
+        for (const [k, e] of Object.entries(envMapFull)) {
+            if (persisted2[k] && !process.env[e]) process.env[e] = String(persisted2[k]);
+        }
+    } catch {}
     try {
         const persisted = await readFromShopify().catch(() => null) || readFromFile() || {};
         const envMap = {
@@ -10737,6 +11120,14 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
     if (process.env.NODE_ENV !== 'test') {
         scheduleDailyCron(2, 0, runDailyBillingCron);  // 2am Lima
         scheduleDailyCron(9, 0, runReminderCron);       // 9am Lima
+
+        // 🆕 DUNNING — 2026-06-05 — detección de cobros rechazados + auto-emails
+        setTimeout(() => {
+            setInterval(runDunningDetection, 4 * 60 * 60 * 1000); // cada 4h
+            console.log('[CRON] "runDunningDetection" scheduled: every 4 hours');
+        }, 45 * 60 * 1000); // offset 45min para no chocar con polling
+        scheduleDailyCron(10, 30, runDunningFollowups);  // 10:30am Lima — followups + auto-pause
+        console.log('[CRON] "runDunningFollowups" scheduled: daily 10:30am PET');
 
         // MP Payment Polling — every 1 hour to catch recurring charges
         // and create Shopify orders (for preapprovals without notification_url)
