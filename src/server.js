@@ -10761,7 +10761,35 @@ function _mpCustomerDashboardUrl(preapprovalId) {
 //   El admin recibe el email del cliente con header "DESTINATARIO ORIGINAL: <cliente>"
 //   y un botón "Reenviar al cliente" (mailto:). Esto desbloquea el dunning
 //   mientras el dominio no esté verificado en Resend.
-const _ADMIN_EMAIL_FALLBACK = process.env.ADMIN_EMAIL || 'israelsarmiento281294@gmail.com';
+// Email principal del admin para alertas dunning. Cambiable via env ADMIN_EMAIL.
+const _ADMIN_EMAIL_FALLBACK = process.env.ADMIN_EMAIL || 'asesorecommerce@labnutrition.com';
+// Resend trial seguridad: si trial bloquea destino → segundo intento a este email.
+// Una vez verifiques dominio en Resend, este fallback es innecesario.
+const _ADMIN_EMAIL_TRIAL_FALLBACK = process.env.ADMIN_EMAIL_TRIAL_FALLBACK || 'israelsarmiento281294@gmail.com';
+
+// 🆕 Helper: send email con doble fallback (target → trial-allowed → cliente)
+async function _resendSendWithFallback(payloadBase, primaryTo) {
+    const r1 = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payloadBase, to: [primaryTo] })
+    });
+    if (r1.ok) return { sent: true, status: 200, to: primaryTo, fallback_trial: false };
+    if (r1.status === 403 && primaryTo !== _ADMIN_EMAIL_TRIAL_FALLBACK) {
+        // Trial restriction → fallback al email registrado en Resend
+        const r2 = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ...payloadBase,
+                to: [_ADMIN_EMAIL_TRIAL_FALLBACK],
+                subject: `[REDIRECT a ${primaryTo}] ${payloadBase.subject || ''}`
+            })
+        });
+        return { sent: r2.ok, status: r2.status, to: _ADMIN_EMAIL_TRIAL_FALLBACK, fallback_trial: true, target: primaryTo };
+    }
+    return { sent: false, status: r1.status, to: primaryTo };
+}
 
 async function _sendDunningEmail(sub, dayNumber, mpDashboardUrl, portalUrl) {
     if (!process.env.RESEND_API_KEY) return { sent: false, reason: 'No RESEND_API_KEY' };
@@ -10852,17 +10880,12 @@ async function _sendDunningEmail(sub, dayNumber, mpDashboardUrl, portalUrl) {
     </div></details>
   </div>
 </div></body></html>`;
-            const r2 = await fetch('https://api.resend.com/emails', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    from: process.env.RESEND_FROM || 'LAB NUTRITION Dunning <onboarding@resend.dev>',
-                    to: [_ADMIN_EMAIL_FALLBACK],
-                    subject: `[Acción] ${sub.customer_name || sub.customer_email} — cobro rechazado día ${dayNumber}`,
-                    html: adminHtml
-                })
-            });
-            return { sent: r2.ok, status: r2.status, to: _ADMIN_EMAIL_FALLBACK, fallback_admin: true, original_recipient: sub.customer_email };
+            const r2 = await _resendSendWithFallback({
+                from: process.env.RESEND_FROM || 'LAB NUTRITION Dunning <onboarding@resend.dev>',
+                subject: `[Acción] ${sub.customer_name || sub.customer_email} — cobro rechazado día ${dayNumber}`,
+                html: adminHtml
+            }, _ADMIN_EMAIL_FALLBACK);
+            return { sent: r2.sent, status: r2.status, to: r2.to, fallback_admin: true, original_recipient: sub.customer_email, used_trial_fallback: !!r2.fallback_trial };
         }
         return { sent: false, status: r.status, to: sub.customer_email };
     } catch (e) { return { sent: false, error: e.message }; }

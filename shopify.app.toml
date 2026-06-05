@@ -7,8 +7,23 @@ embedded = true
   automatically_update_urls_on_dev = true
   dev_store_url = "nutrition-lab-cluster.myshopify.com"
 
+# 🆕 2026-06-05 — App Proxy: portal cliente dentro de labnutrition.pe
+# Cliente entra a: nutrition-lab-cluster.myshopify.com/apps/account-suscripcion
+# Shopify hace HMAC-signed forwarding al backend Railway en /apps/account-suscripcion
+# Inmutable post-install — confirmar antes de deploy
+[app_proxy]
+url = "https://pixel-suite-pro-production.up.railway.app/apps/account-suscripcion"
+subpath = "account-suscripcion"
+prefix = "apps"
+
 [webhooks]
   api_version = "2026-01"
+
+  # 🆕 2026-06-05 — GDPR mandatory compliance webhooks (App Store requirement)
+  [webhooks.privacy_compliance]
+    customer_deletion_url = "https://pixel-suite-pro-production.up.railway.app/webhooks/shopify/customers_redact"
+    customer_data_request_url = "https://pixel-suite-pro-production.up.railway.app/webhooks/shopify/customers_data_request"
+    shop_deletion_url = "https://pixel-suite-pro-production.up.railway.app/webhooks/shopify/shop_redact"
 
   [[webhooks.subscriptions]]
     topics = ["orders/paid"]
