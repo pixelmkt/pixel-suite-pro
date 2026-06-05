@@ -1,0 +1,7 @@
+api_version = "2026-01"
+
+[[extensions]]
+name = "Suscriptions MP Widget"
+handle = "suscriptions-mp"
+type = "theme_app_extension"
+uid = "019d78ef-e16f-7ada-943e-ec01ddf6c86b"

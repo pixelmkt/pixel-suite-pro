@@ -1,0 +1,437 @@
+/* ═══════════════════════════════════════════════════
+   LAB NUTRITION — Subscription Widget Premium UI (2026 Standards)
+   Brand-aligned: Red #9d2a23 | White | Soft Glassmorphism Shadows
+   Engineered for Mobile Comfort and High Conversion
+   ═══════════════════════════════════════════════════ */
+
+:root {
+    --lab-red: #9d2a23;
+    --lab-red-dark: #7e201a;
+    --lab-red-light: rgba(157, 42, 35, 0.05);
+    --lab-black: #111827;
+    --lab-white: #ffffff;
+    --lab-gray-bg: #f8f9fa;
+    --lab-gray-card: #f9fafb;
+    --lab-gray-border: rgba(0, 0, 0, 0.05);
+    --lab-gray-text: #64748b;
+    --lab-gray-muted: #94a3b8;
+    --lab-gold: #C8892A;
+    --lab-green-save: #059669;
+    --r-btn: 12px;
+    --r-card: 16px;
+    --r-wrap: 20px;
+}
+
+/* ── CONTAINER ── */
+.lab-sub {
+    font-family: inherit;
+    background: var(--lab-bg, var(--lab-white));
+    border: 1px solid var(--lab-gray-border);
+    border-radius: var(--r-wrap);
+    padding: 24px;
+    margin: 24px 0;
+    color: var(--lab-black);
+    box-shadow: 0px 8px 30px rgba(0, 0, 0, 0.03), 0px 1px 4px rgba(0, 0, 0, 0.02);
+    transition: box-shadow 0.3s ease;
+}
+
+/* ── MODE TOGGLE (Apple-like Tab Switcher) ── */
+.lab-sub__toggle {
+    display: flex;
+    gap: 0;
+    background: var(--lab-tab-bg, var(--lab-gray-bg));
+    border: 1px solid rgba(0,0,0,0.03);
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 24px;
+}
+
+.lab-sub__tab {
+    flex: 1;
+    padding: 12px 14px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--lab-tab-text, var(--lab-gray-text));
+    font-size: var(--lab-tab-size, 13px);
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.lab-sub__tab--active {
+    background: var(--lab-tab-act, var(--lab-white));
+    color: var(--lab-tab-act-text, var(--lab-red));
+    box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.lab-sub__pill {
+    background: rgba(0,0,0,0.8);
+    color: var(--lab-white);
+    font-size: 9px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 6px;
+    letter-spacing: 0.5px;
+    transition: background 0.3s ease;
+}
+
+.lab-sub__tab--active .lab-sub__pill {
+    background: var(--lab-red-light);
+    color: var(--lab-red);
+}
+
+/* ── PANELS ── */
+.lab-sub__panel {
+    display: none;
+    animation: lab-fade-scale 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.lab-sub__panel--active {
+    display: block;
+}
+
+@keyframes lab-fade-scale {
+    from {
+        opacity: 0;
+        transform: translateY(6px) scale(0.99);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Envio gratis general */
+.lab-sub__free-ship {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--lab-green-save);
+    background: #ecfdf5;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    margin-top: 8px;
+}
+
+/* ── SELECTORS / CHIPS ── */
+.lab-sub__group {
+    margin-bottom: 20px;
+}
+
+.lab-sub__label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--lab-gray-text);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 10px;
+}
+
+.lab-sub__chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.lab-sub__chip {
+    padding: 12px 18px;
+    border: 1px solid var(--lab-gray-border);
+    border-radius: var(--r-btn);
+    background: var(--lab-gray-bg);
+    color: var(--lab-black);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    white-space: nowrap;
+}
+
+.lab-sub__chip:hover {
+    border-color: rgba(157, 42, 35, 0.3);
+    background: var(--lab-white);
+}
+
+.lab-sub__chip--active {
+    background: var(--lab-white);
+    border-color: var(--lab-red);
+    color: var(--lab-red);
+    box-shadow: 0 0 0 1px var(--lab-red);
+}
+
+/* ── BENEFIT BOX (Recharging Value) ── */
+.lab-sub__benefit {
+    background: var(--lab-benefit-bg, var(--lab-red-light));
+    border: 1px solid rgba(157, 42, 35, 0.1);
+    border-radius: var(--r-card);
+    padding: 18px 20px;
+    margin-bottom: 20px;
+}
+
+.lab-sub__benefit-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.lab-sub__pct {
+    font-size: 34px;
+    font-weight: 900;
+    color: var(--lab-red);
+    letter-spacing: -1px;
+    line-height: 1;
+}
+
+.lab-sub__prices {
+    text-align: right;
+}
+
+.lab-sub__was {
+    display: block;
+    font-size: 13px;
+    color: var(--lab-gray-muted);
+    font-weight: 500;
+    text-decoration: line-through;
+    margin-bottom: 2px;
+}
+
+.lab-sub__now {
+    display: block;
+    font-size: 26px;
+    font-weight: 900;
+    color: var(--lab-red);
+    line-height: 1;
+}
+
+.lab-sub__saving {
+    font-size: 12px;
+    color: var(--lab-green-save);
+    font-weight: 700;
+    margin-top: 6px;
+}
+
+/* ── PERKS GRID ── */
+.lab-sub__perks {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.lab-sub__perk {
+    background: var(--lab-gray-card);
+    border: 1px solid var(--lab-gray-border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--lab-black);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    text-transform: capitalize;
+}
+.lab-sub__perk::before {
+    content: "\2713";
+    color: var(--lab-green-save);
+    margin-right: 6px;
+    font-weight: 900;
+}
+
+/* ── LEGAL ── */
+.lab-sub__legal {
+    font-size: 11px;
+    color: var(--lab-gray-muted);
+    line-height: 1.5;
+    margin-bottom: 20px;
+    padding-left: 12px;
+    border-left: 2px solid var(--lab-gray-border);
+}
+
+/* ── SOCIAL PROOF ── */
+.lab-sub__social {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--lab-gray-text);
+    margin-bottom: 16px;
+}
+
+.lab-sub__social-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--lab-green-save);
+    flex-shrink: 0;
+    animation: lab-pulse 2s ease-out infinite;
+}
+
+@keyframes lab-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.4); }
+    70% { box-shadow: 0 0 0 8px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* ── CTA ── */
+.lab-sub__cta {
+    width: 100%;
+    padding: 18px 24px;
+    border: none;
+    border-radius: var(--r-btn);
+    background: var(--lab-red);
+    color: var(--lab-white);
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 8px 16px rgba(157, 42, 35, 0.25);
+}
+
+.lab-sub__cta:hover {
+    background: var(--lab-red-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px rgba(157, 42, 35, 0.3);
+}
+
+.lab-sub__cta:active {
+    transform: translateY(0);
+    box-shadow: 0 4px 8px rgba(157, 42, 35, 0.2);
+}
+
+.lab-sub__cta:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* ── PLAN CARDS (Nativos) ── */
+.lab-sub__plan-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.lab-sub__plan-card {
+    position: relative;
+    border: 1px solid var(--lab-gray-border);
+    border-radius: var(--r-card);
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    background: var(--lab-gray-bg);
+    overflow: hidden;
+}
+
+.lab-sub__plan-card:hover {
+    background: var(--lab-white);
+    border-color: rgba(157, 42, 35, 0.2);
+}
+
+.lab-sub__plan-card--selected {
+    background: var(--lab-white) !important;
+    border-color: var(--lab-red) !important;
+    box-shadow: 0 0 0 1px var(--lab-red) inset;
+}
+
+.lab-sub__plan-card-check {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 900;
+    color: transparent;
+    transition: all 0.25s;
+    border: 2px solid transparent;
+}
+
+.lab-sub__plan-card--selected .lab-sub__plan-card-check {
+    background: var(--lab-red);
+    color: #fff;
+    border-color: var(--lab-red-light);
+}
+
+.lab-sub__plan-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--lab-black);
+    line-height: 1.4;
+    padding-right: 32px;
+}
+
+/* ── HEADER ── */
+.lab-sub__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.lab-sub__title {
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--lab-black);
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+
+.lab-sub__badge {
+    background: var(--lab-red);
+    color: var(--lab-white);
+    font-size: 10px;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 480px) {
+    .lab-sub {
+        padding: 20px;
+        margin: 16px 0;
+        border-radius: 16px;
+    }
+
+    .lab-sub__tab {
+        padding: 10px 8px;
+        font-size: 12px;
+    }
+
+    .lab-sub__pct {
+        font-size: 28px;
+    }
+
+    .lab-sub__now {
+        font-size: 22px;
+    }
+
+    .lab-sub__perks {
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    }
+
+    .lab-sub__cta {
+        padding: 16px 20px;
+        font-size: 15px;
+    }
+}
