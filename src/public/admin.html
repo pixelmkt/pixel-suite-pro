@@ -5102,6 +5102,9 @@
           </div>
           <div>
             <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#E30613">Recurrencia</div>
+            <div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:11px;color:#92400e;line-height:1.45">
+              <strong>⚠️ ATENCIÓN:</strong> editar <em>Frecuencia</em>, <em>Permanencia</em>, <em>Ciclos</em> o <em>Próximo cobro</em> SOLO actualiza la base local. <strong>No cambia el preapproval de MercadoPago</strong>. Para cambios reales en MP, cancelá y recreá la suscripción.
+            </div>
             ${sel('Frecuencia (meses)', 'sd-frequency_months', String(s.frequency_months || 1), [{v:'1',l:'Mensual'},{v:'2',l:'Bimestral'},{v:'3',l:'Trimestral'},{v:'6',l:'Semestral'}])}
             ${field('Permanencia (meses)', 'sd-permanence_months', s.permanence_months || 0, 'number')}
             ${field('Ciclos requeridos', 'sd-cycles_required', s.cycles_required || 0, 'number')}
@@ -5109,6 +5112,9 @@
           </div>
           <div>
             <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#E30613">Precios (PEN, IGV incl.)</div>
+            <div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:11px;color:#92400e;line-height:1.45">
+              <strong>⚠️ ATENCIÓN:</strong> cambiar <em>Precio base</em> o <em>Precio suscriptor</em> NO modifica el monto que MercadoPago cobra. El cliente seguirá pagando lo original. Para cambiar el precio real, cancelá la sub y creá una nueva.
+            </div>
             ${field('Precio base S/', 'sd-base_price', s.base_price || 0, 'number')}
             ${field('Precio suscriptor S/', 'sd-final_price', s.final_price || 0, 'number')}
             ${sel('Estado', 'sd-status', s.status || 'active', [{v:'active',l:'Activa'},{v:'paused',l:'Pausada'},{v:'cancelled',l:'Cancelada'},{v:'pending',l:'Pendiente'}])}

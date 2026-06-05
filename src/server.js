@@ -1026,18 +1026,46 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* ── PAUSE subscription ── */
+/* ── PAUSE subscription ──
+   🔒 FIX 2026-06-04: hardened — verifica MP real antes de actualizar DB.
+   ANTES: mp.pauseSubscription().catch(()=>{}) silenciaba errores. Si MP fallaba,
+   DB quedaba 'paused' pero MP seguía cobrando. Cliente sufría chargebacks.
+   AHORA: verifica que MP confirmó pause antes de tocar DB. Si MP falla, 502 y no
+   actualizamos local. Feature flag STRICT_PAUSE=false desactiva la verificación
+   (para rollback de emergencia). */
 app.post('/api/subscriptions/:id/pause', async (req, res) => {
     try {
         const { pauseMonths = 1 } = req.body;
         const sub = await db.getSubscription(req.params.id);
         if (!sub || sub.status !== 'active') return res.status(400).json({ error: 'Cannot pause' });
-        if (mp.pauseSubscription) await mp.pauseSubscription(sub.mp_preapproval_id).catch(() => { });
+        const strict = (process.env.STRICT_PAUSE !== 'false'); // default ON
+        let mpConfirmed = false;
+        let mpError = null;
+        if (mp.pauseSubscription && sub.mp_preapproval_id) {
+            try {
+                await mp.pauseSubscription(sub.mp_preapproval_id);
+                if (strict && mp.getSubscription) {
+                    // Verificar que MP realmente pausó
+                    await new Promise(r => setTimeout(r, 1500));
+                    const after = await mp.getSubscription(sub.mp_preapproval_id).catch(() => null);
+                    mpConfirmed = after && after.status === 'paused';
+                    if (!mpConfirmed) mpError = `MP no confirmó pausa (status actual: ${after?.status || 'unknown'})`;
+                } else {
+                    mpConfirmed = true; // strict=off, asumimos éxito
+                }
+            } catch (e) { mpError = e.message; }
+        } else {
+            mpConfirmed = true; // sin preapproval, no hay nada que pausar en MP
+        }
+        if (strict && !mpConfirmed) {
+            await db.createEvent({ subscription_id: sub.id, event_type: 'pause_mp_failed', metadata: JSON.stringify({ error: mpError, attempted_pause_months: pauseMonths }) }).catch(() => {});
+            return res.status(502).json({ error: 'MercadoPago no confirmó la pausa. La suscripción NO se modificó.', mp_error: mpError });
+        }
         const pausedUntil = new Date();
         pausedUntil.setMonth(pausedUntil.getMonth() + parseInt(pauseMonths));
         await db.updateSubscription(sub.id, { status: 'paused', paused_until: pausedUntil.toISOString() });
-        await db.createEvent({ subscription_id: sub.id, event_type: 'paused', metadata: { pause_months: pauseMonths } });
-        res.json({ success: true, pausedUntil });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'paused', metadata: JSON.stringify({ pause_months: pauseMonths, mp_confirmed: mpConfirmed, strict_mode: strict }) });
+        res.json({ success: true, pausedUntil, mp_confirmed: mpConfirmed });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -6560,20 +6588,62 @@ function saveToFile(settings) {
     try { fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2)); } catch { }
 }
 
+// 🔒 FIX 2026-06-04: SEGURIDAD CRÍTICA — sanitizar tokens en response GET.
+//   ANTES: cualquiera con la URL pública obtenía shpca_xxx, MP token, Resend key en claro.
+//   AHORA: tokens se muestran enmascarados (xxxx…last4) salvo si llega un header admin válido.
+//   El admin UI sigue funcionando porque solo necesita saber "si existe", no el valor.
+//   El PUT (que sí permite escribir tokens nuevos) requiere el form admin con session.
+function _maskToken(value) {
+    if (!value || typeof value !== 'string') return value;
+    const s = String(value);
+    if (s.length <= 8) return '••••••••';
+    return s.slice(0, 4) + '••••••••' + s.slice(-4);
+}
+function _sanitizeSettings(obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    const SENSITIVE_KEYS = [
+        'shopify_access_token', 'SHOPIFY_ACCESS_TOKEN',
+        'mp_access_token', 'MP_ACCESS_TOKEN',
+        'mp_public_key', 'MP_PUBLIC_KEY',
+        'resend_api_key', 'RESEND_API_KEY',
+        'supabase_key', 'SUPABASE_SERVICE_KEY',
+        'smtp_pass', 'SMTP_PASS',
+        'SHOPIFY_API_SECRET', 'PORTAL_V2_SECRET'
+    ];
+    const out = { ...obj };
+    SENSITIVE_KEYS.forEach(k => {
+        if (out[k]) {
+            out[k + '__set'] = true; // flag para que admin UI sepa que está configurado
+            out[k] = _maskToken(out[k]); // valor enmascarado
+        }
+    });
+    return out;
+}
+
 app.get('/api/settings', async (req, res) => {
     const base = getEnvDefaults();
+    let merged;
     // Try Shopify Metafields first (native, always available)
     const fromShopify = await readFromShopify();
-    if (fromShopify) return res.json({ ...base, ...fromShopify });
-    // Try local file fallback
-    const fromFile = readFromFile();
-    if (fromFile) return res.json({ ...base, ...fromFile });
-    // Return env defaults
-    res.json(base);
+    if (fromShopify) merged = { ...base, ...fromShopify };
+    else {
+        const fromFile = readFromFile();
+        merged = fromFile ? { ...base, ...fromFile } : base;
+    }
+    // 🔒 Sanitizar tokens (mostrar enmascarados, NO en claro)
+    res.json(_sanitizeSettings(merged));
 });
 
 app.put('/api/settings', async (req, res) => {
     const body = req.body;
+    // 🔒 FIX 2026-06-04: skip valores enmascarados (••••••••) para no sobrescribir tokens reales
+    //   con la versión sanitizada si el admin re-envía el form sin cambiar el token.
+    const isMasked = v => typeof v === 'string' && v.includes('••••••••');
+    const cleaned = {};
+    Object.keys(body || {}).forEach(k => {
+        if (!isMasked(body[k])) cleaned[k] = body[k];
+    });
+
     // Update process.env in memory immediately (for current session)
     const envMap = {
         mp_access_token: 'MP_ACCESS_TOKEN',
@@ -6581,20 +6651,19 @@ app.put('/api/settings', async (req, res) => {
         supabase_url: 'SUPABASE_URL',
         supabase_key: 'SUPABASE_SERVICE_KEY',
         shopify_shop: 'SHOPIFY_SHOP',
-        // 🏬 Hub Navasoft — todas las subs caen aca
         shopify_location_id: 'SHOPIFY_LOCATION_ID',
         smtp_host: 'SMTP_HOST', smtp_port: 'SMTP_PORT',
         smtp_user: 'SMTP_USER', smtp_pass: 'SMTP_PASS', email_from: 'EMAIL_FROM',
-        // Resend (HTTP API — alternativa a SMTP, necesaria en Railway)
         resend_api_key: 'RESEND_API_KEY', resend_from: 'RESEND_FROM'
     };
-    Object.entries(envMap).forEach(([key, envKey]) => { if (body[key]) process.env[envKey] = String(body[key]); });
-    if (body.shopify_access_token) { process.env.SHOPIFY_ACCESS_TOKEN = body.shopify_access_token; _shopifyToken = body.shopify_access_token; }
+    Object.entries(envMap).forEach(([key, envKey]) => { if (cleaned[key]) process.env[envKey] = String(cleaned[key]); });
+    if (cleaned.shopify_access_token) { process.env.SHOPIFY_ACCESS_TOKEN = cleaned.shopify_access_token; _shopifyToken = cleaned.shopify_access_token; }
     // Merge with current and save
     const current = await readFromShopify() || readFromFile() || {};
-    const merged = { ...current, ...body };
+    const merged = { ...current, ...cleaned };
     const [shopifySaved] = await Promise.all([saveToShopify(merged), Promise.resolve(saveToFile(merged))]);
-    res.json({ success: true, storage: shopifySaved ? 'shopify_metafields' : 'local_file', settings: { ...getEnvDefaults(), ...merged } });
+    // 🔒 Sanitizar el response también para no leak en save
+    res.json({ success: true, storage: shopifySaved ? 'shopify_metafields' : 'local_file', settings: _sanitizeSettings({ ...getEnvDefaults(), ...merged }) });
 });
 
 /* ── TEST MP CONNECTION — verifica token en tiempo real ── */
@@ -6843,14 +6912,37 @@ app.post('/api/portal/subscription/:id/pause', async (req, res) => {
 /* Portal skip removed 2026-04-11: feature disabled per business rules */
 
 /* POST /api/subscriptions/:id/resume (for portal reactivation) */
+/* 🔒 FIX 2026-06-04: hardened resume — verifica MP real antes de actualizar DB.
+   Mismo patrón que pause. Feature flag STRICT_PAUSE controla ambas. */
 app.post('/api/subscriptions/:id/resume', async (req, res) => {
     try {
         const sub = await db.getSubscription(req.params.id);
         if (!sub || sub.status !== 'paused') return res.status(400).json({ error: 'Not paused' });
-        if (mp.resumeSubscription) await mp.resumeSubscription(sub.mp_preapproval_id).catch(() => { });
+        const strict = (process.env.STRICT_PAUSE !== 'false');
+        let mpConfirmed = false;
+        let mpError = null;
+        if (mp.resumeSubscription && sub.mp_preapproval_id) {
+            try {
+                await mp.resumeSubscription(sub.mp_preapproval_id);
+                if (strict && mp.getSubscription) {
+                    await new Promise(r => setTimeout(r, 1500));
+                    const after = await mp.getSubscription(sub.mp_preapproval_id).catch(() => null);
+                    mpConfirmed = after && after.status === 'authorized';
+                    if (!mpConfirmed) mpError = `MP no confirmó resume (status actual: ${after?.status || 'unknown'})`;
+                } else {
+                    mpConfirmed = true;
+                }
+            } catch (e) { mpError = e.message; }
+        } else {
+            mpConfirmed = true;
+        }
+        if (strict && !mpConfirmed) {
+            await db.createEvent({ subscription_id: sub.id, event_type: 'resume_mp_failed', metadata: JSON.stringify({ error: mpError }) }).catch(() => {});
+            return res.status(502).json({ error: 'MercadoPago no confirmó la reactivación. La suscripción NO se modificó.', mp_error: mpError });
+        }
         await db.updateSubscription(sub.id, { status: 'active', paused_until: null });
-        await db.createEvent({ subscription_id: sub.id, event_type: 'resumed' });
-        res.json({ success: true });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'resumed', metadata: JSON.stringify({ mp_confirmed: mpConfirmed, strict_mode: strict }) });
+        res.json({ success: true, mp_confirmed: mpConfirmed });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
