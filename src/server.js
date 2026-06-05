@@ -3408,7 +3408,34 @@ app.post('/api/selling-plan-groups/detach', async (req, res) => {
    1. Create SubscriptionContract in Shopify (visible in admin + customer account)
    2. Launch MP PreApproval for recurring billing
 ═══════════════════════════════════════════════════════════════ */
+// 🔒 FIX 2026-06-04: HMAC verification helper para webhooks Shopify.
+//   Modo controlado por env WEBHOOK_HMAC_VERIFY=enforce|warn|off (default: warn).
+//   - enforce: rechaza con 401 si firma no coincide
+//   - warn: loggea pero permite (default — rollout seguro)
+//   - off: no verifica (rollback de emergencia)
+function _verifyShopifyHmac(req) {
+    const mode = process.env.WEBHOOK_HMAC_VERIFY || 'warn';
+    if (mode === 'off') return { ok: true, mode, skipped: true };
+    const secret = process.env.SHOPIFY_API_SECRET || process.env.SHOPIFY_WEBHOOK_SECRET;
+    if (!secret) return { ok: false, mode, error: 'No SHOPIFY_API_SECRET configured' };
+    const hmacHeader = req.headers['x-shopify-hmac-sha256'] || req.headers['x-shopify-hmac-sha-256'];
+    if (!hmacHeader) return { ok: false, mode, error: 'Missing x-shopify-hmac-sha256 header' };
+    const body = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
+    const computed = crypto.createHmac('sha256', secret).update(body).digest('base64');
+    const valid = computed === hmacHeader;
+    return { ok: valid, mode, computed_prefix: computed.slice(0, 8), received_prefix: String(hmacHeader).slice(0, 8) };
+}
+
 app.post('/webhooks/shopify/orders-paid', express.raw({ type: 'application/json' }), async (req, res) => {
+    // 🔒 HMAC verify ANTES de procesar
+    const hmac = _verifyShopifyHmac(req);
+    if (!hmac.ok && hmac.mode === 'enforce') {
+        console.error('[ORDER_PAID] 🚫 HMAC inválido — rechazado. Error:', hmac.error || `expected ${hmac.received_prefix}... got ${hmac.computed_prefix}...`);
+        return res.status(401).send('Invalid HMAC');
+    }
+    if (!hmac.ok && hmac.mode === 'warn') {
+        console.warn('[ORDER_PAID] ⚠️ HMAC verification falló (mode=warn, permitiendo):', hmac.error || 'mismatch');
+    }
     res.sendStatus(200); // Always ack first
 
     try {
@@ -4370,10 +4397,41 @@ app.post('/api/remarketing', async (req, res) => {
    Maneja tanto activación de nuevas suscripciones (preapproval)
    como cobros recurrentes (payment). Crea órdenes en Shopify automáticamente.
 ═══════════════════════════════════════════════ */
+// 🔒 FIX 2026-06-04: MP webhook signature verify (x-signature header).
+//   MP envía: x-signature: ts=NNN,v1=HMAC y x-request-id: REQ_ID.
+//   Mensaje a firmar: id:DATA_ID;request-id:REQ_ID;ts:TS;
+//   Secret: MP_WEBHOOK_SECRET (configurar en MP Dashboard → Webhooks).
+//   Si no hay secret configurado, modo 'off' automáticamente (compat con setup actual).
+function _verifyMpSignature(req) {
+    const mode = process.env.MP_WEBHOOK_VERIFY || 'warn';
+    if (mode === 'off') return { ok: true, mode, skipped: true };
+    const secret = process.env.MP_WEBHOOK_SECRET;
+    if (!secret) return { ok: true, mode, skipped: true, reason: 'No MP_WEBHOOK_SECRET configured — set en MP Dashboard' };
+    const sig = req.headers['x-signature'];
+    const reqId = req.headers['x-request-id'];
+    if (!sig || !reqId) return { ok: false, mode, error: 'Missing x-signature or x-request-id headers' };
+    const parts = String(sig).split(',').reduce((acc, p) => { const [k, v] = p.split('='); if (k && v) acc[k.trim()] = v.trim(); return acc; }, {});
+    const ts = parts.ts; const v1 = parts.v1;
+    if (!ts || !v1) return { ok: false, mode, error: 'x-signature missing ts or v1' };
+    const dataId = (req.body?.data?.id) || '';
+    const message = `id:${dataId};request-id:${reqId};ts:${ts};`;
+    const computed = crypto.createHmac('sha256', secret).update(message).digest('hex');
+    return { ok: computed === v1, mode, computed_prefix: computed.slice(0, 8), received_prefix: v1.slice(0, 8) };
+}
+
 app.post('/webhooks/mercadopago', async (req, res) => {
+    // 🔒 Verify ANTES de procesar
+    const sigCheck = _verifyMpSignature(req);
+    if (!sigCheck.ok && sigCheck.mode === 'enforce') {
+        console.error('[MP WEBHOOK] 🚫 Firma inválida — rechazado:', sigCheck.error || `expected ${sigCheck.received_prefix}... got ${sigCheck.computed_prefix}...`);
+        return res.status(401).send('Invalid signature');
+    }
+    if (!sigCheck.ok && sigCheck.mode === 'warn') {
+        console.warn('[MP WEBHOOK] ⚠️ Firma falló (mode=warn, permitiendo):', sigCheck.error || 'mismatch');
+    }
     res.sendStatus(200); // Acknowledge immediately — evitar reintentos de MP
     const { type, data, action } = req.body;
-    console.log('[MP WEBHOOK]', type, action, JSON.stringify(data || {}).slice(0, 200));
+    console.log('[MP WEBHOOK]', type, action, JSON.stringify(data || {}).slice(0, 200), sigCheck.skipped ? '(sig skipped)' : `(sig ${sigCheck.ok ? 'OK' : 'WARN'})`);
 
     try {
         const resourceId = data?.id;
