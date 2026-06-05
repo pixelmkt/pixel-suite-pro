@@ -1,4 +1,30 @@
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+
+// 🔒 PORTAL V2 — Magic link generator (2026-06-04)
+//   Genera JWT firmado con HMAC SHA256 que el cliente usa para entrar al portal sin password.
+//   Mismo secreto que server.js _PORTAL_V2_SECRET para que los tokens sean válidos cross-process.
+//   30 días de validez (el cliente puede recibir el email y revisarlo días después).
+function _portalGenerateToken(sub) {
+    if (!sub || !sub.id || !sub.customer_email) return null;
+    const secret = process.env.PORTAL_V2_SECRET || process.env.SHOPIFY_API_SECRET || 'pixel-portal-v2-default-secret-rotate-me';
+    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+    const payload = {
+        email: String(sub.customer_email).toLowerCase(),
+        sub_ids: [sub.id],
+        iat: Date.now(),
+        exp: Date.now() + 30 * 24 * 60 * 60 * 1000 // 30 días
+    };
+    const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const sig = crypto.createHmac('sha256', secret).update(`${header}.${body}`).digest('base64url');
+    return `${header}.${body}.${sig}`;
+}
+
+function _portalUrl(sub) {
+    const base = process.env.PORTAL_PUBLIC_URL || process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
+    const token = _portalGenerateToken(sub);
+    return token ? `${base}/portal/v2?token=${token}` : `${base}/portal/v2`;
+}
 
 const smtpPort = parseInt(process.env.SMTP_PORT || '465');
 const transporter = nodemailer.createTransport({
@@ -174,7 +200,10 @@ function renderVars(str, sub, extras) {
         cycles_required: String((sub && sub.cycles_required) || 0),
         permanence_months: String((sub && sub.permanence_months) || 0),
         discount_pct: String(Math.round((sub && sub.discount_pct) || 0)),
-        portal_link: 'https://labnutrition.pe/pages/mi-suscripcion?email=' + encodeURIComponent((sub && sub.customer_email) || ''),
+        // 🔒 FIX 2026-06-04: link al portal v2 con magic link JWT 30 días.
+        //   Antes: apuntaba a /pages/mi-suscripcion (CMS Shopify, sin auth, sin funcionalidad).
+        //   Ahora: portal v2 funcional con token JWT que autentica sin password.
+        portal_link: _portalUrl(sub),
         ...(extras || {})
     };
     return String(str).replace(/\{\{\s*(\w+)\s*\}\}/g, function (_, k) { return vars[k] !== undefined ? vars[k] : ''; });
@@ -238,6 +267,10 @@ async function sendWelcome(sub) {
     <div class="success-box">
       <strong>Pr&oacute;ximo env&iacute;o:</strong> ${formatDate(sub.next_charge_at)}
     </div>
+    <div style="text-align:center;margin:32px 0">
+      <a href="${_portalUrl(sub)}" style="display:inline-block;background:#E30613;color:#fff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:14px">Gestionar mi suscripci&oacute;n</a>
+    </div>
+    <p class="muted" style="text-align:center;font-size:12px">Pausa, cancela, cambia direcci&oacute;n y ve tu historial desde tu portal personal.</p>
     <div class="divider"></div>
     <p class="muted" style="text-align:center">Bienvenido al club. &mdash; Equipo LAB NUTRITION</p>
   `, { headerTitle: 'Bienvenido al Club Black Diamond', headerIcon: 'Programa de Suscripci\u00f3n Exclusivo' });
@@ -270,7 +303,10 @@ async function sendChargeReminder(sub) {
       <strong>Fecha de cobro:</strong> ${formatDate(sub.next_charge_at)}<br>
       El cobro se realiza autom&aacute;ticamente a tu tarjeta registrada en Mercado Pago.
     </div>
-    <p class="muted">Si necesitas cambiar tu direcci&oacute;n, cont&aacute;ctanos antes de la fecha de cobro.</p>
+    <div style="text-align:center;margin:28px 0">
+      <a href="${_portalUrl(sub)}" style="display:inline-block;background:#E30613;color:#fff;padding:13px 32px;border-radius:8px;text-decoration:none;font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:13px">Cambiar direcci&oacute;n o pausar</a>
+    </div>
+    <p class="muted" style="text-align:center;font-size:12px">Tambi&eacute;n puedes hacer cambios desde tu portal personal antes de la fecha de cobro.</p>
   `, { headerTitle: 'Tu pedido est&aacute; por llegar', headerIcon: 'Club Black Diamond' });
     return sendEmail(sub.customer_email, 'Tu pedido LAB NUTRITION se procesa en 3 d\u00edas', html);
 }
@@ -317,7 +353,10 @@ async function sendChargeSuccess(sub, orderName) {
     <div class="success-box">
       <strong>Progreso:</strong> ${cycleMsg}
     </div>
-    <p class="muted">Recibir&aacute;s un email de confirmaci&oacute;n cuando tu pedido sea despachado.</p>
+    <div style="text-align:center;margin:28px 0">
+      <a href="${_portalUrl(sub)}" style="display:inline-block;background:#E30613;color:#fff;padding:13px 32px;border-radius:8px;text-decoration:none;font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:13px">Ver mi suscripci&oacute;n</a>
+    </div>
+    <p class="muted" style="text-align:center;font-size:12px">Recibir&aacute;s un email de confirmaci&oacute;n cuando tu pedido sea despachado.</p>
   `, { headerTitle: 'Pago confirmado', headerIcon: 'Club Black Diamond' });
     return sendEmail(sub.customer_email, '&#9670; Pago procesado — LAB NUTRITION', html);
 }
