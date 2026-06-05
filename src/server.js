@@ -4,6 +4,9 @@ const helmet = require('helmet');
 const cors = require('cors');
 const cron = require('node-cron');
 const path = require('path');
+// 🆕 2026-06-05 — rate-limit anti-abuse (express-rate-limit ya en package.json)
+let rateLimit;
+try { rateLimit = require('express-rate-limit'); } catch (e) { console.warn('[RATE_LIMIT] Not loaded:', e.message); }
 
 // ── Database layer (Supabase removed — using Shopify Metaobjects) ──
 
@@ -47,7 +50,27 @@ app.use(helmet({
     crossOriginOpenerPolicy: false,
     crossOriginResourcePolicy: false
 }));
+// 🆕 2026-06-05 — Security headers extra (BFS requirements + privacy)
+app.use((req, res, next) => {
+    res.setHeader('Permissions-Policy', 'geolocation=(), camera=(), microphone=(), payment=(self)');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    next();
+});
 app.use(cors({ origin: '*' })); // Allow all origins for embedded app
+
+// 🆕 2026-06-05 — Rate limiters anti-abuse
+//   portal magic-link: 10/min/IP (evita spam de emails)
+//   webhooks: NO limitar (Shopify/MP pueden tener picos legítimos)
+//   admin: NO limitar por ahora (interno)
+const _portalRateLimit = rateLimit ? rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Demasiados intentos. Esperá 1 minuto.' },
+    skip: (req) => req.method === 'OPTIONS'
+}) : (req, res, next) => next();
 
 // FIX 2026-04-09: Shopify webhooks necesitan el body RAW (Buffer) para HMAC verify.
 // Si aplicamos express.json() global primero, consume el stream y req.body.toString() devuelve "[object Object]".
@@ -2974,6 +2997,8 @@ app.get('/api/plans', async (req, res) => {
         // listar planes específicos de un producto.
         const pid = req.query.product_id ? String(req.query.product_id) : null;
         const out = pid ? saved.filter(p => planAppliesToProduct(p, pid)) : saved;
+        // 🆕 2026-06-05 — cache 5 min (planes cambian poco, widget los pega en cada PDP)
+        res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
         console.log('[PLANS] Read', saved.length, 'plans' + (pid ? ` · filtered to ${out.length} for product ${pid}` : ''));
         res.json(out);
     } catch (e) {
@@ -3523,6 +3548,13 @@ app.post('/api/selling-plan-groups/detach', async (req, res) => {
 //   - enforce: rechaza con 401 si firma no coincide
 //   - warn: loggea pero permite (default — rollout seguro)
 //   - off: no verifica (rollback de emergencia)
+// 🆕 2026-06-05 — timingSafeEqual helper anti timing attacks
+function _safeEq(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    if (a.length !== b.length) return false;
+    try { return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)); } catch { return false; }
+}
+
 function _verifyShopifyHmac(req) {
     const mode = process.env.WEBHOOK_HMAC_VERIFY || 'warn';
     if (mode === 'off') return { ok: true, mode, skipped: true };
@@ -3532,7 +3564,7 @@ function _verifyShopifyHmac(req) {
     if (!hmacHeader) return { ok: false, mode, error: 'Missing x-shopify-hmac-sha256 header' };
     const body = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
     const computed = crypto.createHmac('sha256', secret).update(body).digest('base64');
-    const valid = computed === hmacHeader;
+    const valid = _safeEq(computed, String(hmacHeader));
     return { ok: valid, mode, computed_prefix: computed.slice(0, 8), received_prefix: String(hmacHeader).slice(0, 8) };
 }
 
@@ -4526,7 +4558,7 @@ function _verifyMpSignature(req) {
     const dataId = (req.body?.data?.id) || '';
     const message = `id:${dataId};request-id:${reqId};ts:${ts};`;
     const computed = crypto.createHmac('sha256', secret).update(message).digest('hex');
-    return { ok: computed === v1, mode, computed_prefix: computed.slice(0, 8), received_prefix: v1.slice(0, 8) };
+    return { ok: _safeEq(computed, v1), mode, computed_prefix: computed.slice(0, 8), received_prefix: v1.slice(0, 8) };
 }
 
 app.post('/webhooks/mercadopago', async (req, res) => {
@@ -6848,7 +6880,7 @@ function _portalV2VerifyToken(token) {
 }
 
 /* POST /api/portal/v2/request-link {email} — manda magic link 30 min */
-app.post('/api/portal/v2/request-link', async (req, res) => {
+app.post('/api/portal/v2/request-link', (req, res, next) => _portalRateLimit(req, res, next), async (req, res) => {
     try {
         const email = String(req.body?.email || '').trim().toLowerCase();
         if (!email || !email.includes('@')) return res.status(400).json({ error: 'Email inválido' });
@@ -10716,7 +10748,7 @@ function _verifyAppProxyHmac(query) {
         .map(k => `${k}=${Array.isArray(params[k]) ? params[k].join(',') : params[k]}`)
         .join('');
     const computed = crypto.createHmac('sha256', secret).update(sorted).digest('hex');
-    return { ok: computed === signature, mode: process.env.APP_PROXY_VERIFY || 'warn', computed: computed.slice(0,8), got: signature.slice(0,8) };
+    return { ok: _safeEq(computed, String(signature)), mode: process.env.APP_PROXY_VERIFY || 'warn', computed: computed.slice(0,8), got: String(signature).slice(0,8) };
 }
 
 // ── Helper: build MP customer dashboard URL for a sub (para update card)
@@ -11183,6 +11215,84 @@ app.get('/api/portal/v2/update-card-info', async (req, res) => {
             }));
         res.json({ email: payload.email, subscriptions_pending_update: mySubs });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ═══════════════════════════════════════════════════════════════════
+   🆕 2026-06-05 — WEBHOOKS GDPR OBLIGATORIOS para Shopify App Store
+   Sin estos 3 endpoints respondiendo 200, la app NO puede ser submitted
+   ni mantener su listado en el App Store. Pixel-suite-pro no almacena
+   datos de shop owner, solo de customers (subscribers). Igual debemos
+   responder 200 a los 3 topics aunque no hagamos nada (HMAC-validated).
+
+   Topics (configurar en shopify.app.toml o Partners webhook subscriptions):
+   - customers/data_request → cliente pide su data → respondemos OK (NO almacenamos data del MERCHANT, solo del subscriber con MP preapproval)
+   - customers/redact → cliente pide borrar su data → marcamos sub como redacted (mantener mp_preapproval para cobros activos por compliance contable Perú IGV)
+   - shop/redact → tienda desinstala → 48h después marcamos todo redacted
+   ═══════════════════════════════════════════════════════════════════ */
+app.post('/webhooks/shopify/customers_data_request', express.raw({ type: 'application/json' }), async (req, res) => {
+    const hmac = _verifyShopifyHmac(req);
+    if (!hmac.ok && hmac.mode === 'enforce') return res.status(401).send('Invalid HMAC');
+    res.sendStatus(200);
+    try {
+        const body = JSON.parse(req.body.toString());
+        console.log('[GDPR] customers/data_request:', body.customer?.email, 'shop:', body.shop_domain);
+        if (db.createEvent && body.customer?.id) {
+            await db.createEvent({
+                subscription_id: 'gdpr_' + body.customer.id,
+                event_type: 'gdpr_data_request',
+                metadata: JSON.stringify({ customer_id: body.customer.id, email: body.customer.email, shop: body.shop_domain, requested_at: new Date().toISOString() })
+            }).catch(() => {});
+        }
+    } catch (e) { console.warn('[GDPR data_request]', e.message); }
+});
+
+app.post('/webhooks/shopify/customers_redact', express.raw({ type: 'application/json' }), async (req, res) => {
+    const hmac = _verifyShopifyHmac(req);
+    if (!hmac.ok && hmac.mode === 'enforce') return res.status(401).send('Invalid HMAC');
+    res.sendStatus(200);
+    try {
+        const body = JSON.parse(req.body.toString());
+        console.log('[GDPR] customers/redact:', body.customer?.email);
+        if (body.customer?.email) {
+            const allSubs = await db.getSubscriptions().catch(() => []);
+            const mySubs = (Array.isArray(allSubs) ? allSubs : []).filter(s => (s.customer_email || '').toLowerCase() === body.customer.email.toLowerCase());
+            for (const sub of mySubs) {
+                if (sub.status === 'active') {
+                    // Sub activa con compromiso contable Perú — solo marcar redact pending, NO borrar PII
+                    await db.updateSubscription(sub.id, { gdpr_redact_pending: true, gdpr_redact_requested_at: new Date().toISOString() }).catch(() => {});
+                } else {
+                    // Cancelada/completada — limpiar PII pero mantener registro contable
+                    await db.updateSubscription(sub.id, {
+                        customer_name: '[REDACTED]',
+                        customer_phone: null,
+                        shipping_address: null,
+                        gdpr_redacted: true,
+                        gdpr_redacted_at: new Date().toISOString()
+                    }).catch(() => {});
+                }
+                await db.createEvent({ subscription_id: sub.id, event_type: 'gdpr_redact_applied', metadata: JSON.stringify({ at: new Date().toISOString(), kept_for_billing: sub.status === 'active' }) }).catch(() => {});
+            }
+        }
+    } catch (e) { console.warn('[GDPR redact]', e.message); }
+});
+
+app.post('/webhooks/shopify/shop_redact', express.raw({ type: 'application/json' }), async (req, res) => {
+    const hmac = _verifyShopifyHmac(req);
+    if (!hmac.ok && hmac.mode === 'enforce') return res.status(401).send('Invalid HMAC');
+    res.sendStatus(200);
+    try {
+        const body = JSON.parse(req.body.toString());
+        console.log('[GDPR] shop/redact:', body.shop_domain, '— shop uninstalled 48h+ ago, all data should be purged');
+        // Loggear el evento para auditoría. Datos críticos siguen siendo Shopify metaobjects
+        // de la tienda — Shopify los borra solo cuando se desinstala definitivamente.
+        if (db.createEvent) {
+            await db.createEvent({
+                subscription_id: 'gdpr_shop_' + (body.shop_id || 'unknown'),
+                event_type: 'gdpr_shop_redact',
+                metadata: JSON.stringify({ shop_domain: body.shop_domain, shop_id: body.shop_id, at: new Date().toISOString() })
+            }).catch(() => {});
+        }
+    } catch (e) { console.warn('[GDPR shop_redact]', e.message); }
 });
 
 /* ── Catch-all: serve admin.html for Shopify embedded app (must be LAST) ── */

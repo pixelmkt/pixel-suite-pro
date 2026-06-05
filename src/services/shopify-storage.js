@@ -4,7 +4,7 @@
  * ║  Lab Nutrition Subscriptions App                         ║
  * ║                                                          ║
  * ║  Everything lives in Shopify. No Supabase, no SQL.       ║
- * ║  Uses: Admin GraphQL API 2025-01 + Metaobjects           ║
+ * ║  Uses: Admin GraphQL API 2026-01 + Metaobjects           ║
  * ║                                                          ║
  * ║  Types:                                                  ║
  * ║    lab_subscription  — each subscription record          ║
