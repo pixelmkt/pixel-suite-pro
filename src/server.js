@@ -10977,27 +10977,10 @@ async function runDunningDetection() {
                 }).catch(() => {});
                 // Marca sub
                 await db.updateSubscription(sub.id, { needs_payment_update: true, last_payment_failed_at: new Date().toISOString() }).catch(() => {});
-                // Manda primer email
-                const mpUrl = _mpCustomerDashboardUrl(sub.mp_preapproval_id);
-                const portalUrl = `${BACKEND}/portal/v2`;
-                const emailRes = await _sendDunningEmail(sub, 0, mpUrl, portalUrl);
-                if (emailRes.sent) {
-                    emailsSent++;
-                    await db.createEvent({
-                        subscription_id: sub.id,
-                        event_type: 'dunning_email_sent',
-                        metadata: JSON.stringify({ day: 0, payment_id: String(pid), at: new Date().toISOString() })
-                    }).catch(() => {});
-                } else {
-                    // 🆕 Loggea fallo para que admin lo vea en el dashboard
-                    await db.createEvent({
-                        subscription_id: sub.id,
-                        event_type: 'dunning_email_failed',
-                        metadata: JSON.stringify({ day: 0, payment_id: String(pid), status: emailRes.status, error: emailRes.error || emailRes.reason || null, at: new Date().toISOString() })
-                    }).catch(() => {});
-                }
+                // 🔒 ANTI-SPAM 2026-06-05: NO mandamos email individual aquí.
+                // El DIGEST diario consolida todos los casos en 1 email/día.
                 detected++;
-                console.log(`[DUNNING] ${sub.customer_email} - payment ${pid} rejected, email sent: ${emailRes.sent}`);
+                console.log(`[DUNNING] ${sub.customer_email} - payment ${pid} rejected (added to needs_payment_update; digest enviará 1 email/día)`);
             } catch (e) {
                 errors++;
                 console.warn('[DUNNING]', sub.id, e.message);
@@ -11006,6 +10989,80 @@ async function runDunningDetection() {
         }
         console.log(`[DUNNING] Done: detected=${detected}, recovered=${recovered}, emails=${emailsSent}, errors=${errors}`);
     } catch (e) { console.error('[DUNNING] Top-level error:', e.message); }
+}
+
+/* ── Función: DAILY DIGEST consolidado.
+   En vez de mandar N emails individuales (spam), manda UNO solo con todos los casos.
+   Idempotente: solo 1 digest por día (chequea evento del último digest).
+   Esto reemplaza la corrida de "12 emails" que se hizo antes. */
+async function runDunningDigest() {
+    console.log('[DIGEST] Start');
+    try {
+        if (!process.env.RESEND_API_KEY) return;
+        const allSubs = await db.getSubscriptions().catch(() => []);
+        const cases = (Array.isArray(allSubs) ? allSubs : [])
+            .filter(s => s.needs_payment_update === true || s.paused_reason === 'auto_payment_failed');
+        if (!cases.length) {
+            console.log('[DIGEST] No cases needing action');
+            return;
+        }
+        // Idempotencia: chequear si ya se envió digest hoy
+        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const digestEventId = `digest_${today}`;
+        const existingDigest = await db.getEvents(digestEventId).catch(() => []);
+        if ((existingDigest || []).some(e => e.event_type === 'dunning_digest_sent')) {
+            console.log('[DIGEST] Already sent today');
+            return;
+        }
+        // Build single email with ALL cases
+        const itemsHtml = await Promise.all(cases.map(async (sub) => {
+            const phone = (sub.customer_phone || '').replace(/[^0-9]/g, '');
+            const wa = phone ? `https://wa.me/${phone.startsWith('51') ? phone : '51' + phone}?text=${encodeURIComponent('Hola ' + (sub.customer_name || '').split(' ')[0] + ', te escribo de Lab Nutrition. Tu suscripción tuvo un cobro rechazado. Actualizá tu tarjeta acá: ' + _mpCustomerDashboardUrl(sub.mp_preapproval_id))}` : null;
+            const events = await db.getEvents(sub.id).catch(() => []);
+            const reject = (events || []).find(e => e.event_type === 'payment_rejected');
+            const daysSince = reject ? Math.floor((Date.now() - new Date(reject.created_at).getTime()) / 86400000) : 0;
+            return `<tr style="border-bottom:1px solid #e5e7eb">
+                <td style="padding:10px 12px"><strong>${sub.customer_name || '—'}</strong><br><small style="color:#666;font-size:11px">${sub.customer_email}</small></td>
+                <td style="padding:10px 12px;font-size:12px">${sub.product_title || '—'}</td>
+                <td style="padding:10px 12px;text-align:right;color:#E30613;font-weight:700;font-size:13px">S/${sub.mp_total_amount || sub.final_price || 0}</td>
+                <td style="padding:10px 12px;text-align:center"><span style="background:${daysSince >= 14 ? '#FEE2E2' : daysSince >= 7 ? '#FEF3C7' : '#DBEAFE'};color:${daysSince >= 14 ? '#991B1B' : daysSince >= 7 ? '#92400E' : '#1E40AF'};padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700">${daysSince}d</span></td>
+                <td style="padding:10px 12px;text-align:right;white-space:nowrap;font-size:11px">${wa ? `<a href="${wa}" style="background:#25D366;color:#fff;padding:5px 10px;border-radius:5px;text-decoration:none;font-weight:600;margin-right:4px">WA</a>` : ''}<a href="${_mpCustomerDashboardUrl(sub.mp_preapproval_id)}" style="background:#E30613;color:#fff;padding:5px 10px;border-radius:5px;text-decoration:none;font-weight:600">MP</a></td>
+            </tr>`;
+        }));
+        const digestHtml = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;margin:0">
+<div style="max-width:760px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden">
+  <div style="background:#0A0A0A;padding:24px;text-align:center"><h1 style="color:#E30613;margin:0;font-size:20px;letter-spacing:2px">LAB NUTRITION — Daily Dunning Digest</h1><div style="color:#888;font-size:12px;margin-top:6px">${new Date().toLocaleDateString('es-PE', {day:'2-digit',month:'long',year:'numeric'})}</div></div>
+  <div style="padding:28px 24px">
+    <h2 style="margin:0 0 12px;font-size:16px"><span style="color:#E30613">${cases.length}</span> ${cases.length === 1 ? 'cliente' : 'clientes'} con acción pendiente</h2>
+    <p style="color:#666;font-size:13px;line-height:1.5;margin:0 0 18px">Este es un resumen consolidado. <strong>UN email por día</strong>, no más spam. Sistema sigue corriendo solo (cron 3x/día).</p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+      <thead style="background:#f9fafb"><tr><th style="padding:10px;text-align:left;font-size:11px;color:#666">Cliente</th><th style="padding:10px;text-align:left;font-size:11px;color:#666">Producto</th><th style="padding:10px;text-align:right;font-size:11px;color:#666">Monto</th><th style="padding:10px;text-align:center;font-size:11px;color:#666">Días</th><th style="padding:10px;text-align:right;font-size:11px;color:#666">Acción</th></tr></thead>
+      <tbody>${itemsHtml.join('')}</tbody>
+    </table>
+    <div style="background:#DCFCE7;border-left:4px solid #10B981;padding:14px 18px;border-radius:6px;font-size:13px;color:#065F46;line-height:1.5">
+      ✓ Sistema corre solo 3x/día (06:00, 12:00, 18:00 PET). MP detecta recovery automático.
+      Auto-pause día 14. Solo recibirás este email 1x/día con los casos activos.
+    </div>
+    <p style="text-align:center;color:#888;font-size:11px;margin:20px 0 0">Para gestionar manual: <a href="${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/?page=failed-payments" style="color:#E30613">Admin → Cobros Rechazados</a></p>
+  </div>
+</div></body></html>`;
+        const result = await _resendSendWithFallback({
+            from: process.env.RESEND_FROM || 'LAB NUTRITION <onboarding@resend.dev>',
+            subject: `📊 Daily Dunning Digest — ${cases.length} ${cases.length === 1 ? 'caso' : 'casos'} pendientes (${today})`,
+            html: digestHtml
+        }, _ADMIN_EMAIL_FALLBACK);
+        if (result.sent) {
+            // Loggea evento idempotencia
+            await db.createEvent({
+                subscription_id: digestEventId,
+                event_type: 'dunning_digest_sent',
+                metadata: JSON.stringify({ cases_count: cases.length, at: new Date().toISOString(), sent_to: result.to })
+            }).catch(() => {});
+            console.log(`[DIGEST] ✅ Sent to ${result.to} — ${cases.length} cases`);
+        } else {
+            console.warn(`[DIGEST] Failed to send: status=${result.status}`);
+        }
+    } catch (e) { console.error('[DIGEST] Top-level error:', e.message); }
 }
 
 /* ── Función: follow-up emails día 3, 7, 14 + auto-pause (daily 10:30am) ── */
@@ -11103,10 +11160,31 @@ app.get('/api/admin/failed-payments', async (req, res) => {
 });
 
 /* POST /api/admin/failed-payments/:sub_id/resend-email — admin re-envía email manualmente */
+/* 🔒 FIX 2026-06-05 ANTI-SPAM: resend-email con dedup 24h obligatorio.
+   ANTES: cada click + cada cron + cada test → email duplicado al admin.
+   AHORA: bloquea si se envió email en las últimas 24h (cualquier tipo).
+   Override con ?force=1 (admin debe confirmar explícitamente). */
 app.post('/api/admin/failed-payments/:sub_id/resend-email', async (req, res) => {
     try {
         const sub = await db.getSubscription(req.params.sub_id);
         if (!sub) return res.status(404).json({ error: 'Sub not found' });
+        const force = req.query.force === '1' || req.body?.force === true;
+        if (!force) {
+            const events = await db.getEvents(sub.id).catch(() => []);
+            const lastEmail = (events || []).find(e =>
+                e.event_type === 'dunning_email_sent' || e.event_type === 'dunning_email_sent_manual'
+            );
+            if (lastEmail) {
+                const hoursAgo = (Date.now() - new Date(lastEmail.created_at).getTime()) / 3600000;
+                if (hoursAgo < 24) {
+                    return res.status(429).json({
+                        error: 'Email ya enviado en las últimas 24h. Usá ?force=1 si querés re-enviar igual.',
+                        last_sent_hours_ago: Math.round(hoursAgo * 10) / 10,
+                        blocked: true
+                    });
+                }
+            }
+        }
         const BACKEND = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
         const mpUrl = _mpCustomerDashboardUrl(sub.mp_preapproval_id);
         const portalUrl = `${BACKEND}/portal/v2`;
@@ -11114,7 +11192,7 @@ app.post('/api/admin/failed-payments/:sub_id/resend-email', async (req, res) => 
         await db.createEvent({
             subscription_id: sub.id,
             event_type: 'dunning_email_sent_manual',
-            metadata: JSON.stringify({ day: 0, by: 'admin', at: new Date().toISOString(), email_status: r.status })
+            metadata: JSON.stringify({ day: 0, by: 'admin', at: new Date().toISOString(), email_status: r.status, forced: !!force })
         }).catch(() => {});
         res.json({ success: r.sent, ...r });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -11124,6 +11202,14 @@ app.post('/api/admin/failed-payments/:sub_id/resend-email', async (req, res) => 
 app.post('/api/admin/run-dunning-now', async (req, res) => {
     res.json({ started: true, message: 'Dunning detection started in background — revisa logs Railway y /api/admin/failed-payments en 1-2 min' });
     runDunningDetection().catch(console.error);
+});
+
+/* 🆕 POST /api/admin/dunning-digest-now — manda DIGEST consolidado (1 email con todos los casos)
+   Pensado para reemplazar el bombardeo de N emails. Idempotente — solo manda si pasaron 24h
+   desde el último digest. */
+app.post('/api/admin/dunning-digest-now', async (req, res) => {
+    res.json({ started: true });
+    runDunningDigest().catch(console.error);
 });
 
 /* POST /api/admin/run-dunning-followups-now — admin dispara follow-ups manual */
@@ -11372,17 +11458,18 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
         scheduleDailyCron(9, 0, runReminderCron);       // 9am Lima
 
         // 🆕 DUNNING — 2026-06-05 — smart retry 3x/día con detección recovery
-        //   - 06:00 PET (11:00 UTC): primer chequeo del día
-        //   - 12:00 PET (17:00 UTC): segundo chequeo (6h después)
-        //   - 18:00 PET (23:00 UTC): tercer chequeo (otras 6h)
-        //   En cada corrida:
-        //   - Detecta rechazos nuevos → email + flag needs_payment_update
-        //   - Detecta RECOVERY (rejected → approved) → email "tu pago se procesó" + clear flag
-        //   - Idempotente por payment_id (no double-process)
+        //   - 06:00 PET: primer chequeo (detección + recovery, sin emails individuales)
+        //   - 12:00 PET: segundo chequeo
+        //   - 18:00 PET: tercer chequeo
+        //   🔒 ANTI-SPAM (2026-06-05): cron de detección NO manda emails individuales.
+        //   Solo loggea eventos + marca needs_payment_update. Los emails salen vía DIGEST.
         scheduleDailyCron(6, 0, runDunningDetection);
         scheduleDailyCron(12, 0, runDunningDetection);
         scheduleDailyCron(18, 0, runDunningDetection);
         console.log('[CRON] "runDunningDetection" scheduled: 06:00, 12:00, 18:00 PET');
+        // 🆕 DAILY DIGEST: 1 solo email/día con TODOS los casos pendientes
+        scheduleDailyCron(9, 0, runDunningDigest);
+        console.log('[CRON] "runDunningDigest" scheduled: daily 09:00 PET — 1 email consolidado');
         scheduleDailyCron(10, 30, runDunningFollowups);  // 10:30am Lima — followups + auto-pause
         console.log('[CRON] "runDunningFollowups" scheduled: daily 10:30am PET');
 
