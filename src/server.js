@@ -10835,6 +10835,13 @@ async function runDunningDetection() {
                         event_type: 'dunning_email_sent',
                         metadata: JSON.stringify({ day: 0, payment_id: String(pid), at: new Date().toISOString() })
                     }).catch(() => {});
+                } else {
+                    // 🆕 Loggea fallo para que admin lo vea en el dashboard
+                    await db.createEvent({
+                        subscription_id: sub.id,
+                        event_type: 'dunning_email_failed',
+                        metadata: JSON.stringify({ day: 0, payment_id: String(pid), status: emailRes.status, error: emailRes.error || emailRes.reason || null, at: new Date().toISOString() })
+                    }).catch(() => {});
                 }
                 detected++;
                 console.log(`[DUNNING] ${sub.customer_email} - payment ${pid} rejected, email sent: ${emailRes.sent}`);
