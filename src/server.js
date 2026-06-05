@@ -10761,6 +10761,16 @@ function _mpCustomerDashboardUrl(preapprovalId) {
 //   El admin recibe el email del cliente con header "DESTINATARIO ORIGINAL: <cliente>"
 //   y un botón "Reenviar al cliente" (mailto:). Esto desbloquea el dunning
 //   mientras el dominio no esté verificado en Resend.
+// 🚨 KILL SWITCH 2026-06-05 — Master toggle. DEFAULT: OFF (cero emails).
+//   Para reactivar emails automáticos:
+//     1) Railway env: DUNNING_EMAILS_ENABLED=true
+//     2) O via /api/settings PUT { dunning_emails_enabled: true } + reinicio
+//   Cuando OFF: ningún email se envía desde NINGÚN punto del sistema.
+function _emailsAreEnabled() {
+    const flag = process.env.DUNNING_EMAILS_ENABLED;
+    return flag === 'true' || flag === '1';
+}
+
 // Email principal del admin para alertas dunning. Cambiable via env ADMIN_EMAIL.
 const _ADMIN_EMAIL_FALLBACK = process.env.ADMIN_EMAIL || 'asesorecommerce@labnutrition.com';
 // Resend trial seguridad: si trial bloquea destino → segundo intento a este email.
@@ -10792,6 +10802,7 @@ async function _resendSendWithFallback(payloadBase, primaryTo) {
 }
 
 async function _sendDunningEmail(sub, dayNumber, mpDashboardUrl, portalUrl) {
+    if (!_emailsAreEnabled()) return { sent: false, reason: 'EMAILS_DISABLED_KILL_SWITCH', killed: true };
     if (!process.env.RESEND_API_KEY) return { sent: false, reason: 'No RESEND_API_KEY' };
     const subjects = {
         0: '⚠️ Tu pago no se procesó — LAB NUTRITION',
@@ -10928,7 +10939,7 @@ async function runDunningDetection() {
                     }).catch(() => {});
                     // Email "tu pago se procesó" — con fallback al admin si Resend trial
                     try {
-                        if (process.env.RESEND_API_KEY) {
+                        if (_emailsAreEnabled() && process.env.RESEND_API_KEY) {
                             const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;padding:24px;background:#f5f5f5"><div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden"><div style="background:#0A0A0A;padding:24px;text-align:center"><h1 style="color:#E30613;margin:0;letter-spacing:2px;font-weight:900">LAB NUTRITION</h1></div><div style="padding:32px 28px"><h2 style="color:#10B981;margin:0 0 12px">✓ ¡Pago procesado!</h2><p style="color:#374151;line-height:1.6">Hola ${(sub.customer_name||'').split(' ')[0]}, tu suscripción <strong>${sub.product_title}</strong> se cobró correctamente. Tu pedido sale en los próximos días.</p><p style="color:#374151">Gracias por seguir con nosotros.</p></div></div></body></html>`;
                             const rr = await fetch('https://api.resend.com/emails', {
                                 method: 'POST',
@@ -10998,6 +11009,7 @@ async function runDunningDetection() {
 async function runDunningDigest() {
     console.log('[DIGEST] Start');
     try {
+        if (!_emailsAreEnabled()) { console.log('[DIGEST] KILL SWITCH OFF — skipped'); return; }
         if (!process.env.RESEND_API_KEY) return;
         const allSubs = await db.getSubscriptions().catch(() => []);
         const cases = (Array.isArray(allSubs) ? allSubs : [])
