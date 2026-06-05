@@ -10960,6 +10960,18 @@ app.post('/api/admin/failed-payments/:sub_id/resend-email', async (req, res) => 
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* POST /api/admin/run-dunning-now — admin dispara dunning manual */
+app.post('/api/admin/run-dunning-now', async (req, res) => {
+    res.json({ started: true, message: 'Dunning detection started in background — revisa logs Railway y /api/admin/failed-payments en 1-2 min' });
+    runDunningDetection().catch(console.error);
+});
+
+/* POST /api/admin/run-dunning-followups-now — admin dispara follow-ups manual */
+app.post('/api/admin/run-dunning-followups-now', async (req, res) => {
+    res.json({ started: true, message: 'Dunning followups started in background' });
+    runDunningFollowups().catch(console.error);
+});
+
 /* POST /api/admin/failed-payments/:sub_id/clear-flag — admin marca caso resuelto */
 app.post('/api/admin/failed-payments/:sub_id/clear-flag', async (req, res) => {
     try {

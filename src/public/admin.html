@@ -826,6 +826,13 @@
         <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
         <path d="M16 3.13a4 4 0 0 1 0 7.75" />
       </svg>Suscripciones</div>
+    <div class="nav-item" onclick="nav('failed-payments')" id="n-failed-payments" style="position:relative">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+      </svg>
+      Cobros Rechazados
+      <span id="badge-failed" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#E30613;color:#fff;font-size:10px;font-weight:800;padding:2px 7px;border-radius:10px"></span>
+    </div>
     <div class="nav-item" onclick="nav('prods')" id="n-prods"><svg width="14" height="14" viewBox="0 0 24 24"
         fill="none" stroke="currentColor" stroke-width="2">
         <path
@@ -2106,6 +2113,44 @@
       </div>
     </div>
 
+    <!-- 🆕 COBROS FALLIDOS — Dunning -->
+    <div id="p-failed-payments" class="panel">
+      <div class="ph">
+        <div>
+          <div class="pt">⚠️ Cobros Rechazados — Acción Requerida</div>
+          <div class="ps">Clientes con pago rechazado por MP. Auto-emails día 0, 3, 7, 14. Auto-pause día 14+.</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="runDunningNow()" class="btn" style="background:#fff;border:1.5px solid #e5e7eb;padding:9px 18px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">⟳ Escanear MP ahora</button>
+          <button onclick="loadFailedPayments()" class="btn" style="background:#E30613;color:#fff;border:none;padding:9px 18px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Actualizar lista</button>
+        </div>
+      </div>
+      <div class="pc">
+        <div id="failed-summary" style="margin-bottom:18px;padding:14px 18px;background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;color:#7F1D1D;font-size:13px;display:none">
+          <strong id="failed-count">0</strong> clientes con cobro rechazado. El sistema les envía emails automáticos.
+        </div>
+        <div style="overflow-x:auto;background:#fff;border-radius:10px;border:1px solid #e5e7eb">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead style="background:#f9fafb;border-bottom:1px solid #e5e7eb">
+              <tr>
+                <th style="text-align:left;padding:12px;font-weight:700">Cliente</th>
+                <th style="text-align:left;padding:12px;font-weight:700">Producto</th>
+                <th style="text-align:center;padding:12px;font-weight:700">Ciclo</th>
+                <th style="text-align:right;padding:12px;font-weight:700">Monto</th>
+                <th style="text-align:center;padding:12px;font-weight:700">Días</th>
+                <th style="text-align:center;padding:12px;font-weight:700">Emails</th>
+                <th style="text-align:center;padding:12px;font-weight:700">Estado</th>
+                <th style="text-align:right;padding:12px;font-weight:700">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="failed-table">
+              <tr><td colspan="8" style="text-align:center;padding:28px;color:var(--mut)">Click "Actualizar lista" para escanear</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- ③ PRODUCTOS -->
     <div id="p-prods" class="panel">
       <div class="ph">
@@ -2335,7 +2380,103 @@
       if (id === 'remarketing') loadRemarketing();
       if (id === 'automations') loadAutomations();
       if (id === 'bundles') loadBundles();
+      if (id === 'failed-payments') loadFailedPayments();
     }
+
+    // ──── COBROS RECHAZADOS (Dunning) ────
+    async function loadFailedPayments() {
+      const tbody = document.getElementById('failed-table');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--mut)">Cargando...</td></tr>';
+      try {
+        const r = await fetch('/api/admin/failed-payments');
+        const d = await r.json();
+        const items = d.items || [];
+        const sum = document.getElementById('failed-summary');
+        const cnt = document.getElementById('failed-count');
+        const badge = document.getElementById('badge-failed');
+        if (items.length > 0) {
+          if (sum) sum.style.display = 'block';
+          if (cnt) cnt.textContent = items.length;
+          if (badge) { badge.style.display = 'inline-block'; badge.textContent = items.length; }
+        } else {
+          if (sum) sum.style.display = 'none';
+          if (badge) badge.style.display = 'none';
+        }
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#10B981;font-weight:600">✓ No hay cobros rechazados pendientes</td></tr>';
+          return;
+        }
+        tbody.innerHTML = items.map(it => {
+          const dayBadge = it.days_since != null
+            ? `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:${it.days_since >= 14 ? '#FEE2E2' : it.days_since >= 7 ? '#FEF3C7' : '#DBEAFE'};color:${it.days_since >= 14 ? '#991B1B' : it.days_since >= 7 ? '#92400E' : '#1E40AF'}">${it.days_since}d</span>`
+            : '—';
+          const statusBadge = it.auto_paused
+            ? '<span style="display:inline-block;padding:3px 9px;border-radius:10px;font-size:10px;font-weight:800;background:#FEF3C7;color:#92400E">AUTO-PAUSED</span>'
+            : `<span style="display:inline-block;padding:3px 9px;border-radius:10px;font-size:10px;font-weight:800;background:#FEE2E2;color:#991B1B">PENDIENTE</span>`;
+          const emailsLabel = it.emails_sent ? `${it.emails_sent} (${(it.emails_dates||[]).join(', ')})` : '0';
+          return `<tr style="border-bottom:1px solid #f3f4f6">
+            <td style="padding:10px 12px"><div style="font-weight:600">${it.name || '—'}</div><div style="color:#666;font-size:11px">${it.email}</div></td>
+            <td style="padding:10px 12px">${it.product || '—'}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:12px">${it.cycles}</td>
+            <td style="padding:10px 12px;text-align:right;color:#E30613;font-weight:700">S/ ${(parseFloat(it.amount_failed)||0).toFixed(2)}</td>
+            <td style="padding:10px 12px;text-align:center">${dayBadge}</td>
+            <td style="padding:10px 12px;text-align:center;font-size:12px">${emailsLabel}</td>
+            <td style="padding:10px 12px;text-align:center">${statusBadge}</td>
+            <td style="padding:10px 12px;text-align:right;white-space:nowrap">
+              <a href="${it.mp_update_url || '#'}" target="_blank" rel="noopener" style="background:#fff;border:1px solid #e5e7eb;padding:6px 10px;border-radius:6px;font-size:11px;color:#374151;text-decoration:none;margin-right:4px">Ver MP</a>
+              <button onclick="resendFailedEmail('${it.sub_id}', '${(it.email||'').replace(/'/g,'')}')" style="background:#E30613;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px">Re-email</button>
+              <button onclick="clearFailedFlag('${it.sub_id}')" style="background:#10B981;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">✓ Resuelto</button>
+            </td>
+          </tr>`;
+        }).join('');
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:28px;color:#E30613">Error: ' + e.message + '</td></tr>';
+      }
+    }
+
+    async function runDunningNow() {
+      if (!confirm('Escanear MP ahora para detectar cobros rechazados? Tarda 1-2 min.')) return;
+      try {
+        const r = await fetch('/api/admin/run-dunning-now', { method: 'POST' });
+        const d = await r.json();
+        alert('Escaneo iniciado en background. Refrescá la lista en 1-2 min.');
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    async function resendFailedEmail(subId, email) {
+      if (!confirm('Reenviar email de aviso a ' + email + '?')) return;
+      try {
+        const r = await fetch('/api/admin/failed-payments/' + subId + '/resend-email', { method: 'POST' });
+        const d = await r.json();
+        if (d.success) {
+          alert('✓ Email reenviado');
+          loadFailedPayments();
+        } else {
+          alert('Error: ' + (d.error || d.reason || 'fallo'));
+        }
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    async function clearFailedFlag(subId) {
+      if (!confirm('Marcar como RESUELTO? (la sub deja la lista de pendientes)')) return;
+      try {
+        const r = await fetch('/api/admin/failed-payments/' + subId + '/clear-flag', { method: 'POST' });
+        const d = await r.json();
+        if (d.success) { alert('✓ Marcado resuelto'); loadFailedPayments(); }
+        else alert('Error: ' + (d.error || 'fallo'));
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // Auto-load badge counter on startup
+    setTimeout(async () => {
+      try {
+        const r = await fetch('/api/admin/failed-payments');
+        const d = await r.json();
+        const badge = document.getElementById('badge-failed');
+        if (badge && d.total > 0) { badge.style.display = 'inline-block'; badge.textContent = d.total; }
+      } catch {}
+    }, 2000);
 
     // \u2500\u2500\u2500\u2500 CLIENTES \u2500\u2500\u2500\u2500
     let _allCustomers = [], _custFilter = 'all', _custSearch = '', _custNextPageInfo = null;
