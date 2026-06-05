@@ -8488,18 +8488,30 @@ async function runMpPaymentPolling() {
                         .sort((a, b) => new Date(b.date_created) - new Date(a.date_created))
                         .slice(0, newCharges);
 
+                    // 🔒 FIX 2026-06-04: contar órdenes REALMENTE creadas en esta iteración
+                    //   ANTES: cycles_completed se seteaba a mpCharged sin importar si las órdenes
+                    //   se crearon o no. Si todas fallaban, cycles avanzaba igual y el bug quedaba
+                    //   enmascarado para siempre (próxima corrida: mpCharged == localCycles → skip).
+                    //   AHORA: solo avanzamos cycles por el número de órdenes que SÍ se crearon.
+                    //   Si fallaron todas, cycles_completed NO avanza y se loggea evento de fallo.
+                    let actualOrdersCreated = 0;
+                    let actualOrdersSkippedDedup = 0;
+                    let actualOrdersFailed = 0;
+                    const failedReasons = [];
+
                     for (const authPay of approvedPayments) {
                         const paymentId = String(authPay.payment?.id || authPay.id);
                         // Check if we already created an order for this payment
                         const events = db?.getEvents ? await db.getEvents(sub.id, 100).catch(() => []) : [];
                         const alreadyProcessed = events.some(e => e.metadata?.includes?.(paymentId));
-                        if (alreadyProcessed) continue;
+                        if (alreadyProcessed) { actualOrdersSkippedDedup++; continue; }
 
                         // Create Shopify order
                         try {
                             const order = await createShopifyOrderFromSub(sub, paymentId);
                             if (order) {
                                 ordersCreated++;
+                                actualOrdersCreated++;
                                 console.log(`[MP POLLING] ✅ Shopify order ${order.name} for ${sub.customer_email} (MP payment ${paymentId})`);
 
                                 // Log event to avoid duplicate processing
@@ -8507,7 +8519,7 @@ async function runMpPaymentPolling() {
                                     await db.createEvent({
                                         subscription_id: sub.id,
                                         event_type: 'charge_success',
-                                        metadata: JSON.stringify({ mp_payment_id: paymentId, order_name: order.name, amount: authPay.transaction_amount })
+                                        metadata: JSON.stringify({ mp_payment_id: paymentId, order_name: order.name, amount: authPay.transaction_amount, via: 'mp_polling' })
                                     }).catch(() => {});
                                 }
 
@@ -8515,20 +8527,51 @@ async function runMpPaymentPolling() {
                                 if (notifications?.sendChargeSuccess) {
                                     notifications.sendChargeSuccess(sub, order.name).catch(e => console.warn('[MP POLLING] Email error:', e.message));
                                 }
+                            } else {
+                                actualOrdersFailed++;
+                                failedReasons.push({ payment_id: paymentId, reason: 'createShopifyOrderFromSub returned null' });
                             }
                         } catch (orderErr) {
+                            actualOrdersFailed++;
+                            failedReasons.push({ payment_id: paymentId, reason: orderErr.message });
                             console.error(`[MP POLLING] Order creation failed for ${sub.customer_email}:`, orderErr.message);
                         }
                     }
 
-                    // Update cycles count
+                    // 🔒 FIX 2026-06-04: solo avanzar cycles por las realmente creadas + las ya dedup'd (que ya contaban).
+                    //   Esto evita el enmascaramiento permanente del bug. Si todas fallaron, cycles NO avanza.
+                    const newCyclesCompleted = localCycles + actualOrdersCreated + actualOrdersSkippedDedup;
                     const nextCharge = new Date();
                     nextCharge.setMonth(nextCharge.getMonth() + (parseInt(sub.frequency_months) || 1));
-                    await db.updateSubscription(sub.id, {
-                        cycles_completed: mpCharged,
-                        last_charge_at: new Date().toISOString(),
-                        next_charge_at: preData.next_payment_date || nextCharge.toISOString()
-                    }).catch(e => console.warn('[MP POLLING] update error:', e.message));
+
+                    if (newCyclesCompleted > localCycles) {
+                        await db.updateSubscription(sub.id, {
+                            cycles_completed: newCyclesCompleted,
+                            last_charge_at: new Date().toISOString(),
+                            next_charge_at: preData.next_payment_date || nextCharge.toISOString()
+                        }).catch(e => console.warn('[MP POLLING] update error:', e.message));
+                    }
+
+                    // Si hubo fallos, loggear evento auditable para que el admin pueda detectarlo
+                    if (actualOrdersFailed > 0) {
+                        if (db?.createEvent) {
+                            await db.createEvent({
+                                subscription_id: sub.id,
+                                event_type: 'mp_polling_orders_failed',
+                                metadata: JSON.stringify({
+                                    mp_charged: mpCharged,
+                                    local_cycles: localCycles,
+                                    expected_new: newCharges,
+                                    created: actualOrdersCreated,
+                                    skipped_dedup: actualOrdersSkippedDedup,
+                                    failed: actualOrdersFailed,
+                                    failed_details: failedReasons,
+                                    at: new Date().toISOString()
+                                })
+                            }).catch(() => {});
+                        }
+                        console.warn(`[MP POLLING] ⚠️ ${sub.customer_email}: ${actualOrdersFailed} órdenes fallaron de ${newCharges} esperadas. cycles NO avanzado (visible para admin).`);
+                    }
                 }
 
                 // Rate limit: 500ms between MP API calls
@@ -8639,7 +8682,12 @@ async function runOrderRescue() {
                         continue;
                     }
                     const realMpCharges = mpPayments.filter(p => p.status === 'processed' || p.status === 'approved').length;
-                    const localOrders = orderEvts.length;
+                    // 🔒 FIX 2026-06-04: orderEvts no estaba definido en este scope (ReferenceError silenciado por catch).
+                    //   Variable correcta es `events` (definido L8590-8603). Contamos eventos de orden ya creada.
+                    const localOrders = (events || []).filter(e =>
+                        e.event_type === 'first_order_created' ||
+                        e.event_type === 'charge_success'
+                    ).length;
                     if (realMpCharges <= localOrders) {
                         console.warn(`[ORDER RESCUE] 🛡 SKIP fantasma-prevention ${sub.customer_email}: MP=${realMpCharges} cobros, local=${localOrders} orders (no hay huérfano)`);
                         continue;

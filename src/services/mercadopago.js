@@ -12,7 +12,10 @@ function getMP() {
 }
 
 const BACKEND_URL = () => process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
-const WEBHOOK_URL = () => `${BACKEND_URL()}/webhooks/mp`;
+// 🔒 FIX 2026-06-04: el endpoint real es /webhooks/mercadopago (no /webhooks/mp que fue eliminado el 2026-04-11).
+//   MP guardaba esta URL en los planes y enviaba webhooks a 404 → subs quedaban huérfanas.
+//   Esto solo afecta NUEVOS planes. Los planes MP viejos siguen con la URL muerta — dependen del polling cron.
+const WEBHOOK_URL = () => `${BACKEND_URL()}/webhooks/mercadopago`;
 
 /* ─── VERIFY CONNECTION ─── */
 async function verifyConnection() {
