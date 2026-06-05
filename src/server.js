@@ -10782,11 +10782,12 @@ async function _sendDunningEmail(sub, dayNumber, mpDashboardUrl, portalUrl) {
 /* ── Función: detectar cobros rechazados en MP (cada 4h) ── */
 async function runDunningDetection() {
     console.log('[DUNNING] Detection start');
-    let detected = 0, emailsSent = 0, errors = 0;
+    let detected = 0, emailsSent = 0, errors = 0, recovered = 0;
     try {
         const allSubs = await db.getSubscriptions().catch(() => []);
+        // 🔍 Incluir subs paused por payment_failed para detectar recovery
         const targets = (Array.isArray(allSubs) ? allSubs : [])
-            .filter(s => s.status === 'active' && s.mp_preapproval_id);
+            .filter(s => (s.status === 'active' || s.paused_reason === 'auto_payment_failed') && s.mp_preapproval_id);
         const mpToken = process.env.MP_ACCESS_TOKEN;
         if (!mpToken) { console.warn('[DUNNING] No MP token, skipping'); return; }
         const BACKEND = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
@@ -10801,6 +10802,33 @@ async function runDunningDetection() {
                 let realStatus = latest.status;
                 const pd = await mp.getPayment(String(pid)).catch(() => null);
                 if (pd) realStatus = pd.status;
+                // 🎉 RECOVERY: si sub estaba en needs_payment_update y ahora hay payment approved
+                if (realStatus === 'approved' && sub.needs_payment_update === true) {
+                    await db.updateSubscription(sub.id, {
+                        needs_payment_update: false,
+                        last_payment_recovered_at: new Date().toISOString(),
+                        paused_reason: null
+                    }).catch(() => {});
+                    await db.createEvent({
+                        subscription_id: sub.id,
+                        event_type: 'payment_recovered',
+                        metadata: JSON.stringify({ payment_id: String(pid), amount: latest.transaction_amount, at: new Date().toISOString() })
+                    }).catch(() => {});
+                    // Email "tu pago se procesó"
+                    try {
+                        if (process.env.RESEND_API_KEY) {
+                            const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;padding:24px;background:#f5f5f5"><div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden"><div style="background:#0A0A0A;padding:24px;text-align:center"><h1 style="color:#E30613;margin:0;letter-spacing:2px;font-weight:900">LAB NUTRITION</h1></div><div style="padding:32px 28px"><h2 style="color:#10B981;margin:0 0 12px">✓ ¡Pago procesado!</h2><p style="color:#374151;line-height:1.6">Hola ${(sub.customer_name||'').split(' ')[0]}, tu suscripción <strong>${sub.product_title}</strong> se cobró correctamente. Tu pedido sale en los próximos días.</p><p style="color:#374151">Gracias por seguir con nosotros.</p></div></div></body></html>`;
+                            await fetch('https://api.resend.com/emails', {
+                                method: 'POST',
+                                headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ from: process.env.RESEND_FROM || 'LAB NUTRITION <onboarding@resend.dev>', to: [sub.customer_email], subject: '✓ Tu pago se procesó — LAB NUTRITION', html })
+                            }).catch(() => {});
+                        }
+                    } catch {}
+                    recovered++;
+                    console.log(`[DUNNING] 🎉 RECOVERED: ${sub.customer_email} — payment ${pid} ahora approved`);
+                    continue; // No procesar como nuevo rechazo
+                }
                 if (realStatus !== 'rejected') continue;
                 // Idempotency: skip if already processed this payment_id
                 const events = await db.getEvents(sub.id).catch(() => []);
@@ -10851,7 +10879,7 @@ async function runDunningDetection() {
             }
             await new Promise(r => setTimeout(r, 300)); // rate limit MP
         }
-        console.log(`[DUNNING] Done: detected=${detected}, emails=${emailsSent}, errors=${errors}`);
+        console.log(`[DUNNING] Done: detected=${detected}, recovered=${recovered}, emails=${emailsSent}, errors=${errors}`);
     } catch (e) { console.error('[DUNNING] Top-level error:', e.message); }
 }
 
@@ -11140,11 +11168,18 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
         scheduleDailyCron(2, 0, runDailyBillingCron);  // 2am Lima
         scheduleDailyCron(9, 0, runReminderCron);       // 9am Lima
 
-        // 🆕 DUNNING — 2026-06-05 — detección de cobros rechazados + auto-emails
-        setTimeout(() => {
-            setInterval(runDunningDetection, 4 * 60 * 60 * 1000); // cada 4h
-            console.log('[CRON] "runDunningDetection" scheduled: every 4 hours');
-        }, 45 * 60 * 1000); // offset 45min para no chocar con polling
+        // 🆕 DUNNING — 2026-06-05 — smart retry 3x/día con detección recovery
+        //   - 06:00 PET (11:00 UTC): primer chequeo del día
+        //   - 12:00 PET (17:00 UTC): segundo chequeo (6h después)
+        //   - 18:00 PET (23:00 UTC): tercer chequeo (otras 6h)
+        //   En cada corrida:
+        //   - Detecta rechazos nuevos → email + flag needs_payment_update
+        //   - Detecta RECOVERY (rejected → approved) → email "tu pago se procesó" + clear flag
+        //   - Idempotente por payment_id (no double-process)
+        scheduleDailyCron(6, 0, runDunningDetection);
+        scheduleDailyCron(12, 0, runDunningDetection);
+        scheduleDailyCron(18, 0, runDunningDetection);
+        console.log('[CRON] "runDunningDetection" scheduled: 06:00, 12:00, 18:00 PET');
         scheduleDailyCron(10, 30, runDunningFollowups);  // 10:30am Lima — followups + auto-pause
         console.log('[CRON] "runDunningFollowups" scheduled: daily 10:30am PET');
 
