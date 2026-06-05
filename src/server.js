@@ -10725,6 +10725,12 @@ function _mpCustomerDashboardUrl(preapprovalId) {
 }
 
 // ── Helper: send dunning email (Resend HTTP API)
+// 🔒 FIX 2026-06-05: si Resend está en modo trial (403), fall-back a admin.
+//   El admin recibe el email del cliente con header "DESTINATARIO ORIGINAL: <cliente>"
+//   y un botón "Reenviar al cliente" (mailto:). Esto desbloquea el dunning
+//   mientras el dominio no esté verificado en Resend.
+const _ADMIN_EMAIL_FALLBACK = process.env.ADMIN_EMAIL || 'israelsarmiento281294@gmail.com';
+
 async function _sendDunningEmail(sub, dayNumber, mpDashboardUrl, portalUrl) {
     if (!process.env.RESEND_API_KEY) return { sent: false, reason: 'No RESEND_API_KEY' };
     const subjects = {
@@ -10775,7 +10781,58 @@ async function _sendDunningEmail(sub, dayNumber, mpDashboardUrl, portalUrl) {
                 html
             })
         });
-        return { sent: r.ok, status: r.status };
+        if (r.ok) return { sent: true, status: r.status, to: sub.customer_email };
+
+        // 🔄 FALLBACK 2026-06-05: Resend en trial / dominio no verificado.
+        // Mandamos al admin con marca "FORWARD TO CLIENT" y mailto pre-llenado.
+        if (r.status === 403) {
+            const customerPhone = (sub.customer_phone || '').replace(/[^0-9]/g, '');
+            const waLink = customerPhone ? `https://wa.me/${customerPhone.startsWith('51') ? customerPhone : '51' + customerPhone}?text=${encodeURIComponent('Hola ' + (sub.customer_name||'').split(' ')[0] + ', te escribo de Lab Nutrition. Tu suscripción tuvo un cobro rechazado por S/' + (sub.mp_total_amount || sub.final_price || 0) + '. Actualizá tu tarjeta acá: ' + mpDashboardUrl)}` : null;
+            const mailtoLink = `mailto:${sub.customer_email}?subject=${encodeURIComponent(subjects[dayNumber] || subjects[0])}&body=${encodeURIComponent('Hola ' + (sub.customer_name||'').split(' ')[0] + ',\n\n' + (introMsgs[dayNumber] || introMsgs[0]) + '\n\nActualizá tu tarjeta acá: ' + mpDashboardUrl + '\n\nGracias,\nLab Nutrition')}`;
+            const adminHtml = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;margin:0">
+<div style="max-width:680px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden">
+  <div style="background:#FEF3C7;border-bottom:3px solid #F59E0B;padding:18px 24px">
+    <strong style="color:#92400E;font-size:14px">⚠️ DESTINATARIO ORIGINAL:</strong> <code style="background:#fff;padding:3px 8px;border-radius:4px;color:#92400E;font-size:13px">${sub.customer_email}</code><br>
+    <small style="color:#78350F">Resend trial mode — verificá dominio en resend.com/domains para envío directo. Mientras tanto, reenviá manual.</small>
+  </div>
+  <div style="background:#0A0A0A;padding:24px;text-align:center"><h1 style="color:#E30613;margin:0;letter-spacing:2px;font-weight:900">LAB NUTRITION — Dunning Alert Día ${dayNumber}</h1></div>
+  <div style="padding:28px">
+    <div style="background:#FEE2E2;padding:16px;border-radius:8px;margin-bottom:18px;font-size:14px;color:#7F1D1D">
+      <strong>Cliente: ${sub.customer_name || '—'}</strong> (${sub.customer_email})<br>
+      Producto: ${sub.product_title}<br>
+      Monto rechazado: <strong>S/${sub.mp_total_amount || sub.final_price || 0}</strong><br>
+      Ciclo: ${(sub.cycles_completed||0)+1} de ${sub.cycles_required||'?'}<br>
+      ${customerPhone ? 'Teléfono: <code>' + customerPhone + '</code><br>' : 'Sin teléfono registrado<br>'}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap">
+      ${waLink ? `<a href="${waLink}" style="background:#25D366;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px">📱 WhatsApp directo</a>` : ''}
+      <a href="${mailtoLink}" style="background:#3B82F6;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px">✉️ Enviar email desde Gmail</a>
+      <a href="${mpDashboardUrl}" target="_blank" style="background:#E30613;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px">🔗 Link MP cliente</a>
+    </div>
+    <hr style="border:none;border-top:1px solid #E5E5E5;margin:20px 0">
+    <p style="color:#6B7280;font-size:11px;margin:0">Para enviar emails directos: <a href="https://resend.com/domains" style="color:#E30613">resend.com/domains</a> → verificar <strong>labnutrition.pe</strong> → cambiar RESEND_FROM en Ajustes.</p>
+    <hr style="border:none;border-top:1px solid #E5E5E5;margin:20px 0">
+    <details><summary style="cursor:pointer;color:#666;font-size:12px">📄 Preview email cliente (lo que recibiría si dominio verificado)</summary>
+    <div style="border:1px dashed #ccc;border-radius:8px;padding:14px;margin-top:8px;font-size:11px;color:#666">
+      <strong>Subject:</strong> ${subjects[dayNumber] || subjects[0]}<br>
+      <strong>To:</strong> ${sub.customer_email}<br><br>
+      ${html.replace(/<[^>]*>/g, ' ').slice(0, 600)}...
+    </div></details>
+  </div>
+</div></body></html>`;
+            const r2 = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from: process.env.RESEND_FROM || 'LAB NUTRITION Dunning <onboarding@resend.dev>',
+                    to: [_ADMIN_EMAIL_FALLBACK],
+                    subject: `[Acción] ${sub.customer_name || sub.customer_email} — cobro rechazado día ${dayNumber}`,
+                    html: adminHtml
+                })
+            });
+            return { sent: r2.ok, status: r2.status, to: _ADMIN_EMAIL_FALLBACK, fallback_admin: true, original_recipient: sub.customer_email };
+        }
+        return { sent: false, status: r.status, to: sub.customer_email };
     } catch (e) { return { sent: false, error: e.message }; }
 }
 
@@ -10814,15 +10871,28 @@ async function runDunningDetection() {
                         event_type: 'payment_recovered',
                         metadata: JSON.stringify({ payment_id: String(pid), amount: latest.transaction_amount, at: new Date().toISOString() })
                     }).catch(() => {});
-                    // Email "tu pago se procesó"
+                    // Email "tu pago se procesó" — con fallback al admin si Resend trial
                     try {
                         if (process.env.RESEND_API_KEY) {
                             const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;padding:24px;background:#f5f5f5"><div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden"><div style="background:#0A0A0A;padding:24px;text-align:center"><h1 style="color:#E30613;margin:0;letter-spacing:2px;font-weight:900">LAB NUTRITION</h1></div><div style="padding:32px 28px"><h2 style="color:#10B981;margin:0 0 12px">✓ ¡Pago procesado!</h2><p style="color:#374151;line-height:1.6">Hola ${(sub.customer_name||'').split(' ')[0]}, tu suscripción <strong>${sub.product_title}</strong> se cobró correctamente. Tu pedido sale en los próximos días.</p><p style="color:#374151">Gracias por seguir con nosotros.</p></div></div></body></html>`;
-                            await fetch('https://api.resend.com/emails', {
+                            const rr = await fetch('https://api.resend.com/emails', {
                                 method: 'POST',
                                 headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ from: process.env.RESEND_FROM || 'LAB NUTRITION <onboarding@resend.dev>', to: [sub.customer_email], subject: '✓ Tu pago se procesó — LAB NUTRITION', html })
-                            }).catch(() => {});
+                            }).catch(() => ({ ok: false, status: 0 }));
+                            if (!rr.ok && rr.status === 403) {
+                                // Notify admin of recovery
+                                await fetch('https://api.resend.com/emails', {
+                                    method: 'POST',
+                                    headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        from: process.env.RESEND_FROM || 'LAB NUTRITION Recovery <onboarding@resend.dev>',
+                                        to: [_ADMIN_EMAIL_FALLBACK],
+                                        subject: `🎉 RECOVERY: ${sub.customer_email} actualizó su tarjeta`,
+                                        html: `<p>El cliente <strong>${sub.customer_name}</strong> (${sub.customer_email}) actualizó su tarjeta y el cobro de ${sub.product_title} se procesó. Pedido sale automático.</p>`
+                                    })
+                                }).catch(() => {});
+                            }
                         }
                     } catch {}
                     recovered++;
