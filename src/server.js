@@ -5197,8 +5197,47 @@ async function findRealMpPaymentForSub(sub) {
     }
 }
 
-/* ── Helper: Crear orden en Shopify desde una suscripción ── */
+/* ── 🔒 MUTEX 2026-06-09 (cierre de ventana TOCTOU webhook/polling) ──
+   PROBLEMA: webhook y polling podían procesar el MISMO cobro MP en paralelo.
+   Ambos leían Shopify ANTES de que el otro hiciera su POST → ambos veían
+   "no duplicate" → DOS órdenes para un solo cobro (caso Luis Miguel #8765/#8766).
+   SOLUCIÓN (2 niveles):
+   1. Mismo payment en vuelo → el segundo caller recibe LA MISMA promesa
+      (ni siquiera re-ejecuta — cero duplicado posible).
+   2. Distintos payments de la misma sub → se SERIALIZAN (cola por sub.id).
+      El segundo corre recién cuando el primero terminó su POST, así su
+      lectura de dedup (alreadyHasShopifyOrderForSub) YA VE la orden creada.
+   Maps se limpian al terminar — sin fugas de memoria. Single-instance Railway. */
+const _orderSubLocks = new Map();      // sub_id -> última promesa de la cola
+const _orderPaymentInFlight = new Map(); // `${sub_id}:${payment_id}` -> promesa
+
 async function createShopifyOrderFromSub(sub, mpPaymentId) {
+    const subKey = String(sub?.id || 'no_sub');
+    const payKey = subKey + ':' + String(mpPaymentId || 'no_pay');
+
+    // Nivel 1: mismo payment ya en proceso → compartir el resultado
+    if (_orderPaymentInFlight.has(payKey)) {
+        console.log(`[ORDER LOCK] ${payKey} ya en vuelo — reutilizando resultado (duplicado evitado)`);
+        return _orderPaymentInFlight.get(payKey);
+    }
+
+    // Nivel 2: serializar por sub (cola de promesas)
+    const prev = _orderSubLocks.get(subKey) || Promise.resolve();
+    const run = prev.catch(() => {}).then(() => _createShopifyOrderFromSubInner(sub, mpPaymentId));
+
+    _orderSubLocks.set(subKey, run);
+    _orderPaymentInFlight.set(payKey, run);
+
+    try {
+        return await run;
+    } finally {
+        if (_orderPaymentInFlight.get(payKey) === run) _orderPaymentInFlight.delete(payKey);
+        if (_orderSubLocks.get(subKey) === run) _orderSubLocks.delete(subKey);
+    }
+}
+
+/* ── Helper: Crear orden en Shopify desde una suscripción (inner, NO llamar directo) ── */
+async function _createShopifyOrderFromSubInner(sub, mpPaymentId) {
     const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
     const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
     if (!token) { console.error('[ORDER] No SHOPIFY_ACCESS_TOKEN — cannot create order'); return null; }
