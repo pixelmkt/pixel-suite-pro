@@ -2390,6 +2390,12 @@
       tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--mut)">Cargando...</td></tr>';
       try {
         const r = await fetch('/api/admin/failed-payments');
+        // 🔑 FIX 2026-06-09: verificar r.ok ANTES de leer. Sin esto, un error 500
+        //   del backend se veía idéntico a "todo cobrado" (falso negativo peligroso).
+        if (!r.ok) {
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:28px;color:#E30613">⚠️ Error del servidor (' + r.status + '). NO significa "sin rechazos" — reintentá.</td></tr>';
+          return;
+        }
         const d = await r.json();
         const items = d.items || [];
         const sum = document.getElementById('failed-summary');
@@ -4513,6 +4519,7 @@
         <td>${s.next_charge_at ? new Date(s.next_charge_at).toLocaleDateString('es-PE') : '—'}</td>
         <td style="white-space:nowrap">
           <button class="btn btn-sm" style="background:#0A0A0A;color:#fff;margin-right:4px" onclick="openSubDetail('${s.id}')">Ver</button>
+          ${s.mp_preapproval_id ? `<a class="btn btn-sm" style="background:#dbeafe;color:#1e40af;margin-right:4px;text-decoration:none" href="https://www.mercadopago.com.pe/subscriptions/details/${s.mp_preapproval_id}" target="_blank" rel="noopener" title="Link MP del cliente (actualizar tarjeta)">MP↗</a>` : ''}
           ${s.status === 'active' ? `<button class="btn btn-g btn-sm" onclick="subAction('${s.id}','pause')" title="Pausar">⏸</button>` : ''}
           ${s.status === 'paused' ? `<button class="btn btn-b btn-sm" onclick="subAction('${s.id}','resume')" title="Reanudar">▶</button>` : ''}
           ${s.status !== 'cancelled' ? `<button class="btn btn-sm" style="background:#fee2e2;color:#991b1b" onclick="subAction('${s.id}','cancel')" title="Cancelar">✕</button>` : ''}
@@ -5225,8 +5232,25 @@
           </select>
         </div>`;
       const nextCharge = s.next_charge_at ? new Date(s.next_charge_at).toISOString().slice(0, 16) : '';
+      // 🆕 2026-06-09 — Link de suscripción MP del cliente (actualizar tarjeta / gestionar)
+      const mpCustomerLink = s.mp_preapproval_id ? ('https://www.mercadopago.com.pe/subscriptions/details/' + s.mp_preapproval_id) : '';
+      const mpLinkBlock = s.mp_preapproval_id ? `
+        <div style="grid-column:1 / -1;background:linear-gradient(135deg,#eff6ff 0%,#f0f9ff 100%);border:1.5px solid #93c5fd;border-radius:10px;padding:14px 16px;margin-bottom:4px">
+          <div style="font-size:11px;font-weight:800;color:#1e40af;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">🔗 Link de suscripción MercadoPago (cliente)</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="sd-mp-link" readonly value="${mpCustomerLink}" style="flex:1;min-width:220px;border:1px solid #bfdbfe;border-radius:6px;padding:8px 10px;font-size:11px;font-family:monospace;background:#fff;color:#1e3a8a;outline:none">
+            <button onclick="(function(){const i=document.getElementById('sd-mp-link');i.select();document.execCommand('copy');this.textContent='✓ Copiado';setTimeout(()=>this.textContent='Copiar',1500);}).call(this)" style="background:#2563eb;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">Copiar</button>
+            <a href="${mpCustomerLink}" target="_blank" rel="noopener" style="background:#fff;color:#1e40af;border:1.5px solid #93c5fd;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none">Abrir ↗</a>
+            ${s.customer_phone ? `<a href="https://wa.me/${(s.customer_phone||'').replace(/[^0-9]/g,'').replace(/^(?!51)/,'51')}?text=${encodeURIComponent('Hola ' + (s.customer_name||'').split(' ')[0] + ', podés gestionar tu suscripción Lab Nutrition / actualizar tu tarjeta acá: ' + mpCustomerLink)}" target="_blank" rel="noopener" style="background:#25D366;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none">WhatsApp</a>` : ''}
+          </div>
+          <div style="font-size:10px;color:#64748b;margin-top:6px">Este es el link que el cliente usa para actualizar su tarjeta o gestionar su suscripción en MercadoPago. Preapproval: <code style="font-size:10px">${s.mp_preapproval_id}</code></div>
+        </div>` : `
+        <div style="grid-column:1 / -1;background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;padding:10px 14px;margin-bottom:4px;font-size:12px;color:#92400e">
+          ⚠️ Esta suscripción no tiene preapproval MercadoPago vinculado (sin link de cliente).
+        </div>`;
       return `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+          ${mpLinkBlock}
           <div>
             <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#E30613">Cliente</div>
             ${field('Nombre', 'sd-customer_name', s.customer_name || '')}
