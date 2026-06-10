@@ -4800,39 +4800,54 @@ app.post('/webhooks/mercadopago', async (req, res) => {
             nextCharge.setMonth(nextCharge.getMonth() + (parseInt(sub.frequency_months) || 1));
             const isComplete = cyclesCompleted >= (parseInt(sub.cycles_required) || 999);
 
-            // 🔒🔒 GUARD ANTI COBRO TEMPRANO 2026-05-12 (regla de negocio)
-            //   Si llegó un webhook payment Y el último cobro fue HACE MENOS de 28 días,
-            //   este cobro es ANÓMALO (MP cobró demasiado pronto, posible bug MP o test).
-            //   NO crear orden Shopify. Loguear y alertar al admin. Bodega no despacha.
-            //   El cliente puede haber recibido el cargo, pero NO le va a llegar producto
-            //   hasta que admin revise (puede ser refund MP o despacho manual).
+            // 🔒🔒 GUARD ANTI COBRO TEMPRANO — REDISEÑADO 2026-06-09
+            //   FIX CRÍTICO (audit jun-8): la versión anterior comparaba contra
+            //   last_charge_at LOCAL (grabado al momento de PROCESAR, no del débito real).
+            //   Tras un reintento MP tardío, el ciclo siguiente legítimo caía <28d y se
+            //   bloqueaba → cobro entrado sin orden → bodega no despacha (bola de nieve).
+            //   AHORA:
+            //   1. Comparamos las fechas REALES de débito de MP (date_approved del payment
+            //      actual vs el anterior), no nuestros timestamps de procesamiento.
+            //   2. La ventana baja a 25d para tolerar débitos adelantados de MP/meses cortos.
+            //   3. El payment_id del cobro bloqueado se registra en un event_type SEPARADO
+            //      que el dedup del polling IGNORA → si fue falso positivo, el polling lo
+            //      rescata en 1h en vez de perderse para siempre.
             if (sub.last_charge_at && cyclesCompleted >= 2) {
-                const daysSince = (Date.now() - new Date(sub.last_charge_at).getTime()) / 86400000;
-                if (daysSince > 0 && daysSince < 28) {
+                // Fecha real del débito actual según MP (no "ahora")
+                const currentDebitDate = paymentData.date_approved || paymentData.date_created || new Date().toISOString();
+                // Fecha real del débito anterior: usar last_mp_debit_date si existe (subs nuevas),
+                // fallback a last_charge_at local (subs viejas)
+                const prevDebitDate = sub.last_mp_debit_date || sub.last_charge_at;
+                const daysSince = (new Date(currentDebitDate).getTime() - new Date(prevDebitDate).getTime()) / 86400000;
+                if (daysSince > 0 && daysSince < 25) {
                     console.error(`[MP WEBHOOK] 🚫 COBRO TEMPRANO BLOQUEADO — ${sub.customer_email} | ` +
-                        `last_charge ${daysSince.toFixed(1)}d ago (< 28d). MP cobró pero NO creamos orden Shopify. ` +
-                        `Admin debe revisar: ${sub.id}`);
+                        `débito real MP ${daysSince.toFixed(1)}d después del anterior (< 25d). ` +
+                        `Payment queda en cola de reproceso (polling lo reintenta si es legítimo). Sub: ${sub.id}`);
                     await db.createEvent({
                         subscription_id: sub.id,
                         event_type: 'early_charge_blocked',
                         metadata: JSON.stringify({
                             days_since_last_charge: parseFloat(daysSince.toFixed(2)),
-                            mp_payment_id: String(resourceId),
+                            // 🔑 FIX dedup-poisoning: clave renombrada para que el substring-match
+                            // del polling legacy NO matchee 'mp_payment_id' de eventos de bloqueo
+                            blocked_payment_id: String(resourceId),
                             mp_payment_amount: paymentData.transaction_amount,
+                            current_debit_date: currentDebitDate,
+                            prev_debit_date: prevDebitDate,
                             blocked_at: new Date().toISOString(),
-                            reason: 'Cobro recibido <28d desde last_charge_at - posible cobro temprano MP'
+                            reason: 'Débito MP <25d desde el débito real anterior'
                         })
                     }).catch(() => {});
-                    // Marcar sub para revisión admin (sin tocar status active)
                     await db.updateSubscription(sub.id, {
-                        last_order_error: `Cobro temprano bloqueado (${daysSince.toFixed(1)}d) ${new Date().toISOString()}`,
+                        last_order_error: `Cobro temprano bloqueado (${daysSince.toFixed(1)}d, débitos reales MP) ${new Date().toISOString()}`,
                         needs_admin_review: true
                     }).catch(() => {});
-                    return; // EXIT — no crear orden
+                    return; // EXIT — el polling re-evalúa este payment en su próxima corrida
                 }
             }
 
             // Crear orden Shopify (con retry automático)
+            const realDebitDate = paymentData.date_approved || paymentData.date_created || new Date().toISOString();
             let order = null;
             for (let attempt = 1; attempt <= 3 && !order; attempt++) {
                 order = await createShopifyOrderFromSub(sub, resourceId).catch(e => {
@@ -4842,25 +4857,50 @@ app.post('/webhooks/mercadopago', async (req, res) => {
                 if (!order && attempt < 3) await new Promise(r => setTimeout(r, 2000));
             }
 
-            // FIX 2026-04-11: Save shopify_order_id + cycle update together
-            await db.updateSubscription(sub.id, {
-                cycles_completed: cyclesCompleted,
-                last_charge_at: new Date().toISOString(),
-                next_charge_at: nextCharge.toISOString(),
-                status: isComplete ? 'completed' : 'active',
-                shopify_order_id: order?.id ? String(order.id) : undefined,
-                shopify_order_name: order?.name || undefined
-            }).catch(e => console.warn('[MP WEBHOOK] updateSub:', e.message));
+            // 🔑 FIX CRÍTICO 2026-06-09 (audit jun-8): NO avanzar estado si la orden falló.
+            //   ANTES: aunque order===null, avanzaba cycles_completed + last_charge_at + creaba
+            //   evento charge_success con el payment_id. Ese evento bloqueaba TODOS los reintentos
+            //   futuros (dedup) → cobro real entrado, orden perdida PARA SIEMPRE.
+            //   AHORA: si la orden falló, NO tocamos cycles ni last_charge; creamos un evento
+            //   order_creation_failed (que el polling SÍ reintenta) y marcamos needs_admin_review.
+            if (order?.id) {
+                await db.updateSubscription(sub.id, {
+                    cycles_completed: cyclesCompleted,
+                    last_charge_at: new Date().toISOString(),
+                    last_mp_debit_date: realDebitDate, // 🔑 fecha REAL del débito MP (para guard <25d)
+                    next_charge_at: nextCharge.toISOString(),
+                    status: isComplete ? 'completed' : 'active',
+                    shopify_order_id: String(order.id),
+                    shopify_order_name: order.name
+                }).catch(e => console.warn('[MP WEBHOOK] updateSub:', e.message));
 
-            await db.createEvent({ subscription_id: sub.id, event_type: 'charge_success',
-                metadata: JSON.stringify({ mp_payment_id: resourceId, cycle: cyclesCompleted,
-                    shopify_order_id: order?.id, shopify_order_name: order?.name,
-                    amount: paymentData.transaction_amount }) }).catch(() => {});
+                await db.createEvent({ subscription_id: sub.id, event_type: 'charge_success',
+                    metadata: JSON.stringify({ mp_payment_id: resourceId, cycle: cyclesCompleted,
+                        shopify_order_id: order.id, shopify_order_name: order.name,
+                        mp_debit_date: realDebitDate,
+                        amount: paymentData.transaction_amount }) }).catch(() => {});
 
-            if (notifications.sendChargeSuccess) notifications.sendChargeSuccess(sub, order?.order_number).catch(() => {});
-            if (isComplete && notifications.sendRenewalInvite) notifications.sendRenewalInvite(sub).catch(() => {});
+                if (notifications.sendChargeSuccess) notifications.sendChargeSuccess(sub, order.order_number).catch(() => {});
+                if (isComplete && notifications.sendRenewalInvite) notifications.sendRenewalInvite(sub).catch(() => {});
 
-            console.log(`[MP WEBHOOK] ✅ Cobro procesado: ${sub.customer_email} | ciclo ${cyclesCompleted}/${sub.cycles_required} | order ${order?.name || 'FAIL'}`);
+                console.log(`[MP WEBHOOK] ✅ Cobro procesado: ${sub.customer_email} | ciclo ${cyclesCompleted}/${sub.cycles_required} | order ${order.name}`);
+            } else {
+                // Orden falló tras 3 intentos → NO avanzar estado, dejar que el polling reintente
+                console.error(`[MP WEBHOOK] ⚠️ Cobro ${resourceId} OK en MP pero orden Shopify FALLÓ 3x — NO avanzo cycles. Polling reintentará. Sub: ${sub.id}`);
+                await db.createEvent({ subscription_id: sub.id, event_type: 'order_creation_failed',
+                    metadata: JSON.stringify({
+                        // clave separada que el dedup NO matchea como cobro procesado
+                        failed_payment_id: String(resourceId),
+                        intended_cycle: cyclesCompleted,
+                        mp_debit_date: realDebitDate,
+                        amount: paymentData.transaction_amount,
+                        at: new Date().toISOString()
+                    }) }).catch(() => {});
+                await db.updateSubscription(sub.id, {
+                    last_order_error: `Orden Shopify falló 3x para cobro MP ${resourceId} ${new Date().toISOString()}`,
+                    needs_admin_review: true
+                }).catch(() => {});
+            }
         }
     } catch (e) {
         console.error('[MP WEBHOOK] Error:', e.message, e.stack);
@@ -8752,9 +8792,25 @@ async function runMpPaymentPolling() {
 
                     for (const authPay of approvedPayments) {
                         const paymentId = String(authPay.payment?.id || authPay.id);
-                        // Check if we already created an order for this payment
+                        // 🔑 FIX CRÍTICO 2026-06-09 (audit jun-8): dedup PRECISO.
+                        //   ANTES: events.some(e => e.metadata?.includes?.(paymentId)) — substring
+                        //   sobre metadata cruda. Los eventos de BLOQUEO (early_charge_blocked,
+                        //   order_creation_failed, order_blocked_*) también contienen el VALOR del
+                        //   payment_id → el polling creía "ya procesado" y NUNCA rescataba la orden.
+                        //   AHORA: solo cuenta como procesado si existe un evento de ÉXITO real
+                        //   (charge_success o first_order_created) cuyo mp_payment_id === paymentId.
                         const events = db?.getEvents ? await db.getEvents(sub.id, 100).catch(() => []) : [];
-                        const alreadyProcessed = events.some(e => e.metadata?.includes?.(paymentId));
+                        const SUCCESS_EVENTS = ['charge_success', 'first_order_created'];
+                        const alreadyProcessed = events.some(e => {
+                            if (!SUCCESS_EVENTS.includes(e.event_type)) return false;
+                            try {
+                                const m = typeof e.metadata === 'string' ? JSON.parse(e.metadata) : (e.metadata || {});
+                                return String(m.mp_payment_id || '') === paymentId;
+                            } catch {
+                                // Si la metadata no es JSON parseable, fallback a substring SOLO en eventos de éxito
+                                return typeof e.metadata === 'string' && e.metadata.includes(paymentId);
+                            }
+                        });
                         if (alreadyProcessed) { actualOrdersSkippedDedup++; continue; }
 
                         // Create Shopify order
@@ -8796,9 +8852,13 @@ async function runMpPaymentPolling() {
                     nextCharge.setMonth(nextCharge.getMonth() + (parseInt(sub.frequency_months) || 1));
 
                     if (newCyclesCompleted > localCycles) {
+                        // 🔑 FIX 2026-06-09: grabar la fecha REAL del último débito MP (no "now")
+                        //   para que el guard <25d del webhook compare contra fechas reales.
+                        const lastRealDebit = approvedPayments[0]?.date_created || new Date().toISOString();
                         await db.updateSubscription(sub.id, {
                             cycles_completed: newCyclesCompleted,
                             last_charge_at: new Date().toISOString(),
+                            last_mp_debit_date: lastRealDebit,
                             next_charge_at: preData.next_payment_date || nextCharge.toISOString()
                         }).catch(e => console.warn('[MP POLLING] update error:', e.message));
                     }
@@ -11112,14 +11172,20 @@ async function runDunningFollowups() {
                         }
                     }
                 }
-                // Auto-pause day 14+
-                if (daysSince >= 14 && sub.status === 'active') {
-                    if (mp.pauseSubscription) await mp.pauseSubscription(sub.mp_preapproval_id).catch(() => {});
-                    await db.updateSubscription(sub.id, { status: 'paused', paused_reason: 'auto_payment_failed', paused_at: new Date().toISOString() });
+                // 🔑 FIX CRÍTICO 2026-06-09 (audit jun-8): NO pausar el preapproval MP en día 14.
+                //   ANTES: mp.pauseSubscription() pausaba el preapproval → MP DEJABA de reintentar →
+                //   aunque el cliente actualizara la tarjeta, MP nunca volvía a cobrar → churn
+                //   irrecuperable. Y el recovery (que requiere un payment approved NUEVO) era
+                //   imposible porque un preapproval pausado no genera payments.
+                //   AHORA: dejamos el preapproval AUTHORIZED para que MP siga reintentando con su
+                //   agenda natural (los "intentos de cobro" que el cliente pide). Solo marcamos la
+                //   sub localmente para que el admin la vea destacada. NO tocamos MP.
+                if (daysSince >= 14 && sub.status === 'active' && !sub.escalated_14d) {
+                    await db.updateSubscription(sub.id, { escalated_14d: true, escalated_14d_at: new Date().toISOString() });
                     await db.createEvent({
                         subscription_id: sub.id,
-                        event_type: 'auto_paused_payment_failed',
-                        metadata: JSON.stringify({ days_since_rejection: daysSince, at: new Date().toISOString() })
+                        event_type: 'payment_failed_14d_escalation',
+                        metadata: JSON.stringify({ days_since_rejection: daysSince, at: new Date().toISOString(), note: 'MP sigue reintentando — sub NO pausada, requiere atención admin' })
                     }).catch(() => {});
                     paused++;
                 }
