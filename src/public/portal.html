@@ -202,7 +202,7 @@
       try {
         const [config, settings] = await Promise.all([
           fetch(BACKEND + '/api/portal-config').then(r => r.json()).catch(() => ({})),
-          fetch(BACKEND + '/api/settings').then(r => r.json()).catch(() => ({}))
+          fetch(BACKEND + '/api/public-config').then(r => r.json()).catch(() => ({}))
         ]);
 
         // ── Detect if visitor is active member ──

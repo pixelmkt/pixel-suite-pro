@@ -99,6 +99,42 @@ app.use('/widget', express.static(path.join(__dirname, 'public/widget'), {
 // Static assets (CSS, JS, etc) but NOT index fallback
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
+/* ═══════════════════════════════════════════════════════════════
+   🔐 2026-06-11 — AUTH OBLIGATORIO PARA APIs ADMIN (X-Admin-Token)
+   Antes estos endpoints estaban expuestos sin auth (PII de clientes,
+   envío masivo de emails, creación de órdenes Shopify).
+   - Token esperado: env ADMIN_API_TOKEN (NUNCA commitear — repo público)
+   - Comparación timing-safe vía _safeEq (function declaration, hoisted)
+   - Fail-closed: si ADMIN_API_TOKEN no está configurado → 503 (no se expone nada)
+   - EXENTO: /api/marketing/unsubscribe (link público de baja en emails)
+   - /webhooks/* no pasa por acá — tienen su propio HMAC (_verifyShopifyHmac)
+   - admin.html pide el token una vez (overlay) y lo manda en cada fetch
+   Se usa app.use([mounts]) y no startsWith() manual: así el matching es
+   EXACTAMENTE el de Express (case-insensitive, trailing slash) y un
+   request tipo /API/Admin/... no puede saltarse el auth.
+═══════════════════════════════════════════════════════════════ */
+// 🆕 2026-06-11 (+settings): GET /api/settings devolvía shopify_access_token,
+//   mp_access_token y SMTP pass SIN auth a todo internet. Las páginas públicas
+//   (portal.html) ahora usan /api/public-config que expone solo branding.
+app.use(['/api/admin', '/api/marketing', '/api/subscriptions/recover', '/api/remarketing', '/api/settings'], (req, res, next) => {
+    // Link público de baja que viaja en los emails de marketing — sin token
+    const full = (req.baseUrl + req.path).toLowerCase().replace(/\/+$/, '');
+    if (full === '/api/marketing/unsubscribe') return next();
+    // Preflight CORS: el browser no manda headers custom en OPTIONS
+    if (req.method === 'OPTIONS') return next();
+    const expected = process.env.ADMIN_API_TOKEN || '';
+    if (!expected) {
+        return res.status(503).json({
+            error: 'ADMIN_API_TOKEN no configurado en el servidor. Agregá la variable en Railway → servicio → Variables y esperá el redeploy.'
+        });
+    }
+    const got = String(req.get('x-admin-token') || '');
+    if (!_safeEq(got, expected)) {
+        return res.status(401).json({ error: 'No autorizado: header X-Admin-Token faltante o inválido.' });
+    }
+    return next();
+});
+
 // ── ROOT: Shopify loads the app at / with ?shop=&hmac=&host= params ──
 // Always serve admin.html regardless of query params
 app.get('/', (req, res) => {
@@ -4666,7 +4702,27 @@ app.post('/webhooks/mercadopago', async (req, res) => {
                 console.log(`[MP WEBHOOK] ✅ Suscripción activada: ${sub.id} | ${sub.customer_email}`);
 
             } else if (preapprovalInfo?.status === 'cancelled' || preapprovalInfo?.status === 'paused') {
-                await db.updateSubscription(sub.id, { status: preapprovalInfo.status }).catch(() => {});
+                // 🆕 FIX 2026-06-11: cuando MP pausa el preapproval (agotó sus reintentos),
+                //   antes solo se grababa status='paused' sin paused_reason ni paused_until →
+                //   la sub desaparecía de dunning detection, polling y admin failed-payments
+                //   (zombie invisible que MP nunca volvía a cobrar). Ahora se etiqueta
+                //   'mp_auto_paused' para que los filtros de dunning/admin la sigan viendo.
+                //   Guard: si la pausa fue voluntaria (paused_until o paused_reason ya seteados
+                //   por el endpoint de pausa del portal), NO sobreescribimos la etiqueta.
+                const upd = { status: preapprovalInfo.status };
+                if (preapprovalInfo.status === 'paused' && !sub.paused_until && !sub.paused_reason) {
+                    upd.paused_reason = 'mp_auto_paused';
+                    upd.paused_at = new Date().toISOString();
+                }
+                await db.updateSubscription(sub.id, upd).catch(() => {});
+                if (upd.paused_reason === 'mp_auto_paused') {
+                    await db.createEvent({
+                        subscription_id: sub.id,
+                        event_type: 'mp_auto_paused',
+                        metadata: JSON.stringify({ preapproval_id: preapprovalId, at: new Date().toISOString() })
+                    }).catch(() => {});
+                    console.warn(`[MP WEBHOOK] ⚠️ MP pausó preapproval ${preapprovalId} (${sub.customer_email}) — marcado mp_auto_paused, sigue visible en dunning/admin`);
+                }
             }
         }
 
@@ -4680,6 +4736,17 @@ app.post('/webhooks/mercadopago', async (req, res) => {
             if (!paymentData) { console.warn('[MP WEBHOOK] payment null for', resourceId); return; }
             console.log(`[MP WEBHOOK] payment ${resourceId} status=${paymentData.status} amount=${paymentData.transaction_amount} email=${paymentData.payer?.email}`);
             if (paymentData.status !== 'approved') return;
+
+            // 🆕 RECOVERY LINK 2026-06-11: pago único que repone un ciclo rechazado.
+            //   external_reference = 'subrecovery::<sub_id>::c<ciclo>' (generado por
+            //   /api/admin/failed-payments/:sub_id/payment-link o el portal update-card).
+            //   Se procesa en handler dedicado y se SALE antes del lookup genérico:
+            //   el fallback por email trataría este pago como cobro recurrente normal.
+            if (String(paymentData.external_reference || '').startsWith('subrecovery::')) {
+                await handleRecoveryLinkPayment(paymentData, String(resourceId)).catch(e =>
+                    console.error('[RECOVERY-LINK] Handler error:', e.message));
+                return;
+            }
 
             // FIX 2026-04-09: MP coloca preapproval_id como campo directo del payment,
             // NO en metadata ni external_reference. Priorizar el campo directo.
@@ -6869,6 +6936,26 @@ function saveToFile(settings) {
 
 // REVERT 2026-06-04: el admin UI necesita ver los tokens raw para llenar inputs.
 // Sin esto, admin no puede ver/editar su config. Dejamos GET como estaba originalmente.
+/* 🆕 2026-06-11 — Config PÚBLICA (solo branding + MP public key) para páginas
+   de cliente (portal.html). /api/settings ahora exige X-Admin-Token porque su
+   GET devolvía shpat_/APP_USR/SMTP pass sin auth. Acá NO va ningún secreto. */
+app.get('/api/public-config', async (req, res) => {
+    try {
+        const base = getEnvDefaults();
+        const persisted = await readFromShopify().catch(() => null) || readFromFile() || {};
+        const merged = { ...base, ...persisted };
+        res.json({
+            brand_name: merged.brand_name || '',
+            brand_slogan: merged.brand_slogan || '',
+            brand_logo: merged.brand_logo || '',
+            brand_color: merged.brand_color || '#9d2a23',
+            widget_enabled: merged.widget_enabled !== false,
+            discount_badge_text: merged.discount_badge_text || '',
+            mp_public_key: merged.mp_public_key || ''
+        });
+    } catch (e) { res.json({ brand_name: '', brand_slogan: '', brand_logo: '' }); }
+});
+
 app.get('/api/settings', async (req, res) => {
     const base = getEnvDefaults();
     // Try Shopify Metafields first (native, always available)
@@ -6897,6 +6984,13 @@ app.put('/api/settings', async (req, res) => {
     };
     Object.entries(envMap).forEach(([key, envKey]) => { if (body[key]) process.env[envKey] = String(body[key]); });
     if (body.shopify_access_token) { process.env.SHOPIFY_ACCESS_TOKEN = body.shopify_access_token; _shopifyToken = body.shopify_access_token; }
+    // 🆕 2026-06-11: kill switch dunning aplicable en caliente (el comentario de
+    //   _emailsAreEnabled documentaba este camino pero NUNCA estuvo cableado:
+    //   ni este PUT ni el boot hidrataban DUNNING_EMAILS_ENABLED). Acepta true/false.
+    if (typeof body.dunning_emails_enabled !== 'undefined') {
+        process.env.DUNNING_EMAILS_ENABLED = (body.dunning_emails_enabled === true || body.dunning_emails_enabled === 'true') ? 'true' : 'false';
+        console.log(`[SETTINGS] DUNNING_EMAILS_ENABLED → ${process.env.DUNNING_EMAILS_ENABLED}`);
+    }
     // Merge with current and save
     const current = await readFromShopify() || readFromFile() || {};
     const merged = { ...current, ...body };
@@ -10900,7 +10994,9 @@ async function _resendSendWithFallback(payloadBase, primaryTo) {
     return { sent: false, status: r1.status, to: primaryTo };
 }
 
-async function _sendDunningEmail(sub, dayNumber, mpDashboardUrl, portalUrl) {
+// 🆕 2026-06-11: payLink (opcional) = link de pago real del ciclo rechazado.
+//   Si está presente es el CTA principal — el dashboard MP pasa a secundario.
+async function _sendDunningEmail(sub, dayNumber, mpDashboardUrl, portalUrl, payLink = null) {
     if (!_emailsAreEnabled()) return { sent: false, reason: 'EMAILS_DISABLED_KILL_SWITCH', killed: true };
     if (!process.env.RESEND_API_KEY) return { sent: false, reason: 'No RESEND_API_KEY' };
     const subjects = {
@@ -10928,9 +11024,11 @@ async function _sendDunningEmail(sub, dayNumber, mpDashboardUrl, portalUrl) {
       <strong style="color:#0A0A0A">Monto:</strong> S/${(sub.mp_total_amount || sub.final_price || 0)}<br>
       <strong style="color:#0A0A0A">Frecuencia:</strong> Cada ${sub.frequency_months || 1} mes${(sub.frequency_months || 1) > 1 ? 'es' : ''}
     </div>
-    <p style="color:#374151;line-height:1.6;margin:0 0 22px;font-size:15px"><strong>¿Qué hacer?</strong> Actualizá tu tarjeta en 1 minuto desde MercadoPago. Tu próximo intento será automático.</p>
+    <p style="color:#374151;line-height:1.6;margin:0 0 22px;font-size:15px"><strong>¿Qué hacer?</strong> ${payLink ? 'Pagá el ciclo pendiente ahora con cualquier tarjeta o medio de pago — toma 1 minuto y tu pedido sale automático.' : 'Actualizá tu tarjeta en 1 minuto desde MercadoPago. Tu próximo intento será automático.'}</p>
     <div style="text-align:center;margin:28px 0">
-      <a href="${mpDashboardUrl}" style="display:inline-block;background:#E30613;color:#fff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px;letter-spacing:1px;text-transform:uppercase">Actualizar tarjeta</a>
+      ${payLink ? `<a href="${payLink}" style="display:inline-block;background:#E30613;color:#fff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px;letter-spacing:1px;text-transform:uppercase">Pagar ahora S/${(sub.mp_total_amount || sub.final_price || 0)}</a>
+      <div style="margin-top:14px"><a href="${mpDashboardUrl}" style="color:#666;font-size:13px;text-decoration:underline">También actualizá tu tarjeta para los próximos meses</a></div>` :
+      `<a href="${mpDashboardUrl}" style="display:inline-block;background:#E30613;color:#fff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px;letter-spacing:1px;text-transform:uppercase">Actualizar tarjeta</a>`}
     </div>
     <p style="color:#666;font-size:13px;line-height:1.5;text-align:center;margin:18px 0 0">
       O entrá a <a href="${portalUrl}" style="color:#E30613;text-decoration:none">tu portal de cliente</a> para gestionar tu suscripción
@@ -10957,8 +11055,12 @@ async function _sendDunningEmail(sub, dayNumber, mpDashboardUrl, portalUrl) {
         // Mandamos al admin con marca "FORWARD TO CLIENT" y mailto pre-llenado.
         if (r.status === 403) {
             const customerPhone = (sub.customer_phone || '').replace(/[^0-9]/g, '');
-            const waLink = customerPhone ? `https://wa.me/${customerPhone.startsWith('51') ? customerPhone : '51' + customerPhone}?text=${encodeURIComponent('Hola ' + (sub.customer_name||'').split(' ')[0] + ', te escribo de Lab Nutrition. Tu suscripción tuvo un cobro rechazado por S/' + (sub.mp_total_amount || sub.final_price || 0) + '. Actualizá tu tarjeta acá: ' + mpDashboardUrl)}` : null;
-            const mailtoLink = `mailto:${sub.customer_email}?subject=${encodeURIComponent(subjects[dayNumber] || subjects[0])}&body=${encodeURIComponent('Hola ' + (sub.customer_name||'').split(' ')[0] + ',\n\n' + (introMsgs[dayNumber] || introMsgs[0]) + '\n\nActualizá tu tarjeta acá: ' + mpDashboardUrl + '\n\nGracias,\nLab Nutrition')}`;
+            // 🆕 2026-06-11: con payLink el mensaje invita a PAGAR (acción real), no solo a actualizar tarjeta
+            const ctaText = payLink
+                ? ('Pagá tu ciclo pendiente acá: ' + payLink)
+                : ('Actualizá tu tarjeta acá: ' + mpDashboardUrl);
+            const waLink = customerPhone ? `https://wa.me/${customerPhone.startsWith('51') ? customerPhone : '51' + customerPhone}?text=${encodeURIComponent('Hola ' + (sub.customer_name||'').split(' ')[0] + ', te escribo de Lab Nutrition. Tu suscripción tuvo un cobro rechazado por S/' + (sub.mp_total_amount || sub.final_price || 0) + '. ' + ctaText)}` : null;
+            const mailtoLink = `mailto:${sub.customer_email}?subject=${encodeURIComponent(subjects[dayNumber] || subjects[0])}&body=${encodeURIComponent('Hola ' + (sub.customer_name||'').split(' ')[0] + ',\n\n' + (introMsgs[dayNumber] || introMsgs[0]) + '\n\n' + ctaText + '\n\nGracias,\nLab Nutrition')}`;
             const adminHtml = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;margin:0">
 <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden">
   <div style="background:#FEF3C7;border-bottom:3px solid #F59E0B;padding:18px 24px">
@@ -11001,6 +11103,184 @@ async function _sendDunningEmail(sub, dayNumber, mpDashboardUrl, portalUrl) {
     } catch (e) { return { sent: false, error: e.message }; }
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   🆕 RECOVERY LINK (2026-06-11) — link de pago REAL para ciclos rechazados
+   Problema que resuelve: el "link de recuperación" anterior era el dashboard
+   de MP (_mpCustomerDashboardUrl) que NO tiene botón de pagar — solo "cambiar
+   medio de pago". Si MP agotaba sus reintentos, el ciclo se perdía aunque el
+   cliente actualizara la tarjeta. Ahora: Preference de pago único (cualquier
+   medio de pago, no requiere la cuenta MP del preapproval) reconciliada vía
+   webhook con external_reference 'subrecovery::<sub_id>::c<ciclo>'.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Genera (o reutiliza <7d) el link de pago de reposición para una sub.
+   Idempotente vía evento 'recovery_link_generated'. */
+async function _getOrCreateRecoveryLink(sub, { by = 'system', fresh = false } = {}) {
+    const events = await db.getEvents(sub.id).catch(() => []);
+    if (!fresh) {
+        const lastLink = (events || []).find(e => e.event_type === 'recovery_link_generated');
+        if (lastLink) {
+            try {
+                const m = typeof lastLink.metadata === 'string' ? JSON.parse(lastLink.metadata) : (lastLink.metadata || {});
+                const ageDays = (Date.now() - new Date(lastLink.created_at || 0).getTime()) / 86400000;
+                if (m.url && ageDays < 7) return { url: m.url, amount: m.amount, cycle: m.cycle, reused: true };
+            } catch {}
+        }
+    }
+    // Monto: el del cobro rechazado (evento) > monto MP de la sub > precio final
+    let amount = parseFloat(sub.mp_total_amount || sub.final_price || 0);
+    const rejectEv = (events || []).find(e => e.event_type === 'payment_rejected');
+    try {
+        const m = typeof rejectEv?.metadata === 'string' ? JSON.parse(rejectEv.metadata) : (rejectEv?.metadata || {});
+        if (m.amount) amount = parseFloat(m.amount);
+    } catch {}
+    if (!amount || amount <= 0) throw new Error('No se pudo determinar el monto del ciclo rechazado');
+    const cycle = (parseInt(sub.cycles_completed) || 0) + 1;
+    const BACKEND = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
+    const pref = await mp.createOneTimePayment({
+        amount,
+        title: `Reposición ciclo ${cycle} — ${sub.product_title || 'Suscripción LAB'}`,
+        customerEmail: sub.customer_email,
+        externalReference: `subrecovery::${sub.id}::c${cycle}`,
+        backUrl: `${BACKEND}/subscriptions/success?recovery=1`
+    });
+    if (!pref?.init_point) throw new Error('MP no devolvió link de pago');
+    await db.createEvent({
+        subscription_id: sub.id,
+        event_type: 'recovery_link_generated',
+        metadata: JSON.stringify({ url: pref.init_point, preference_id: pref.id, amount, cycle, by, at: new Date().toISOString() })
+    }).catch(() => {});
+    return { url: pref.init_point, amount, cycle, reused: false };
+}
+
+/* Procesa el webhook payment approved de un link de recuperación.
+   Reglas heredadas del flujo recurrente (audit jun-8):
+   - Dedup por mp_payment_id (MP repite webhooks)
+   - Orden vía createShopifyOrderFromSub (mismo mutex anti-duplicado)
+   - NO avanza cycles si la orden falló (regla BUG C) — needs_admin_review
+   - last_mp_debit_date = débito ORIGINAL del ciclo fallido, NO la fecha del
+     pago por link. Si usáramos "hoy", el guard <25d bloquearía el siguiente
+     cobro legítimo de MP (ej: link pagado el 11-jun + cobro MP el 4-jul = 23d).
+   - Si MP igual reintenta el ciclo viejo y entra → el guard <25d bloquea la
+     orden duplicada y marca needs_admin_review (refund manual en MP).
+   - Si el preapproval estaba pausado por fallo de pago → resume en MP (era el
+     deadlock zombie: pausado nunca genera pagos → recovery imposible). */
+async function handleRecoveryLinkPayment(paymentData, paymentId) {
+    const extRef = String(paymentData.external_reference || '');
+    const parts = extRef.split('::'); // ['subrecovery', '<sub_id>', 'c<n>']
+    const subId = parts[1] || null;
+    const refCycle = parseInt(String(parts[2] || '').replace(/^c/, ''), 10) || null;
+    if (!subId) { console.warn('[RECOVERY-LINK] external_reference sin sub_id:', extRef); return; }
+    const sub = await db.getSubscription(subId).catch(() => null);
+    if (!sub) { console.warn(`[RECOVERY-LINK] Sub no encontrada: ${subId} (payment ${paymentId})`); return; }
+
+    const events = await db.getEvents(sub.id, 100).catch(() => []);
+    const already = (events || []).some(e => {
+        try { const m = typeof e.metadata === 'string' ? JSON.parse(e.metadata) : (e.metadata || {}); return String(m.mp_payment_id) === String(paymentId); } catch { return false; }
+    });
+    if (already) { console.log(`[RECOVERY-LINK] Payment ${paymentId} ya procesado — skip (dedup)`); return; }
+
+    const cyclesCompleted = (parseInt(sub.cycles_completed) || 0) + 1;
+    const isComplete = cyclesCompleted >= (parseInt(sub.cycles_required) || 999);
+
+    // Fecha de débito original del ciclo fallido (mantiene sano el guard <25d)
+    let originalDebitDate = null;
+    const rejectEv = (events || []).find(e => e.event_type === 'payment_rejected');
+    try {
+        const m = typeof rejectEv?.metadata === 'string' ? JSON.parse(rejectEv.metadata) : (rejectEv?.metadata || {});
+        originalDebitDate = m.rejected_at || null;
+    } catch {}
+    const debitDateForGuard = originalDebitDate || paymentData.date_approved || new Date().toISOString();
+
+    // next_charge_at: la agenda REAL de MP (el link no altera el preapproval)
+    let nextChargeAt = null;
+    if (sub.mp_preapproval_id) {
+        const pre = await mp.getSubscription(sub.mp_preapproval_id).catch(() => null);
+        nextChargeAt = pre?.next_payment_date || null;
+    }
+    if (!nextChargeAt) {
+        const d = new Date();
+        d.setMonth(d.getMonth() + (parseInt(sub.frequency_months) || 1));
+        nextChargeAt = d.toISOString();
+    }
+
+    let order = null;
+    for (let attempt = 1; attempt <= 3 && !order; attempt++) {
+        order = await createShopifyOrderFromSub(sub, paymentId).catch(e => {
+            console.error(`[RECOVERY-LINK] Order error (attempt ${attempt}/3):`, e.message);
+            return null;
+        });
+        if (!order && attempt < 3) await new Promise(r => setTimeout(r, 2000));
+    }
+
+    if (order?.id) {
+        await db.updateSubscription(sub.id, {
+            cycles_completed: cyclesCompleted,
+            last_charge_at: new Date().toISOString(),
+            last_mp_debit_date: debitDateForGuard,
+            next_charge_at: nextChargeAt,
+            status: isComplete ? 'completed' : 'active',
+            shopify_order_id: String(order.id),
+            shopify_order_name: order.name,
+            needs_payment_update: false,
+            paused_reason: null,
+            last_payment_recovered_at: new Date().toISOString()
+        }).catch(e => console.warn('[RECOVERY-LINK] updateSub:', e.message));
+        await db.createEvent({
+            subscription_id: sub.id,
+            event_type: 'recovery_link_paid',
+            metadata: JSON.stringify({
+                mp_payment_id: String(paymentId),
+                cycle: cyclesCompleted,
+                ref_cycle: refCycle,
+                amount: paymentData.transaction_amount,
+                shopify_order_id: order.id,
+                shopify_order_name: order.name,
+                original_debit_date: originalDebitDate,
+                at: new Date().toISOString()
+            })
+        }).catch(() => {});
+        if (notifications.sendChargeSuccess) notifications.sendChargeSuccess(sub, order.order_number).catch(() => {});
+        console.log(`[RECOVERY-LINK] ✅ ${sub.customer_email} repuso ciclo ${cyclesCompleted}/${sub.cycles_required} vía link — order ${order.name}`);
+    } else {
+        // Regla BUG C: cobro entró pero orden falló → NO avanzar cycles, dejar rastro
+        await db.createEvent({
+            subscription_id: sub.id,
+            event_type: 'order_creation_failed',
+            metadata: JSON.stringify({
+                failed_payment_id: String(paymentId),
+                intended_cycle: cyclesCompleted,
+                source: 'recovery_link',
+                amount: paymentData.transaction_amount,
+                at: new Date().toISOString()
+            })
+        }).catch(() => {});
+        await db.updateSubscription(sub.id, {
+            needs_payment_update: false,
+            last_order_error: `Orden falló 3x para pago recovery-link ${paymentId} ${new Date().toISOString()}`,
+            needs_admin_review: true
+        }).catch(() => {});
+        console.error(`[RECOVERY-LINK] ⚠️ Pago ${paymentId} OK en MP pero orden Shopify falló 3x — needs_admin_review. Sub: ${sub.id}`);
+    }
+
+    // Zombie rescue: preapproval pausado por fallo de pago → reanudar para que MP siga cobrando ciclos futuros
+    const pausedByFailure = sub.status === 'paused' &&
+        (sub.paused_reason === 'auto_payment_failed' || sub.paused_reason === 'mp_auto_paused' || sub.needs_payment_update === true) &&
+        !sub.paused_until; // pausa voluntaria con fecha NO se toca
+    if (pausedByFailure && sub.mp_preapproval_id && mp.resumeSubscription) {
+        try {
+            await mp.resumeSubscription(sub.mp_preapproval_id);
+            if (!order?.id) await db.updateSubscription(sub.id, { status: 'active', paused_reason: null }).catch(() => {});
+            await db.createEvent({
+                subscription_id: sub.id,
+                event_type: 'preapproval_resumed_after_recovery',
+                metadata: JSON.stringify({ mp_preapproval_id: sub.mp_preapproval_id, at: new Date().toISOString() })
+            }).catch(() => {});
+            console.log(`[RECOVERY-LINK] ▶️ Preapproval reanudado en MP: ${sub.mp_preapproval_id} (${sub.customer_email})`);
+        } catch (e) { console.warn('[RECOVERY-LINK] No se pudo reanudar preapproval:', e.message); }
+    }
+}
+
 /* ── Función: detectar cobros rechazados en MP (cada 4h) ── */
 async function runDunningDetection() {
     console.log('[DUNNING] Detection start');
@@ -11008,8 +11288,9 @@ async function runDunningDetection() {
     try {
         const allSubs = await db.getSubscriptions().catch(() => []);
         // 🔍 Incluir subs paused por payment_failed para detectar recovery
+        // 🆕 2026-06-11: + mp_auto_paused (MP pausó tras agotar reintentos — antes zombie invisible)
         const targets = (Array.isArray(allSubs) ? allSubs : [])
-            .filter(s => (s.status === 'active' || s.paused_reason === 'auto_payment_failed') && s.mp_preapproval_id);
+            .filter(s => (s.status === 'active' || s.paused_reason === 'auto_payment_failed' || s.paused_reason === 'mp_auto_paused') && s.mp_preapproval_id);
         const mpToken = process.env.MP_ACCESS_TOKEN;
         if (!mpToken) { console.warn('[DUNNING] No MP token, skipping'); return; }
         const BACKEND = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
@@ -11112,7 +11393,7 @@ async function runDunningDigest() {
         if (!process.env.RESEND_API_KEY) return;
         const allSubs = await db.getSubscriptions().catch(() => []);
         const cases = (Array.isArray(allSubs) ? allSubs : [])
-            .filter(s => s.needs_payment_update === true || s.paused_reason === 'auto_payment_failed');
+            .filter(s => s.needs_payment_update === true || s.paused_reason === 'auto_payment_failed' || s.paused_reason === 'mp_auto_paused');
         if (!cases.length) {
             console.log('[DIGEST] No cases needing action');
             return;
@@ -11128,8 +11409,14 @@ async function runDunningDigest() {
         // Build single email with ALL cases
         const itemsHtml = await Promise.all(cases.map(async (sub) => {
             const phone = (sub.customer_phone || '').replace(/[^0-9]/g, '');
-            const wa = phone ? `https://wa.me/${phone.startsWith('51') ? phone : '51' + phone}?text=${encodeURIComponent('Hola ' + (sub.customer_name || '').split(' ')[0] + ', te escribo de Lab Nutrition. Tu suscripción tuvo un cobro rechazado. Actualizá tu tarjeta acá: ' + _mpCustomerDashboardUrl(sub.mp_preapproval_id))}` : null;
             const events = await db.getEvents(sub.id).catch(() => []);
+            // 🆕 2026-06-11: si ya hay link de pago generado, el WA invita a PAGAR (acción real)
+            let payUrl = null;
+            const linkEv = (events || []).find(e => e.event_type === 'recovery_link_generated');
+            try { const m = typeof linkEv?.metadata === 'string' ? JSON.parse(linkEv.metadata) : (linkEv?.metadata || {}); payUrl = m.url || null; } catch {}
+            const waText = 'Hola ' + (sub.customer_name || '').split(' ')[0] + ', te escribo de Lab Nutrition. Tu suscripción tuvo un cobro rechazado. ' +
+                (payUrl ? ('Pagá tu ciclo pendiente acá: ' + payUrl) : ('Actualizá tu tarjeta acá: ' + _mpCustomerDashboardUrl(sub.mp_preapproval_id)));
+            const wa = phone ? `https://wa.me/${phone.startsWith('51') ? phone : '51' + phone}?text=${encodeURIComponent(waText)}` : null;
             const reject = (events || []).find(e => e.event_type === 'payment_rejected');
             const daysSince = reject ? Math.floor((Date.now() - new Date(reject.created_at).getTime()) / 86400000) : 0;
             return `<tr style="border-bottom:1px solid #e5e7eb">
@@ -11137,7 +11424,7 @@ async function runDunningDigest() {
                 <td style="padding:10px 12px;font-size:12px">${sub.product_title || '—'}</td>
                 <td style="padding:10px 12px;text-align:right;color:#E30613;font-weight:700;font-size:13px">S/${sub.mp_total_amount || sub.final_price || 0}</td>
                 <td style="padding:10px 12px;text-align:center"><span style="background:${daysSince >= 14 ? '#FEE2E2' : daysSince >= 7 ? '#FEF3C7' : '#DBEAFE'};color:${daysSince >= 14 ? '#991B1B' : daysSince >= 7 ? '#92400E' : '#1E40AF'};padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700">${daysSince}d</span></td>
-                <td style="padding:10px 12px;text-align:right;white-space:nowrap;font-size:11px">${wa ? `<a href="${wa}" style="background:#25D366;color:#fff;padding:5px 10px;border-radius:5px;text-decoration:none;font-weight:600;margin-right:4px">WA</a>` : ''}<a href="${_mpCustomerDashboardUrl(sub.mp_preapproval_id)}" style="background:#E30613;color:#fff;padding:5px 10px;border-radius:5px;text-decoration:none;font-weight:600">MP</a></td>
+                <td style="padding:10px 12px;text-align:right;white-space:nowrap;font-size:11px">${wa ? `<a href="${wa}" style="background:#25D366;color:#fff;padding:5px 10px;border-radius:5px;text-decoration:none;font-weight:600;margin-right:4px">WA</a>` : ''}${payUrl ? `<a href="${payUrl}" style="background:#0A0A0A;color:#fff;padding:5px 10px;border-radius:5px;text-decoration:none;font-weight:600;margin-right:4px">PAGAR</a>` : ''}<a href="${_mpCustomerDashboardUrl(sub.mp_preapproval_id)}" style="background:#E30613;color:#fff;padding:5px 10px;border-radius:5px;text-decoration:none;font-weight:600">MP</a></td>
             </tr>`;
         }));
         const digestHtml = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;margin:0">
@@ -11182,8 +11469,9 @@ async function runDunningFollowups() {
     let sent = 0, paused = 0;
     try {
         const allSubs = await db.getSubscriptions().catch(() => []);
+        // 🆕 2026-06-11: incluir mp_auto_paused — son los que MÁS necesitan el link de pago
         const needsUpdate = (Array.isArray(allSubs) ? allSubs : [])
-            .filter(s => s.status === 'active' && s.needs_payment_update === true);
+            .filter(s => (s.status === 'active' || s.paused_reason === 'mp_auto_paused') && s.needs_payment_update === true);
         const BACKEND = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
         for (const sub of needsUpdate) {
             try {
@@ -11200,7 +11488,10 @@ async function runDunningFollowups() {
                     if (!alreadySent) {
                         const mpUrl = _mpCustomerDashboardUrl(sub.mp_preapproval_id);
                         const portalUrl = `${BACKEND}/portal/v2`;
-                        const r = await _sendDunningEmail(sub, milestone, mpUrl, portalUrl);
+                        // 🆕 2026-06-11: incluir link de pago real (reutiliza si ya existe <7d)
+                        let payLink = null;
+                        try { payLink = (await _getOrCreateRecoveryLink(sub, { by: 'dunning_followup' })).url; } catch (e) { console.warn('[DUNNING-FU] payLink:', e.message); }
+                        const r = await _sendDunningEmail(sub, milestone, mpUrl, portalUrl, payLink);
                         if (r.sent) {
                             sent++;
                             await db.createEvent({
@@ -11241,7 +11532,7 @@ app.get('/api/admin/failed-payments', async (req, res) => {
     try {
         const all = await db.getSubscriptions().catch(() => []);
         const candidates = (Array.isArray(all) ? all : [])
-            .filter(s => s.needs_payment_update === true || s.paused_reason === 'auto_payment_failed');
+            .filter(s => s.needs_payment_update === true || s.paused_reason === 'auto_payment_failed' || s.paused_reason === 'mp_auto_paused');
         const enriched = await Promise.all(candidates.map(async s => {
             const events = await db.getEvents(s.id).catch(() => []);
             const reject = (events || []).find(e => e.event_type === 'payment_rejected');
@@ -11268,7 +11559,12 @@ app.get('/api/admin/failed-payments', async (req, res) => {
                 status_detail: metadata.status_detail,
                 mp_preapproval_id: s.mp_preapproval_id,
                 mp_update_url: s.mp_preapproval_id ? _mpCustomerDashboardUrl(s.mp_preapproval_id) : null,
-                auto_paused: s.paused_reason === 'auto_payment_failed'
+                auto_paused: s.paused_reason === 'auto_payment_failed' || s.paused_reason === 'mp_auto_paused',
+                // 🆕 último link de pago generado (si existe) — el botón del admin lo reutiliza
+                recovery_link: (() => {
+                    const ev = (events || []).find(e => e.event_type === 'recovery_link_generated');
+                    try { const m = typeof ev?.metadata === 'string' ? JSON.parse(ev.metadata) : (ev?.metadata || {}); return m.url || null; } catch { return null; }
+                })()
             };
         }));
         enriched.sort((a, b) => (b.days_since || 0) - (a.days_since || 0));
@@ -11305,13 +11601,31 @@ app.post('/api/admin/failed-payments/:sub_id/resend-email', async (req, res) => 
         const BACKEND = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
         const mpUrl = _mpCustomerDashboardUrl(sub.mp_preapproval_id);
         const portalUrl = `${BACKEND}/portal/v2`;
-        const r = await _sendDunningEmail(sub, 0, mpUrl, portalUrl);
+        // 🆕 2026-06-11: incluir link de pago real (reutiliza si ya existe <7d)
+        let payLink = null;
+        try { payLink = (await _getOrCreateRecoveryLink(sub, { by: 'admin_resend' })).url; } catch (e) { console.warn('[RESEND-EMAIL] payLink:', e.message); }
+        const r = await _sendDunningEmail(sub, 0, mpUrl, portalUrl, payLink);
         await db.createEvent({
             subscription_id: sub.id,
             event_type: 'dunning_email_sent_manual',
             metadata: JSON.stringify({ day: 0, by: 'admin', at: new Date().toISOString(), email_status: r.status, forced: !!force })
         }).catch(() => {});
         res.json({ success: r.sent, ...r });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* 🆕 POST /api/admin/failed-payments/:sub_id/payment-link — genera (o reutiliza <7d)
+   un link de pago ÚNICO (Preference MP) para reponer el ciclo rechazado.
+   El cliente paga con CUALQUIER medio — no necesita entrar a su cuenta MP — y el
+   webhook 'subrecovery::' crea la orden, limpia flags y reanuda el preapproval
+   si estaba pausado. ?fresh=1 fuerza un link nuevo. */
+app.post('/api/admin/failed-payments/:sub_id/payment-link', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.sub_id);
+        if (!sub) return res.status(404).json({ error: 'Sub not found' });
+        const fresh = req.query.fresh === '1' || req.body?.fresh === true;
+        const link = await _getOrCreateRecoveryLink(sub, { by: 'admin', fresh });
+        res.json({ success: true, ...link });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -11429,16 +11743,23 @@ app.get('/api/portal/v2/update-card-info', async (req, res) => {
         const payload = _portalV2VerifyToken(req.query.token);
         if (!payload) return res.status(401).json({ error: 'Token inválido o expirado' });
         const allSubs = await db.getSubscriptions().catch(() => []);
-        const mySubs = (Array.isArray(allSubs) ? allSubs : [])
-            .filter(s => payload.sub_ids.includes(s.id) && s.needs_payment_update)
-            .map(s => ({
+        const pending = (Array.isArray(allSubs) ? allSubs : [])
+            .filter(s => payload.sub_ids.includes(s.id) && s.needs_payment_update);
+        // 🆕 2026-06-11: incluir link de PAGO real (Preference) — el dashboard MP no
+        //   tiene botón de pagar y si MP agotó reintentos el ciclo se perdía.
+        const mySubs = await Promise.all(pending.map(async s => {
+            let paymentLink = null;
+            try { paymentLink = (await _getOrCreateRecoveryLink(s, { by: 'portal' })).url; } catch {}
+            return {
                 id: s.id,
                 product_title: s.product_title,
                 amount: s.mp_total_amount || s.final_price,
                 cycles: `${s.cycles_completed || 0}/${s.cycles_required || '?'}`,
                 mp_update_url: s.mp_preapproval_id ? _mpCustomerDashboardUrl(s.mp_preapproval_id) : null,
+                payment_link: paymentLink,
                 last_payment_failed_at: s.last_payment_failed_at || null
-            }));
+            };
+        }));
         res.json({ email: payload.email, subscriptions_pending_update: mySubs });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -11546,7 +11867,9 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
             mp_access_token: 'MP_ACCESS_TOKEN',
             smtp_host: 'SMTP_HOST', smtp_port: 'SMTP_PORT',
             smtp_user: 'SMTP_USER', smtp_pass: 'SMTP_PASS', email_from: 'EMAIL_FROM',
-            resend_api_key: 'RESEND_API_KEY', resend_from: 'RESEND_FROM'
+            resend_api_key: 'RESEND_API_KEY', resend_from: 'RESEND_FROM',
+            // 🆕 2026-06-11: el kill switch persiste en settings y sobrevive redeploys
+            dunning_emails_enabled: 'DUNNING_EMAILS_ENABLED'
         };
         const persisted2 = await readFromShopify().catch(() => null) || readFromFile() || {};
         for (const [k, e] of Object.entries(envMapFull)) {

@@ -128,11 +128,24 @@ function render(d){
           </div>
         </div>
         <div class="cta-block">
+          ${first.payment_link ? `
+          <a href="${first.payment_link}" target="_blank" rel="noopener" class="cta-btn">Pagar ahora S/ ${(parseFloat(first.amount)||0).toFixed(2)}</a>
+          <div class="cta-hint">Pagás el mes pendiente con cualquier tarjeta o medio de pago — tu pedido sale automático.</div>
+          <div style="margin-top:14px"><a href="${first.mp_update_url}" target="_blank" rel="noopener" style="color:#6B7280;font-size:13px;text-decoration:underline">Además, actualizá tu tarjeta para los próximos meses →</a></div>
+          ` : `
           <a href="${first.mp_update_url}" target="_blank" rel="noopener" class="cta-btn">Actualizar tarjeta ahora</a>
           <div class="cta-hint">Te lleva a MercadoPago. Logueate con tu cuenta y elegí "Cambiar medio de pago".</div>
+          `}
         </div>
         <div class="steps">
           <b>📋 Pasos rápidos:</b>
+          ${first.payment_link ? `
+          <ol>
+            <li>Tocá <b>"Pagar ahora"</b> y pagá el mes pendiente (cualquier medio de pago)</li>
+            <li>Tu pedido se genera automático apenas se acredite</li>
+            <li>Opcional pero importante: actualizá tu tarjeta en MercadoPago para que los próximos cobros no fallen</li>
+          </ol>
+          ` : `
           <ol>
             <li>Tocá el botón rojo de arriba</li>
             <li>Iniciá sesión en MercadoPago (mismo email que usaste)</li>
@@ -140,6 +153,7 @@ function render(d){
             <li>Cargá tu nueva tarjeta</li>
             <li>Listo — el próximo cobro se hace automáticamente</li>
           </ol>
+          `}
         </div>
       </div>
     </div>

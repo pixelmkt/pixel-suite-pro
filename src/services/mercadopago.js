@@ -231,6 +231,10 @@ async function createOneTimePayment({ amount, title, customerEmail, externalRefe
         }],
         payer: customerEmail ? { email: customerEmail } : undefined,
         external_reference: externalReference,
+        // 🆕 2026-06-11: sin esto el webhook del pago dependía de la config global
+        //   de la app MP. Explícito = el backend SIEMPRE recibe el payment approved
+        //   (necesario para reconciliar pagos de recuperación 'subrecovery::').
+        notification_url: WEBHOOK_URL(),
         back_urls: backUrl ? { success: backUrl, failure: backUrl, pending: backUrl } : undefined,
         auto_return: backUrl ? 'approved' : undefined,
         statement_descriptor: 'LAB NUTRITION'

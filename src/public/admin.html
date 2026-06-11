@@ -2294,6 +2294,58 @@
     const BASE = '';
     let _subFilter = 'all', _subSearch = '', _allSubs = [], _shopifyProds = [], _currentProdId = null;
 
+    // ── 🔐 2026-06-11 — X-Admin-Token en todos los fetch a /api/* ──
+    // El backend ahora exige auth en /api/admin|marketing|remarketing|subscriptions/recover.
+    // El token se pide UNA vez (overlay) y queda en localStorage de este navegador.
+    // NUNCA hardcodear el token acá: el repo es público y este HTML se sirve sin auth.
+    const ADMIN_TOKEN_KEY = 'psp_admin_token';
+    (function patchFetchWithAdminToken() {
+      const _origFetch = window.fetch.bind(window);
+      const _needsToken = (u) => /\/api\/(admin|marketing|remarketing|settings|subscriptions\/recover)(\/|$|\?)/.test(u);
+      window.fetch = function (input, init) {
+        try {
+          const url = (typeof input === 'string') ? input : ((input && input.url) || '');
+          const sameOriginApi = url.startsWith('/api/') || url.startsWith(location.origin + '/api/');
+          const tok = localStorage.getItem(ADMIN_TOKEN_KEY);
+          if (sameOriginApi && tok) {
+            init = init || {};
+            const h = new Headers(init.headers || (typeof input !== 'string' && input.headers) || undefined);
+            h.set('X-Admin-Token', tok);
+            init.headers = h;
+          }
+        } catch (e) { /* el patch jamás debe romper un fetch */ }
+        return _origFetch(input, init).then(r => {
+          if ((r.status === 401 || r.status === 503) && _needsToken(r.url || '')) showAdminTokenGate(r.status);
+          return r;
+        });
+      };
+    })();
+
+    // Overlay propio (NO window.prompt: Chrome lo bloquea dentro del iframe de Shopify Admin)
+    function showAdminTokenGate(status) {
+      if (document.getElementById('admin-token-gate')) return;
+      const wrap = document.createElement('div');
+      wrap.id = 'admin-token-gate';
+      wrap.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.72);display:flex;align-items:center;justify-content:center;';
+      wrap.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:440px;width:92%;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
+        '<h2 style="margin:0 0 10px;font-size:18px">🔐 Token de administrador</h2>' +
+        (status === 503
+          ? '<p style="margin:0 0 14px;font-size:13px;color:#475569">El servidor no tiene <code>ADMIN_API_TOKEN</code> configurado. Agregá esa variable en Railway → servicio → Variables, esperá el redeploy y recargá esta página.</p>'
+          : '<p style="margin:0 0 14px;font-size:13px;color:#475569">Esta consola requiere el token de administrador (el valor de <code>ADMIN_API_TOKEN</code> en Railway). Pegalo acá — queda guardado solo en este navegador.</p>') +
+        '<input id="admin-token-input" type="password" placeholder="ADMIN_API_TOKEN" autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-bottom:12px">' +
+        '<button id="admin-token-save" style="width:100%;padding:10px;border:0;border-radius:8px;background:#111827;color:#fff;font-size:14px;cursor:pointer">Guardar y recargar</button>' +
+        '</div>';
+      document.body.appendChild(wrap);
+      const save = () => {
+        const v = document.getElementById('admin-token-input').value.trim();
+        if (!v) return;
+        localStorage.setItem(ADMIN_TOKEN_KEY, v);
+        location.reload();
+      };
+      document.getElementById('admin-token-save').addEventListener('click', save);
+      document.getElementById('admin-token-input').addEventListener('keydown', e => { if (e.key === 'Enter') save(); });
+    }
+
     // ── Shopify App Bridge 2.x: menú en sidebar izquierdo de Shopify ──
     (function initAppBridge() {
       try {
@@ -2431,6 +2483,7 @@
             <td style="padding:10px 12px;text-align:center">${statusBadge}</td>
             <td style="padding:10px 12px;text-align:right;white-space:nowrap">
               <a href="${it.mp_update_url || '#'}" target="_blank" rel="noopener" style="background:#fff;border:1px solid #e5e7eb;padding:6px 10px;border-radius:6px;font-size:11px;color:#374151;text-decoration:none;margin-right:4px">Ver MP</a>
+              <button onclick="getPaymentLink('${it.sub_id}', '${(it.phone||'').replace(/[^0-9]/g,'')}', '${(it.name||'').split(' ')[0].replace(/'/g,'')}')" style="background:#0A0A0A;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px">💳 ${it.recovery_link ? 'Copiar link pago' : 'Generar link pago'}</button>
               <button onclick="resendFailedEmail('${it.sub_id}', '${(it.email||'').replace(/'/g,'')}')" style="background:#E30613;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px">Re-email</button>
               <button onclick="clearFailedFlag('${it.sub_id}')" style="background:#10B981;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">✓ Resuelto</button>
             </td>
@@ -2471,6 +2524,27 @@
         const d = await r.json();
         if (d.success) { alert('✓ Marcado resuelto'); loadFailedPayments(); }
         else alert('Error: ' + (d.error || 'fallo'));
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // 🆕 2026-06-11: link de PAGO real para el ciclo rechazado (Preference MP).
+    // El cliente paga con cualquier medio — no necesita su cuenta MP — y el
+    // backend crea la orden + limpia el caso automáticamente (webhook subrecovery).
+    async function getPaymentLink(subId, phone, firstName) {
+      try {
+        const r = await fetch('/api/admin/failed-payments/' + subId + '/payment-link', { method: 'POST' });
+        const d = await r.json();
+        if (!d.success || !d.url) { alert('Error: ' + (d.error || 'No se pudo generar el link')); return; }
+        let copied = false;
+        try { await navigator.clipboard.writeText(d.url); copied = true; } catch {}
+        const info = '💳 Link de pago — ciclo ' + d.cycle + ' · S/ ' + (parseFloat(d.amount)||0).toFixed(2) + (d.reused ? ' (reutilizado)' : ' (nuevo)') + '\n\n' + d.url + (copied ? '\n\n✓ Copiado al portapapeles.' : '');
+        if (phone) {
+          const wa = 'https://wa.me/' + (phone.startsWith('51') ? phone : '51' + phone) + '?text=' + encodeURIComponent('Hola ' + (firstName || '') + ', te escribo de Lab Nutrition. El cobro de tu suscripción fue rechazado por el banco. Podés pagar el mes pendiente acá (cualquier tarjeta o medio de pago): ' + d.url + ' — Apenas pagues, tu pedido sale automático. ¡Gracias!');
+          if (confirm(info + '\n\n¿Abrir WhatsApp con el mensaje listo para enviar?')) window.open(wa, '_blank');
+        } else {
+          alert(info);
+        }
+        loadFailedPayments();
       } catch (e) { alert('Error: ' + e.message); }
     }
 
