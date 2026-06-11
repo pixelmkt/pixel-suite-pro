@@ -4698,6 +4698,20 @@ app.post('/webhooks/mercadopago', async (req, res) => {
             if (!sub) { console.log('[MP WEBHOOK] No matching sub found for preapproval', preapprovalId); return; }
 
             if (preapprovalInfo?.status === 'authorized' || action === 'created') {
+                // 🔒 GUARD 2026-06-11: webhook 'authorized' sobre sub YA ACTIVADA.
+                //   MP manda preapproval webhooks repetidos (retries, resume tras pausa,
+                //   re-autorización ya swapeada). Sin este guard, el bloque de activación
+                //   RESETEABA cycles_completed a 0 y podía crear un pedido "Ciclo 1" con
+                //   regalos duplicados sobre una sub en ciclo 3+ (el dedup de activación
+                //   solo mira los últimos 10 eventos — la first_order_created original
+                //   queda fuera en subs con historial). Solo se activa una sub que viene
+                //   de pending: las activas/pausadas/completadas con historial se ignoran.
+                const yaActivada = ['active', 'paused', 'completed'].includes(sub.status) &&
+                    (sub.activated_at || (parseInt(sub.cycles_completed) || 0) >= 1);
+                if (yaActivada) {
+                    console.log(`[MP WEBHOOK] ↩️ preapproval 'authorized' repetido para sub ya activada ${sub.id} (${sub.status}, ciclo ${sub.cycles_completed || 0}) — skip activación (no reset, no orden)`);
+                    return;
+                }
                 // Activar suscripción
                 const nextCharge = new Date();
                 nextCharge.setMonth(nextCharge.getMonth() + (parseInt(sub.frequency_months) || 1));
