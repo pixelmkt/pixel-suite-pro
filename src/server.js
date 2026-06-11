@@ -116,10 +116,15 @@ app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 // 🆕 2026-06-11 (+settings): GET /api/settings devolvía shopify_access_token,
 //   mp_access_token y SMTP pass SIN auth a todo internet. Las páginas públicas
 //   (portal.html) ahora usan /api/public-config que expone solo branding.
-app.use(['/api/admin', '/api/marketing', '/api/subscriptions/recover', '/api/remarketing', '/api/settings'], (req, res, next) => {
-    // Link público de baja que viaja en los emails de marketing — sin token
-    const full = (req.baseUrl + req.path).toLowerCase().replace(/\/+$/, '');
-    if (full === '/api/marketing/unsubscribe') return next();
+// 🆕 2026-06-11 (ronda 2): + /api/mailing (envío masivo de emails), /api/automations
+//   (PUT sin auth permitía modificar automatizaciones), /api/metrics, /api/subscribers
+//   (real-count + export con PII) y /api/shopify (catálogo). Solo admin.html los
+//   consume y ya manda el token en todo fetch same-origin a /api/*.
+//   GET /api/subscriptions (lista TODAS las subs con PII) se protege A NIVEL DE RUTA
+//   con _requireAdminToken: el prefijo NO se puede montar entero porque el widget usa
+//   POST /api/subscriptions/checkout y portal.html usa /customer/:id, /:id/pause,
+//   /:id/resume, /:id/cancel y /:id/cancel/preview (flujos públicos de clientes).
+function _requireAdminToken(req, res, next) {
     // Preflight CORS: el browser no manda headers custom en OPTIONS
     if (req.method === 'OPTIONS') return next();
     const expected = process.env.ADMIN_API_TOKEN || '';
@@ -133,6 +138,12 @@ app.use(['/api/admin', '/api/marketing', '/api/subscriptions/recover', '/api/rem
         return res.status(401).json({ error: 'No autorizado: header X-Admin-Token faltante o inválido.' });
     }
     return next();
+}
+app.use(['/api/admin', '/api/marketing', '/api/subscriptions/recover', '/api/remarketing', '/api/settings', '/api/mailing', '/api/automations', '/api/metrics', '/api/subscribers', '/api/shopify'], (req, res, next) => {
+    // Link público de baja que viaja en los emails de marketing — sin token
+    const full = (req.baseUrl + req.path).toLowerCase().replace(/\/+$/, '');
+    if (full === '/api/marketing/unsubscribe') return next();
+    return _requireAdminToken(req, res, next);
 });
 
 // ── ROOT: Shopify loads the app at / with ?shop=&hmac=&host= params ──
@@ -3861,8 +3872,12 @@ app.post('/api/subscriptions/batch-create-orders', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* ── SUBSCRIPTIONS LIST alias for admin panel ── */
-app.get('/api/subscriptions', async (req, res) => {
+/* ── SUBSCRIPTIONS LIST alias for admin panel ──
+   🔐 2026-06-11: auth a nivel de ruta (devuelve PII de TODOS los clientes).
+   El prefijo /api/subscriptions NO va en el middleware global porque
+   /checkout (widget) y /customer/:id, /:id/pause|resume|cancel[/preview]
+   (portal.html) son flujos públicos de clientes. */
+app.get('/api/subscriptions', _requireAdminToken, async (req, res) => {
     try {
         const { status, limit } = req.query;
         const filters = status ? { status } : {};
