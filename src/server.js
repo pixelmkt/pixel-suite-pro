@@ -11245,10 +11245,17 @@ async function handleRecoveryLinkPayment(paymentData, paymentId) {
     const debitDateForGuard = originalDebitDate || paymentData.date_approved || new Date().toISOString();
 
     // next_charge_at: la agenda REAL de MP (el link no altera el preapproval)
+    // 🔑 FIX 2026-06-11 (caso 11 pausadas): también capturamos el STATUS real del
+    //   preapproval. MP pausa solo tras agotar reintentos, pero los planes viejos
+    //   tenían notification_url muerta → el webhook de pausa nunca llegó → la sub
+    //   local dice 'active' aunque MP diga 'paused'. Decidir el resume por el
+    //   estado LOCAL dejaba el preapproval pausado para siempre (cero cobros futuros).
     let nextChargeAt = null;
+    let mpRealStatus = null;
     if (sub.mp_preapproval_id) {
         const pre = await mp.getSubscription(sub.mp_preapproval_id).catch(() => null);
         nextChargeAt = pre?.next_payment_date || null;
+        mpRealStatus = pre?.status || null;
     }
     if (!nextChargeAt) {
         const d = new Date();
@@ -11316,8 +11323,13 @@ async function handleRecoveryLinkPayment(paymentData, paymentId) {
     }
 
     // Zombie rescue: preapproval pausado por fallo de pago → reanudar para que MP siga cobrando ciclos futuros
-    const pausedByFailure = sub.status === 'paused' &&
-        (sub.paused_reason === 'auto_payment_failed' || sub.paused_reason === 'mp_auto_paused' || sub.needs_payment_update === true) &&
+    // 🔑 FIX 2026-06-11: la condición decide por el estado REAL en MP (mpRealStatus),
+    //   no solo el local. Las 11 subs pausadas por MP el 05-jun seguían 'active'
+    //   localmente (webhook muerto) y el resume jamás se disparaba.
+    const pausedByFailure = (
+            mpRealStatus === 'paused' ||
+            (sub.status === 'paused' && (sub.paused_reason === 'auto_payment_failed' || sub.paused_reason === 'mp_auto_paused' || sub.needs_payment_update === true))
+        ) &&
         !sub.paused_until; // pausa voluntaria con fecha NO se toca
     if (pausedByFailure && sub.mp_preapproval_id && mp.resumeSubscription) {
         try {
@@ -11440,6 +11452,36 @@ async function runDunningDetection() {
         for (const sub of targets.filter(s => s.needs_payment_update === true)) {
             try {
                 const evs = await db.getEvents(sub.id).catch(() => []);
+
+                // 🔑 AUTO-RESUME 2026-06-11 (la causa de "no cobra los siguientes ciclos"):
+                //   MP pausa el preapproval SOLO tras agotar sus reintentos. Los planes
+                //   viejos tienen notification_url muerta → el webhook de pausa nunca
+                //   llega → la sub local sigue 'active' y NADIE reanudaba en MP → cero
+                //   cobros futuros para siempre (11 casos confirmados el 11-jun).
+                //   Acá: si MP dice paused y NO es pausa voluntaria → resume. Dedup 7d
+                //   para no pelear con MP si la tarjeta sigue mala (MP re-pausará y en
+                //   7 días reintentamos — cadencia mensual de cobro lo hace seguro).
+                if (sub.mp_preapproval_id && !sub.paused_until) {
+                    try {
+                        const pre = await mp.getSubscription(sub.mp_preapproval_id).catch(() => null);
+                        if (pre?.status === 'paused') {
+                            const recentResume = (evs || []).some(e =>
+                                e.event_type === 'mp_preapproval_auto_resumed' &&
+                                (Date.now() - new Date(e.created_at || 0).getTime()) < 7 * 86400000
+                            );
+                            if (!recentResume) {
+                                await mp.resumeSubscription(sub.mp_preapproval_id);
+                                await db.createEvent({
+                                    subscription_id: sub.id,
+                                    event_type: 'mp_preapproval_auto_resumed',
+                                    metadata: JSON.stringify({ mp_preapproval_id: sub.mp_preapproval_id, prev_mp_status: 'paused', at: new Date().toISOString() })
+                                }).catch(() => {});
+                                console.log(`[DUNNING] ▶️ AUTO-RESUME: preapproval ${sub.mp_preapproval_id} (${sub.customer_email}) estaba paused en MP — reanudado, MP vuelve a cobrar ciclos futuros`);
+                            }
+                        }
+                    } catch (e) { console.warn('[DUNNING] auto-resume', sub.id, e.message); }
+                }
+
                 const linkEv = (evs || []).find(e => e.event_type === 'recovery_link_generated');
                 if (!linkEv) continue;
                 let extRef = null;
