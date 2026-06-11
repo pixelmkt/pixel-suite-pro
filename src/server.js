@@ -124,6 +124,13 @@ app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 //   con _requireAdminToken: el prefijo NO se puede montar entero porque el widget usa
 //   POST /api/subscriptions/checkout y portal.html usa /customer/:id, /:id/pause,
 //   /:id/resume, /:id/cancel y /:id/cancel/preview (flujos públicos de clientes).
+// 🆕 2026-06-11 (ronda 3): + /api/customers, /api/plans y /api/selling-plans al mount
+//   (solo admin.html los consume — verificado con grep en src/public/ y extensions/).
+//   /api/products NO va al mount: la theme extension (lab-subscription.liquid) consume
+//   GET /api/products/:id/config desde el storefront SIN token → esa ruta queda pública
+//   y el resto de /api/products/* se protege inline. Igual inline van las rutas admin
+//   de /api/subscriptions: POST /create, PATCH /:id, GET /:id/payments,
+//   POST /:id/create-order y POST /batch-create-orders (crean órdenes Shopify REALES).
 function _requireAdminToken(req, res, next) {
     // Preflight CORS: el browser no manda headers custom en OPTIONS
     if (req.method === 'OPTIONS') return next();
@@ -139,7 +146,7 @@ function _requireAdminToken(req, res, next) {
     }
     return next();
 }
-app.use(['/api/admin', '/api/marketing', '/api/subscriptions/recover', '/api/remarketing', '/api/settings', '/api/mailing', '/api/automations', '/api/metrics', '/api/subscribers', '/api/shopify'], (req, res, next) => {
+app.use(['/api/admin', '/api/marketing', '/api/subscriptions/recover', '/api/remarketing', '/api/settings', '/api/mailing', '/api/automations', '/api/metrics', '/api/subscribers', '/api/shopify', '/api/customers', '/api/plans', '/api/selling-plans'], (req, res, next) => {
     // Link público de baja que viaja en los emails de marketing — sin token
     const full = (req.baseUrl + req.path).toLowerCase().replace(/\/+$/, '');
     if (full === '/api/marketing/unsubscribe') return next();
@@ -511,7 +518,7 @@ async function resolveGiftsForNewSub(frequencyMonths, permanenceMonths, productI
 }
 
 /* ── CREATE subscription ── */
-app.post('/api/subscriptions/create', async (req, res) => {
+app.post('/api/subscriptions/create', _requireAdminToken, async (req, res) => {
     try {
         const {
             variantId, productId, productTitle, productImage,
@@ -1055,7 +1062,7 @@ app.get('/api/subscriptions/customer/:customerId', async (req, res) => {
 });
 
 /* ── UPDATE subscription fields (admin) ── */
-app.patch('/api/subscriptions/:id', async (req, res) => {
+app.patch('/api/subscriptions/:id', _requireAdminToken, async (req, res) => {
     try {
         const sub = await db.getSubscription(req.params.id);
         if (!sub) return res.status(404).json({ error: 'Not found' });
@@ -1397,7 +1404,7 @@ app.post('/api/subscriptions/:id/cancel', async (req, res) => {
    ══════════════════════════════════════════════════════ */
 
 /** GET /api/subscriptions/:id/payments — lista pagos MP (authorized_payments) */
-app.get('/api/subscriptions/:id/payments', async (req, res) => {
+app.get('/api/subscriptions/:id/payments', _requireAdminToken, async (req, res) => {
     try {
         const sub = await db.getSubscription(req.params.id);
         if (!sub) return res.status(404).json({ error: 'Not found' });
@@ -3125,7 +3132,7 @@ app.delete('/api/plans/:id', async (req, res) => {
  *   productos → Premium Whey (entre otros) no aparecía en el admin. Ahora
  *   pagina con Link headers hasta 2000 productos (8 páginas), suficiente para
  *   todo el catálogo. */
-app.get('/api/products', async (req, res) => {
+app.get('/api/products', _requireAdminToken, async (req, res) => {
     try {
         const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
         const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
@@ -3171,7 +3178,7 @@ app.get('/api/products', async (req, res) => {
     }
 });
 
-app.post('/api/products', async (req, res) => {
+app.post('/api/products', _requireAdminToken, async (req, res) => {
     try {
         const settings = await readFromShopify() || readFromFile() || {};
         if (!Array.isArray(settings.eligible_products)) settings.eligible_products = [];
@@ -3191,7 +3198,10 @@ app.post('/api/products', async (req, res) => {
     }
 });
 
-/* ── PER-PRODUCT CONFIG — descuentos individuales por producto ── */
+/* ── PER-PRODUCT CONFIG — descuentos individuales por producto ──
+   ⚠️ SIN _requireAdminToken A PROPÓSITO (2026-06-11): la theme extension
+   (extensions/suscriptions-mp/blocks/lab-subscription.liquid) la consume
+   desde el storefront sin token. Solo expone planes/descuentos, no PII. */
 app.get('/api/products/:id/config', async (req, res) => {
     try {
         const id = req.params.id;
@@ -3275,7 +3285,7 @@ app.get('/api/products/:id/config', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/products/:id/config', async (req, res) => {
+app.post('/api/products/:id/config', _requireAdminToken, async (req, res) => {
     try {
         const id = req.params.id;
         const settings = await readFromShopify() || readFromFile() || {};
@@ -3304,7 +3314,7 @@ app.post('/api/products/:id/config', async (req, res) => {
  *  Usado por el selector de regalos en la UI admin. Read-only, no modifica nada.
  *  Usa GraphQL Admin API porque soporta substring search (REST solo prefix).
  *  Devuelve thumbnail + título + cantidad de variantes + stock total del producto. */
-app.get('/api/products/search', async (req, res) => {
+app.get('/api/products/search', _requireAdminToken, async (req, res) => {
     try {
         const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
         const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
@@ -3376,7 +3386,7 @@ app.get('/api/products/search', async (req, res) => {
 
 /** GET /api/products/:id/variants — devuelve TODAS las variantes de un producto con stock.
  *  Para elegir variante específica al configurar un regalo. Read-only. */
-app.get('/api/products/:id/variants', async (req, res) => {
+app.get('/api/products/:id/variants', _requireAdminToken, async (req, res) => {
     try {
         const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
         const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
@@ -3818,7 +3828,7 @@ app.get('/api/contracts/:email', async (req, res) => {
 
 
 /* ── CREATE ORDER manually for a subscription (admin) ── */
-app.post('/api/subscriptions/:id/create-order', async (req, res) => {
+app.post('/api/subscriptions/:id/create-order', _requireAdminToken, async (req, res) => {
     try {
         const sub = await db.getSubscription(req.params.id);
         if (!sub) return res.status(404).json({ error: 'Subscription not found' });
@@ -3842,7 +3852,7 @@ app.post('/api/subscriptions/:id/create-order', async (req, res) => {
 });
 
 /* ── BATCH CREATE missing Shopify orders for active subs ── */
-app.post('/api/subscriptions/batch-create-orders', async (req, res) => {
+app.post('/api/subscriptions/batch-create-orders', _requireAdminToken, async (req, res) => {
     try {
         const allSubs = await db.getSubscriptions({ status: 'active' }).catch(() => []);
         const missing = allSubs.filter(s => s.status === 'active' && s.cycles_completed >= 1 && !s.shopify_order_id && s.variant_id);
