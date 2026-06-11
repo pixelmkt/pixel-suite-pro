@@ -6951,7 +6951,8 @@ app.get('/api/public-config', async (req, res) => {
             brand_color: merged.brand_color || '#9d2a23',
             widget_enabled: merged.widget_enabled !== false,
             discount_badge_text: merged.discount_badge_text || '',
-            mp_public_key: merged.mp_public_key || ''
+            mp_public_key: merged.mp_public_key || '',
+            build: '2026-06-11.2' // marcador de deploy (verificación sin auth)
         });
     } catch (e) { res.json({ brand_name: '', brand_slogan: '', brand_logo: '' }); }
 });
@@ -11180,6 +11181,32 @@ async function handleRecoveryLinkPayment(paymentData, paymentId) {
     });
     if (already) { console.log(`[RECOVERY-LINK] Payment ${paymentId} ya procesado — skip (dedup)`); return; }
 
+    // 🔒 GUARD ANTI DOBLE-REPOSICIÓN (2026-06-11): el link lleva el ciclo objetivo
+    //   (refCycle). Si ese ciclo YA está cubierto — porque MP lo recuperó solo con
+    //   su reintento nativo, o porque el cliente pagó el mismo link dos veces
+    //   (las Preferences MP aceptan más de un pago) — NO crear otra orden ni
+    //   avanzar ciclos: el cliente pagó de más. Flag para REFUND manual en MP.
+    if (refCycle && (parseInt(sub.cycles_completed) || 0) >= refCycle) {
+        await db.createEvent({
+            subscription_id: sub.id,
+            event_type: 'recovery_link_duplicate_payment',
+            metadata: JSON.stringify({
+                mp_payment_id: String(paymentId),
+                ref_cycle: refCycle,
+                cycles_completed: sub.cycles_completed,
+                amount: paymentData.transaction_amount,
+                at: new Date().toISOString(),
+                action_required: 'REFUND en MP — el ciclo ya estaba cubierto cuando entró este pago'
+            })
+        }).catch(() => {});
+        await db.updateSubscription(sub.id, {
+            needs_admin_review: true,
+            last_order_error: `Pago recovery DUPLICADO ${paymentId} (ciclo ${refCycle} ya cubierto) — REFUND manual en MP ${new Date().toISOString()}`
+        }).catch(() => {});
+        console.warn(`[RECOVERY-LINK] 🔁 Pago duplicado ${paymentId}: ciclo ${refCycle} ya cubierto (cycles=${sub.cycles_completed}) — needs_admin_review (refund)`);
+        return;
+    }
+
     const cyclesCompleted = (parseInt(sub.cycles_completed) || 0) + 1;
     const isComplete = cyclesCompleted >= (parseInt(sub.cycles_required) || 999);
 
@@ -11378,6 +11405,38 @@ async function runDunningDetection() {
             }
             await new Promise(r => setTimeout(r, 300)); // rate limit MP
         }
+
+        // 🛟 SAFETY NET RECOVERY-LINK (2026-06-11): el webhook MP se ack'ea con 200
+        //   ANTES de procesar (línea ~4610) → si el proceso muere tras el ack, MP no
+        //   reintenta y el pago del link queda sin reconciliar. El polling de
+        //   preapprovals NO ve pagos de Preference. Acá (3x/día) buscamos por
+        //   external_reference los pagos approved de links pendientes y los
+        //   reprocesamos — handleRecoveryLinkPayment es idempotente (dedup payment_id).
+        for (const sub of targets.filter(s => s.needs_payment_update === true)) {
+            try {
+                const evs = await db.getEvents(sub.id).catch(() => []);
+                const linkEv = (evs || []).find(e => e.event_type === 'recovery_link_generated');
+                if (!linkEv) continue;
+                let extRef = null;
+                try {
+                    const m = typeof linkEv.metadata === 'string' ? JSON.parse(linkEv.metadata) : (linkEv.metadata || {});
+                    extRef = m.cycle ? `subrecovery::${sub.id}::c${m.cycle}` : null;
+                } catch {}
+                if (!extRef) continue;
+                const sr = await fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${encodeURIComponent(extRef)}&sort=date_created&criteria=desc`, {
+                    headers: { Authorization: `Bearer ${mpToken}` }
+                });
+                if (!sr.ok) continue;
+                const sd = await sr.json();
+                const approved = (sd.results || []).find(p => p.status === 'approved');
+                if (approved) {
+                    console.log(`[DUNNING] 🛟 Safety net: pago recovery ${approved.id} approved sin reconciliar (${sub.customer_email}) — reprocesando`);
+                    await handleRecoveryLinkPayment(approved, String(approved.id)).catch(e => console.warn('[DUNNING] safety-net reproceso:', e.message));
+                }
+                await new Promise(r => setTimeout(r, 300)); // rate limit MP
+            } catch (e) { console.warn('[DUNNING] safety-net', sub.id, e.message); }
+        }
+
         console.log(`[DUNNING] Done: detected=${detected}, recovered=${recovered}, emails=${emailsSent}, errors=${errors}`);
     } catch (e) { console.error('[DUNNING] Top-level error:', e.message); }
 }
