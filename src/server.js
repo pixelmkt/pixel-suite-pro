@@ -4658,6 +4658,43 @@ app.post('/webhooks/mercadopago', async (req, res) => {
                 );
             }
 
+            // 🆕 RE-AUTORIZACIÓN 2026-06-11: si el plan corresponde a un reauth_link
+            //   (tarjeta nueva de una sub EXISTENTE), hacer SWAP y salir — jamás debe
+            //   caer al flujo de sub nueva (resetearía cycles_completed a 0 y crearía
+            //   una orden "Ciclo 1" con regalos duplicados). Subs nuevas no tienen
+            //   reauth_plan_id, así que el ciclo 1 normal queda intacto.
+            if (!sub && preapprovalInfo?.preapproval_plan_id && (preapprovalInfo?.status === 'authorized' || action === 'created')) {
+                const reauthSub = allSubs.find(s => s.reauth_plan_id === preapprovalInfo.preapproval_plan_id);
+                if (reauthSub) {
+                    console.log(`[MP WEBHOOK] 🔁 RE-AUTH detectada: ${reauthSub.customer_email} — swap ${reauthSub.mp_preapproval_id} → ${preapprovalId}`);
+                    const oldPre = reauthSub.mp_preapproval_id;
+                    // 1. Cancelar el preapproval viejo (evita doble cobro mensual)
+                    if (oldPre && oldPre !== preapprovalId && mp.cancelSubscription) {
+                        await mp.cancelSubscription(oldPre).catch(e => console.warn('[MP WEBHOOK] reauth: no se pudo cancelar preapproval viejo:', e.message));
+                    }
+                    // 2. Enganchar el nuevo a la MISMA sub — cycles_completed NO se toca.
+                    //    El cobro de autorización dispara webhook 'payment' (CASO 2) que
+                    //    matchea por el nuevo preapproval_id y crea la orden del ciclo
+                    //    pendiente con la numeración correcta.
+                    await db.updateSubscription(reauthSub.id, {
+                        mp_preapproval_id: preapprovalId,
+                        status: 'active',
+                        needs_payment_update: false,
+                        paused_reason: null,
+                        reauth_plan_id: null,
+                        reauth_old_preapproval_id: oldPre || null,
+                        last_payment_recovered_at: new Date().toISOString()
+                    }).catch(e => console.warn('[MP WEBHOOK] reauth updateSub:', e.message));
+                    await db.createEvent({
+                        subscription_id: reauthSub.id,
+                        event_type: 'preapproval_reauthorized',
+                        metadata: JSON.stringify({ old_preapproval_id: oldPre, new_preapproval_id: preapprovalId, plan_id: preapprovalInfo.preapproval_plan_id, at: new Date().toISOString() })
+                    }).catch(() => {});
+                    console.log(`[MP WEBHOOK] ✅ RE-AUTH completa: ${reauthSub.customer_email} reactivó con tarjeta nueva (${reauthSub.cycles_completed || 0}/${reauthSub.cycles_required} ciclos se mantienen)`);
+                    return; // ⛔ NO seguir al flujo de sub nueva
+                }
+            }
+
             if (!sub) { console.log('[MP WEBHOOK] No matching sub found for preapproval', preapprovalId); return; }
 
             if (preapprovalInfo?.status === 'authorized' || action === 'created') {
@@ -11053,7 +11090,7 @@ async function _sendDunningEmail(sub, dayNumber, mpDashboardUrl, portalUrl, payL
     <p style="color:#374151;line-height:1.6;margin:0 0 22px;font-size:15px"><strong>¿Qué hacer?</strong> ${payLink ? 'Pagá el ciclo pendiente ahora con cualquier tarjeta o medio de pago — toma 1 minuto y tu pedido sale automático.' : 'Actualizá tu tarjeta en 1 minuto desde MercadoPago. Tu próximo intento será automático.'}</p>
     <div style="text-align:center;margin:28px 0">
       ${payLink ? `<a href="${payLink}" style="display:inline-block;background:#E30613;color:#fff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px;letter-spacing:1px;text-transform:uppercase">Pagar ahora S/${(sub.mp_total_amount || sub.final_price || 0)}</a>
-      <div style="margin-top:14px"><a href="${mpDashboardUrl}" style="color:#666;font-size:13px;text-decoration:underline">También actualizá tu tarjeta para los próximos meses</a></div>` :
+      <div style="margin-top:14px;color:#666;font-size:13px">¿Tu tarjeta ya no sirve? Respondé este correo o escribinos por WhatsApp y te mandamos el link para registrar una nueva.</div>` :
       `<a href="${mpDashboardUrl}" style="display:inline-block;background:#E30613;color:#fff;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px;letter-spacing:1px;text-transform:uppercase">Actualizar tarjeta</a>`}
     </div>
     <p style="color:#666;font-size:13px;line-height:1.5;text-align:center;margin:18px 0 0">
@@ -11177,6 +11214,54 @@ async function _getOrCreateRecoveryLink(sub, { by = 'system', fresh = false } = 
         metadata: JSON.stringify({ url: pref.init_point, preference_id: pref.id, amount, cycle, by, at: new Date().toISOString() })
     }).catch(() => {});
     return { url: pref.init_point, amount, cycle, reused: false };
+}
+
+/* 🆕 RE-AUTORIZACIÓN (2026-06-11) — para clientes cuya TARJETA murió.
+   Problema: actualizar la tarjeta de un preapproval exige entrar a la cuenta
+   MP del pagador, y la mayoría no puede (email distinto / sin cuenta) — el
+   muro "no puedo ver mi plan". Solución: nuevo plan MP con los ciclos
+   RESTANTES al mismo precio → el cliente autoriza su tarjeta nueva en el
+   checkout de MP (sin ver el plan viejo) → MP cobra el primer ciclo ahí
+   mismo (= repone el mes pendiente) → webhook preapproval con
+   reauth_plan_id hace el swap: cancela el preapproval viejo y engancha el
+   nuevo a la MISMA sub (sin resetear ciclos, sin orden "Ciclo 1" duplicada,
+   sin regalos repetidos). Reuso <7d vía evento reauth_link_generated. */
+async function _getOrCreateReauthLink(sub, { by = 'admin', fresh = false } = {}) {
+    const events = await db.getEvents(sub.id).catch(() => []);
+    if (!fresh) {
+        const last = (events || []).find(e => e.event_type === 'reauth_link_generated');
+        if (last) {
+            try {
+                const m = typeof last.metadata === 'string' ? JSON.parse(last.metadata) : (last.metadata || {});
+                const ageDays = (Date.now() - new Date(last.created_at || 0).getTime()) / 86400000;
+                if (m.url && ageDays < 7) return { url: m.url, plan_id: m.plan_id, remaining_cycles: m.remaining_cycles, reused: true };
+            } catch {}
+        }
+    }
+    const freq = parseInt(sub.frequency_months) || 1;
+    const completed = parseInt(sub.cycles_completed) || 0;
+    const required = parseInt(sub.cycles_required) || 1;
+    const remaining = Math.max(required - completed, 1);
+    const amount = parseFloat(sub.mp_total_amount || sub.final_price || 0);
+    if (!amount || amount <= 0) throw new Error('Monto inválido para re-autorización');
+    const BACKEND = process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app';
+    // createCheckout: cycles = ceil(permanence/frequency) → permanence = remaining*freq
+    const co = await mp.createCheckout({
+        frequency: freq,
+        permanence: remaining * freq,
+        amount,
+        productTitle: `${sub.product_title || 'Suscripción LAB'} (reactivación ${remaining} ${remaining === 1 ? 'mes' : 'meses'})`,
+        customerEmail: sub.customer_email,
+        backUrl: `${BACKEND}/subscriptions/success?reauth=1`
+    });
+    if (!co?.init_point || !co?.plan_id) throw new Error('MP no devolvió link de re-autorización');
+    await db.updateSubscription(sub.id, { reauth_plan_id: co.plan_id }).catch(() => {});
+    await db.createEvent({
+        subscription_id: sub.id,
+        event_type: 'reauth_link_generated',
+        metadata: JSON.stringify({ url: co.init_point, plan_id: co.plan_id, remaining_cycles: remaining, amount, by, at: new Date().toISOString() })
+    }).catch(() => {});
+    return { url: co.init_point, plan_id: co.plan_id, remaining_cycles: remaining, reused: false };
 }
 
 /* Procesa el webhook payment approved de un link de recuperación.
@@ -11751,6 +11836,23 @@ app.post('/api/admin/failed-payments/:sub_id/payment-link', async (req, res) => 
         if (!sub) return res.status(404).json({ error: 'Sub not found' });
         const fresh = req.query.fresh === '1' || req.body?.fresh === true;
         const link = await _getOrCreateRecoveryLink(sub, { by: 'admin', fresh });
+        res.json({ success: true, ...link });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* 🆕 POST /api/admin/failed-payments/:sub_id/reauthorize-link — TARJETA NUEVA.
+   Para clientes que no pueden entrar a su cuenta MP a cambiar la tarjeta.
+   Genera checkout de suscripción con los ciclos RESTANTES; al autorizar:
+   MP cobra el mes pendiente de inmediato + el webhook cancela el preapproval
+   viejo y engancha el nuevo a la misma sub. ⚠️ Enviar SOLO si el cliente dice
+   que su tarjeta ya no sirve (si además paga el payment-link, el guard <25d
+   bloquea la orden duplicada y marca refund). */
+app.post('/api/admin/failed-payments/:sub_id/reauthorize-link', async (req, res) => {
+    try {
+        const sub = await db.getSubscription(req.params.sub_id);
+        if (!sub) return res.status(404).json({ error: 'Sub not found' });
+        const fresh = req.query.fresh === '1' || req.body?.fresh === true;
+        const link = await _getOrCreateReauthLink(sub, { by: 'admin', fresh });
         res.json({ success: true, ...link });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -2491,6 +2491,7 @@
             <td style="padding:10px 12px;text-align:right;white-space:nowrap">
               <a href="${it.mp_update_url || '#'}" target="_blank" rel="noopener" style="background:#fff;border:1px solid #e5e7eb;padding:6px 10px;border-radius:6px;font-size:11px;color:#374151;text-decoration:none;margin-right:4px">Ver MP</a>
               <button onclick="getPaymentLink('${it.sub_id}', '${(it.phone||'').replace(/[^0-9]/g,'')}', '${(it.name||'').split(' ')[0].replace(/'/g,'')}')" style="background:#0A0A0A;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px">💳 ${it.recovery_link ? 'Copiar link pago' : 'Generar link pago'}</button>
+              <button onclick="getReauthLink('${it.sub_id}', '${(it.phone||'').replace(/[^0-9]/g,'')}', '${(it.name||'').split(' ')[0].replace(/'/g,'')}')" title="Solo si el cliente dice que su tarjeta ya no sirve" style="background:#7C3AED;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px">🔁 Tarjeta nueva</button>
               <button onclick="resendFailedEmail('${it.sub_id}', '${(it.email||'').replace(/'/g,'')}')" style="background:#E30613;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px">Re-email</button>
               <button onclick="clearFailedFlag('${it.sub_id}')" style="background:#10B981;color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">✓ Resuelto</button>
             </td>
@@ -2531,6 +2532,28 @@
         const d = await r.json();
         if (d.success) { alert('✓ Marcado resuelto'); loadFailedPayments(); }
         else alert('Error: ' + (d.error || 'fallo'));
+      } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // 🆕 2026-06-11: RE-AUTORIZACIÓN — para clientes cuya tarjeta MURIÓ y no
+    // pueden entrar a su cuenta MP. Genera checkout con los ciclos restantes;
+    // al autorizar la tarjeta nueva, MP cobra el mes pendiente de inmediato y
+    // el backend cancela el preapproval viejo y engancha el nuevo (sin duplicar).
+    // ⚠️ Enviar SOLO si el cliente confirma que su tarjeta ya no sirve.
+    async function getReauthLink(subId, phone, firstName) {
+      if (!confirm('⚠️ SOLO para clientes cuya tarjeta YA NO SIRVE.\n\nEl cliente registra su tarjeta nueva, MP le cobra el mes pendiente AHÍ MISMO, y su plan continúa solo (la suscripción vieja se cancela automáticamente).\n\nSi el cliente puede pagar con su tarjeta actual, usa "Link pago" en su lugar.\n\n¿Generar link de tarjeta nueva?')) return;
+      try {
+        const r = await fetch('/api/admin/failed-payments/' + subId + '/reauthorize-link', { method: 'POST' });
+        const d = await r.json();
+        if (!d.success || !d.url) { alert('Error: ' + (d.error || 'No se pudo generar')); return; }
+        let copied = false;
+        try { await navigator.clipboard.writeText(d.url); copied = true; } catch {}
+        const info = '🔁 Link tarjeta nueva — ' + d.remaining_cycles + ' meses restantes' + (d.reused ? ' (reutilizado)' : ' (nuevo)') + '\n\n' + d.url + (copied ? '\n\n✓ Copiado al portapapeles.' : '');
+        if (phone) {
+          const wa = 'https://wa.me/' + (phone.startsWith('51') ? phone : '51' + phone) + '?text=' + encodeURIComponent('Hola ' + (firstName || '') + ', te escribo de Lab Nutrition. Para reactivar tu suscripción con tu tarjeta nueva entra acá: ' + d.url + ' — Registras tu tarjeta una sola vez, se cobra el mes pendiente y tu plan continúa automático. ¡Gracias!');
+          if (confirm(info + '\n\n¿Abrir WhatsApp con el mensaje listo?')) window.open(wa, '_blank');
+        } else { alert(info); }
+        loadFailedPayments();
       } catch (e) { alert('Error: ' + e.message); }
     }
 

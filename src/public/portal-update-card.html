@@ -130,8 +130,7 @@ function render(d){
         <div class="cta-block">
           ${first.payment_link ? `
           <a href="${first.payment_link}" target="_blank" rel="noopener" class="cta-btn">Pagar ahora S/ ${(parseFloat(first.amount)||0).toFixed(2)}</a>
-          <div class="cta-hint">Pagás el mes pendiente con cualquier tarjeta o medio de pago — tu pedido sale automático.</div>
-          <div style="margin-top:14px"><a href="${first.mp_update_url}" target="_blank" rel="noopener" style="color:#6B7280;font-size:13px;text-decoration:underline">Además, actualizá tu tarjeta para los próximos meses →</a></div>
+          <div class="cta-hint">Pagás el mes pendiente con cualquier tarjeta, Yape o PagoEfectivo — tu pedido sale automático.</div>
           ` : `
           <a href="${first.mp_update_url}" target="_blank" rel="noopener" class="cta-btn">Actualizar tarjeta ahora</a>
           <div class="cta-hint">Te lleva a MercadoPago. Logueate con tu cuenta y elegí "Cambiar medio de pago".</div>
@@ -141,9 +140,9 @@ function render(d){
           <b>📋 Pasos rápidos:</b>
           ${first.payment_link ? `
           <ol>
-            <li>Tocá <b>"Pagar ahora"</b> y pagá el mes pendiente (cualquier medio de pago)</li>
+            <li>Tocá <b>"Pagar ahora"</b> y pagá el mes pendiente (cualquier tarjeta, Yape o PagoEfectivo)</li>
             <li>Tu pedido se genera automático apenas se acredite</li>
-            <li>Opcional pero importante: actualizá tu tarjeta en MercadoPago para que los próximos cobros no fallen</li>
+            <li>¿Tu tarjeta ya no sirve para los próximos meses? Escribinos por WhatsApp y te mandamos el link para registrar una nueva</li>
           </ol>
           ` : `
           <ol>
