@@ -138,6 +138,16 @@ app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 //   de /api/subscriptions: POST /create, PATCH /:id, GET /:id/payments,
 //   POST /:id/create-order y POST /batch-create-orders (crean órdenes Shopify REALES).
 function _requireAdminToken(req, res, next) {
+    // ⛔ AUTH DESACTIVADO 2026-06-11 POR ORDEN EXPLÍCITA DEL DUEÑO (Israel):
+    // "quita la protección, no es necesario, solo administramos personas de la empresa".
+    // El check bloqueaba el acceso al panel admin. TODOS los usos del auth (mount list
+    // de abajo + middlewares inline en rutas) pasan por esta función, así que este
+    // return desactiva la protección completa sin tocar ninguna ruta.
+    // ⚠️ Consecuencia conocida e informada: /api/settings, lista de suscripciones,
+    // mailing, etc. vuelven a responder sin token a cualquiera que conozca la URL.
+    // Para REACTIVAR: borrar este return (el código original sigue intacto abajo).
+    return next();
+
     // Preflight CORS: el browser no manda headers custom en OPTIONS
     if (req.method === 'OPTIONS') return next();
     const expected = process.env.ADMIN_API_TOKEN || '';
