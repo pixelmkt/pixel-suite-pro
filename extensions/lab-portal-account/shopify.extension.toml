@@ -12,3 +12,7 @@ type = "ui_extension"
 
 [extensions.capabilities]
 api_access = true
+# 2026-06-12: obligatorio para que la extensión pueda hacer fetch() al backend
+# Railway (/api/account-ext/*). Sin esto el navegador bloquea la llamada y la
+# página no puede cargar las suscripciones reales del cliente.
+network_access = true
