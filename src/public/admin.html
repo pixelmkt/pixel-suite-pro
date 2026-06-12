@@ -4773,12 +4773,45 @@
             <label class="toggle-wrap" title="${on ? 'Desactivar' : 'Activar'} suscripción">
               <span class="toggle"><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleProd('${p.shopify_id}',this.checked,'${t}')"><span class="tslide"></span></span>
             </label>
-            <span style="font-size:11px;color:var(--mut);flex:1">${on ? 'Activo' : 'Inactivo'}</span>
+            <span style="font-size:11px;color:var(--mut)">${on ? 'Activo' : 'Inactivo'}</span>
+            <span id="ph-${p.shopify_id}" style="font-size:10px;flex:1"></span>
             <button class="btn btn-g btn-sm" onclick="openConfig('${p.shopify_id}','${t}')">Config</button>
             <button class="btn btn-sm" style="background:#0a0a0a;color:#fff;font-size:11px" onclick="installSubTemplate('${p.shopify_id}','${t}', this)" title="Crear template exclusivo de suscripción para este producto (widget independiente)">🚀 Template</button>
           </div>
         </div>`;
         }).join('') + `</div>`;
+      paintProductHealth();
+    }
+
+    // 2026-06-12: BADGE DE SALUD por producto — la columna "Activo" no decía si el
+    // producto era realmente VENDIBLE (podía estar ON pero sin plan o con variantes
+    // fuera del allowlist = cobro bloqueado silencioso). Usa el health-check existente.
+    let _prodHealthPromise = null;
+    function paintProductHealth() {
+      if (!_prodHealthPromise) {
+        _prodHealthPromise = api('/api/admin/products-health-check').catch(() => null);
+        setTimeout(() => { _prodHealthPromise = null; }, 120000); // refresca cada 2 min
+      }
+      _prodHealthPromise.then(d => {
+        const report = (d && (d.report || d.products)) || [];
+        for (const r of report) {
+          const el = document.getElementById('ph-' + r.product_id);
+          if (!el) continue;
+          const issues = Array.isArray(r.issues) ? r.issues : [];
+          const sinPlan = issues.some(i => String(i).startsWith('no_plans_config'));
+          const sinVariantes = (r.shopify_variants_count > 0 && r.variants_in_allowlist === 0) || issues.some(i => String(i).startsWith('product_has_no_variants'));
+          const variantesParciales = !r.all_variants_allowed && r.variants_in_allowlist > 0;
+          if (sinPlan) {
+            el.innerHTML = '<span style="background:#fee2e2;color:#991b1b;border-radius:10px;padding:2px 8px;font-weight:700">⛔ sin plan — no vendible</span>';
+          } else if (sinVariantes) {
+            el.innerHTML = '<span style="background:#fee2e2;color:#991b1b;border-radius:10px;padding:2px 8px;font-weight:700">⛔ variantes bloqueadas</span>';
+          } else if (variantesParciales) {
+            el.innerHTML = '<span style="background:#fef3c7;color:#92400e;border-radius:10px;padding:2px 8px;font-weight:700">⚠ ' + r.variants_in_allowlist + '/' + r.shopify_variants_count + ' variantes</span>';
+          } else {
+            el.innerHTML = '<span style="background:#d1fae5;color:#065f46;border-radius:10px;padding:2px 8px;font-weight:700">✓ vendible</span>';
+          }
+        }
+      }).catch(() => {});
     }
 
     // ── AUTONOMÍA: Instalar template de suscripción por-producto (widget independiente)
