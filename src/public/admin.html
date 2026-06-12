@@ -2366,21 +2366,12 @@
         if (!AB) return;
         const createApp = AB.default;
         const { NavigationMenu } = AB;
-        const app = createApp({ apiKey: 'fc20b3f68f1c8e854a3dca30788acd48', host });
-        const origin = location.origin;
-        const qs = '?shop=' + (params.get('shop') || '') + '&host=' + host;
-        const items = [
-          { label: 'Dashboard', destination: origin + '/' + qs + '&page=dash' },
-          { label: 'Planes', destination: origin + '/' + qs + '&page=plans' },
-          { label: 'Suscripciones', destination: origin + '/' + qs + '&page=subs' },
-          { label: 'Productos', destination: origin + '/' + qs + '&page=prods' },
-          { label: 'Widget', destination: origin + '/' + qs + '&page=widget' },
-          { label: 'Portal del cliente', destination: origin + '/' + qs + '&page=portal' },
-          { label: 'Ajustes', destination: origin + '/' + qs + '&page=ajustes' },
-        ];
+        // 2026-06-12: NavigationMenu de este bloque ELIMINADO — era código muerto
+        //   (AB.NavigationMenu no existe en App Bridge v2 UMD; vive en AB.actions)
+        //   y de paso mataba el deep-link ?page= al lanzar TypeError antes del nav().
+        //   El menú embebido real se registra más abajo (bloque APP_BRIDGE ~6080)
+        //   con la lista COMPLETA de secciones. Aquí solo queda el routing ?page=.
         const page = params.get('page') || 'dash';
-        const active = items.find(i => i.destination.includes('page=' + page)) || items[0];
-        NavigationMenu.create(app, { items, active });
         if (page && page !== 'dash') setTimeout(() => nav(page), 150);
       } catch (e) { console.warn('[AppBridge nav]', e); }
     })();
@@ -6096,13 +6087,20 @@
         var NavigationMenu = (AB.actions || {}).NavigationMenu;
         var AppLink = (AB.actions || {}).AppLink;
         if (NavigationMenu && AppLink) {
+          // 2026-06-12 FIX: la lista estaba INCOMPLETA — faltaban Cobros Rechazados,
+          //   Bundles, Marketing y Automatizaciones. Como el sidebar propio se oculta
+          //   embebido (shopify-embedded), esas secciones eran INALCANZABLES dentro
+          //   de Shopify Admin. Ahora espeja 1:1 el sidebar interno (ids de nav()).
           var links = [
             AppLink.create(app, { label: 'Dashboard', destination: '/?section=dash' }),
             AppLink.create(app, { label: 'Planes de Suscripción', destination: '/?section=plans' }),
+            AppLink.create(app, { label: 'Bundles (Mix & Match)', destination: '/?section=bundles' }),
             AppLink.create(app, { label: 'Suscripciones', destination: '/?section=subs' }),
+            AppLink.create(app, { label: 'Cobros Rechazados', destination: '/?section=failed-payments' }),
             AppLink.create(app, { label: 'Productos', destination: '/?section=prods' }),
             AppLink.create(app, { label: 'Clientes', destination: '/?section=customers' }),
-            AppLink.create(app, { label: 'Remarketing', destination: '/?section=remarketing' }),
+            AppLink.create(app, { label: 'Marketing', destination: '/?section=remarketing' }),
+            AppLink.create(app, { label: 'Automatizaciones', destination: '/?section=automations' }),
             AppLink.create(app, { label: 'Widget de Suscripción', destination: '/?section=widget' }),
             AppLink.create(app, { label: 'Portal del Cliente', destination: '/?section=portal' }),
             AppLink.create(app, { label: 'Ajustes', destination: '/?section=ajustes' })
