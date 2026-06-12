@@ -145,11 +145,18 @@ function render(d){
     </div>`;
   if (hasIssue) {
     const issueSub = subs.find(s => s.needs_payment_update);
+    const payBtn = issueSub.payment_link
+      ? `<a href="${issueSub.payment_link}" target="_blank" rel="noopener" class="alert-btn">Pagar ${money(issueSub.mp_total_amount || issueSub.final_price)} ahora →</a>`
+      : `<a href="${issueSub.mp_update_url}" target="_blank" rel="noopener" class="alert-btn">Actualizar tarjeta en MercadoPago →</a>`;
+    const reauthLink = issueSub.reauth_link
+      ? `<div style="margin-top:10px;font-size:12px;color:#7F1D1D">¿Tu tarjeta ya no sirve? <a href="${issueSub.reauth_link}" target="_blank" rel="noopener" style="color:#991B1B;font-weight:800;text-decoration:underline">Registrá una tarjeta nueva acá</a> y reactivá tu plan.</div>`
+      : '';
     html += `
       <div class="alert">
         <div class="alert-title">⚠️ Acción requerida</div>
-        <div class="alert-text">Hubo un problema al cobrar tu suscripción <strong>${issueSub.product_title}</strong>. Por favor actualiza tu tarjeta para mantenerla activa.</div>
-        <a href="${issueSub.mp_update_url}" target="_blank" rel="noopener" class="alert-btn">Actualizar tarjeta en MercadoPago →</a>
+        <div class="alert-text">Hubo un problema al cobrar tu suscripción <strong>${issueSub.product_title}</strong>. Pagá el mes pendiente con cualquier tarjeta, Yape o PagoEfectivo para mantenerla activa — tu pedido sale automático.</div>
+        ${payBtn}
+        ${reauthLink}
       </div>`;
   }
   html += `
@@ -197,7 +204,7 @@ function renderSub(s){
           <div><div class="sub-field-label">Última entrega</div><div class="sub-field-value">${s.shopify_order_name || '—'}</div></div>
           <div><div class="sub-field-label">Última fecha</div><div class="sub-field-value">${fmt(s.last_charge_at)}</div></div>
         </div>
-        ${s.needs_payment_update ? `<div class="payment-alert">⚠️ Cobro rechazado. <a href="${s.mp_update_url}" target="_blank" rel="noopener">Actualizá tu tarjeta</a> en MercadoPago para reactivar el cobro.</div>` : ''}
+        ${s.needs_payment_update ? `<div class="payment-alert">⚠️ Cobro rechazado. ${s.payment_link ? `<a href="${s.payment_link}" target="_blank" rel="noopener">Pagá el mes pendiente acá</a> (cualquier tarjeta, Yape o PagoEfectivo) y tu pedido sale automático.` + (s.reauth_link ? ` ¿Tarjeta nueva? <a href="${s.reauth_link}" target="_blank" rel="noopener">reactivá tu plan acá</a>.` : '') : `<a href="${s.mp_update_url}" target="_blank" rel="noopener">Actualizá tu tarjeta</a> en MercadoPago para reactivar el cobro.`}</div>` : ''}
       </div>
     </div>`;
 }

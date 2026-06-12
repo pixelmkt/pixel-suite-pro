@@ -7028,7 +7028,7 @@ app.get('/api/public-config', async (req, res) => {
             widget_enabled: merged.widget_enabled !== false,
             discount_badge_text: merged.discount_badge_text || '',
             mp_public_key: merged.mp_public_key || '',
-            build: '2026-06-11.5' // marcador de deploy (verificación sin auth)
+            build: '2026-06-11.6' // marcador de deploy (verificación sin auth)
         });
     } catch (e) { res.json({ brand_name: '', brand_slogan: '', brand_logo: '' }); }
 });
@@ -11921,7 +11921,7 @@ app.get('/apps/account-suscripcion', async (req, res) => {
 });
 
 // JSON: subs by customer_id (App Proxy authenticated)
-app.get('/apps/account-suscripcion/me', async (req, res) => {
+app.get('/apps/account-suscripcion/me', (req, res, next) => _portalRateLimit(req, res, next), async (req, res) => {
     const hmac = _verifyAppProxyHmac(req.query);
     if (!hmac.ok && hmac.mode === 'enforce') return res.status(401).json({ error: 'Unauthorized' });
     const customerId = String(req.query.logged_in_customer_id || '');
@@ -11942,9 +11942,22 @@ app.get('/apps/account-suscripcion/me', async (req, res) => {
     }
     if (!customerEmail) return res.json({ is_member: false, customer_id: customerId, name: customerName, subscriptions: [] });
     const allSubs = await db.getSubscriptions().catch(() => []);
-    const mySubs = (Array.isArray(allSubs) ? allSubs : [])
-        .filter(s => (s.customer_email || '').toLowerCase() === customerEmail.toLowerCase() && s.status !== 'pending_payment')
-        .map(s => ({
+    const filtered = (Array.isArray(allSubs) ? allSubs : [])
+        .filter(s => (s.customer_email || '').toLowerCase() === customerEmail.toLowerCase() && s.status !== 'pending_payment');
+    // 🆕 2026-06-11 — LINKS INTELIGENTES SEGÚN ESTADO:
+    //   • Sub con cobro rechazado (needs_payment_update) → genera link de PAGO real
+    //     (Preference, paga el mes pendiente sin la cuenta MP) + link de TARJETA NUEVA
+    //     (re-autorización). El dashboard MP (muro) deja de ser la opción principal.
+    //   • Sub sana → solo mp_update_url (dashboard MP) para gestión preventiva de tarjeta.
+    //   Links deduplicados <7d por los helpers → no spamea Preferences en cada carga.
+    // 🔒 GUARD (review adversarial 2026-06-11): crear objetos de pago en MP desde un
+    //   GET requiere firma App Proxy VÁLIDA (hmac.ok). Shopify SIEMPRE firma el
+    //   tráfico legítimo del proxy, incluso con APP_PROXY_VERIFY=warn; un request
+    //   forjado directo al backend no trae firma válida → ve la sub pero SIN minar
+    //   links (cae al fallback dashboard). Cero impacto para clientes reales.
+    const canMintLinks = hmac.ok === true;
+    const mySubs = await Promise.all(filtered.map(async s => {
+        const out = {
             id: s.id,
             product_title: s.product_title,
             product_image: s.product_image,
@@ -11960,8 +11973,16 @@ app.get('/apps/account-suscripcion/me', async (req, res) => {
             last_charge_at: s.last_charge_at,
             shopify_order_name: s.shopify_order_name,
             needs_payment_update: !!s.needs_payment_update,
-            mp_update_url: s.mp_preapproval_id ? _mpCustomerDashboardUrl(s.mp_preapproval_id) : null
-        }));
+            mp_update_url: s.mp_preapproval_id ? _mpCustomerDashboardUrl(s.mp_preapproval_id) : null,
+            payment_link: null,
+            reauth_link: null
+        };
+        if (s.needs_payment_update && canMintLinks) {
+            try { out.payment_link = (await _getOrCreateRecoveryLink(s, { by: 'portal' })).url; } catch (e) { console.warn('[PORTAL /me] payment_link', s.id, e.message); }
+            try { out.reauth_link = (await _getOrCreateReauthLink(s, { by: 'portal' })).url; } catch (e) { console.warn('[PORTAL /me] reauth_link', s.id, e.message); }
+        }
+        return out;
+    }));
     res.json({
         is_member: mySubs.length > 0,
         customer_id: customerId,

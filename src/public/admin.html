@@ -5447,22 +5447,44 @@
           </select>
         </div>`;
       const nextCharge = s.next_charge_at ? new Date(s.next_charge_at).toISOString().slice(0, 16) : '';
-      // 🆕 2026-06-09 — Link de suscripción MP del cliente (actualizar tarjeta / gestionar)
+      // 🆕 2026-06-11 — LINKS INTELIGENTES SEGÚN ESTADO (reemplaza el muro fijo del dashboard MP):
+      //   • Cobro rechazado → botones "Pagar mes pendiente" (link real) + "Tarjeta nueva"
+      //     (reutilizan getPaymentLink/getReauthLink que abren el modal con link copiable + WhatsApp).
+      //   • Sub sana → "Gestionar en MercadoPago" (dashboard; para cambiar tarjeta preventivamente SÍ sirve).
       const mpCustomerLink = s.mp_preapproval_id ? ('https://www.mercadopago.com.pe/subscriptions/details/' + s.mp_preapproval_id) : '';
-      const mpLinkBlock = s.mp_preapproval_id ? `
-        <div style="grid-column:1 / -1;background:linear-gradient(135deg,#eff6ff 0%,#f0f9ff 100%);border:1.5px solid #93c5fd;border-radius:10px;padding:14px 16px;margin-bottom:4px">
-          <div style="font-size:11px;font-weight:800;color:#1e40af;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">🔗 Link de suscripción MercadoPago (cliente)</div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <input id="sd-mp-link" readonly value="${mpCustomerLink}" style="flex:1;min-width:220px;border:1px solid #bfdbfe;border-radius:6px;padding:8px 10px;font-size:11px;font-family:monospace;background:#fff;color:#1e3a8a;outline:none">
-            <button onclick="(function(){const i=document.getElementById('sd-mp-link');i.select();document.execCommand('copy');this.textContent='✓ Copiado';setTimeout(()=>this.textContent='Copiar',1500);}).call(this)" style="background:#2563eb;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">Copiar</button>
-            <a href="${mpCustomerLink}" target="_blank" rel="noopener" style="background:#fff;color:#1e40af;border:1.5px solid #93c5fd;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none">Abrir ↗</a>
-            ${s.customer_phone ? `<a href="https://wa.me/${(s.customer_phone||'').replace(/[^0-9]/g,'').replace(/^(?!51)/,'51')}?text=${encodeURIComponent('Hola ' + (s.customer_name||'').split(' ')[0] + ', podés gestionar tu suscripción Lab Nutrition / actualizar tu tarjeta acá: ' + mpCustomerLink)}" target="_blank" rel="noopener" style="background:#25D366;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none">WhatsApp</a>` : ''}
-          </div>
-          <div style="font-size:10px;color:#64748b;margin-top:6px">Este es el link que el cliente usa para actualizar su tarjeta o gestionar su suscripción en MercadoPago. Preapproval: <code style="font-size:10px">${s.mp_preapproval_id}</code></div>
-        </div>` : `
+      const _phoneArg = (s.customer_phone || '').replace(/[^0-9]/g, '');
+      const _nameArg = (s.customer_name || '').split(' ')[0].replace(/'/g, '');
+      let mpLinkBlock;
+      if (!s.mp_preapproval_id) {
+        mpLinkBlock = `
         <div style="grid-column:1 / -1;background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;padding:10px 14px;margin-bottom:4px;font-size:12px;color:#92400e">
           ⚠️ Esta suscripción no tiene preapproval MercadoPago vinculado (sin link de cliente).
         </div>`;
+      } else if (s.needs_payment_update) {
+        mpLinkBlock = `
+        <div style="grid-column:1 / -1;background:linear-gradient(135deg,#fef2f2 0%,#fff8f8 100%);border:1.5px solid #fca5a5;border-radius:10px;padding:14px 16px;margin-bottom:4px">
+          <div style="font-size:11px;font-weight:800;color:#991b1b;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">⚠️ Cobro rechazado — acción de recuperación</div>
+          <div style="font-size:12px;color:#7f1d1d;margin-bottom:10px">Generá el link correcto y enviáselo al cliente. <b>Pagar mes pendiente</b> si su tarjeta aún sirve; <b>Tarjeta nueva</b> si ya no.</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button onclick="getPaymentLink('${s.id}','${_phoneArg}','${_nameArg}')" style="background:#E30613;color:#fff;border:none;padding:9px 16px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer">💳 Pagar mes pendiente</button>
+            <button onclick="getReauthLink('${s.id}','${_phoneArg}','${_nameArg}')" style="background:#7C3AED;color:#fff;border:none;padding:9px 16px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer">🔁 Tarjeta nueva</button>
+            <a href="${mpCustomerLink}" target="_blank" rel="noopener" style="background:#fff;color:#64748b;border:1px solid #e5e7eb;padding:9px 14px;border-radius:7px;font-size:12px;text-decoration:none">Gestionar en MP ↗</a>
+          </div>
+        </div>`;
+      } else {
+        mpLinkBlock = `
+        <div style="grid-column:1 / -1;background:linear-gradient(135deg,#eff6ff 0%,#f0f9ff 100%);border:1.5px solid #93c5fd;border-radius:10px;padding:14px 16px;margin-bottom:4px">
+          <div style="font-size:11px;font-weight:800;color:#1e40af;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">🔗 Gestión de tarjeta del cliente (MercadoPago)</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="sd-mp-link" readonly value="${mpCustomerLink}" style="flex:1;min-width:220px;border:1px solid #bfdbfe;border-radius:6px;padding:8px 10px;font-size:11px;font-family:monospace;background:#fff;color:#1e3a8a;outline:none">
+            <button onclick="(function(){const i=document.getElementById('sd-mp-link');i.select();_copyText(i.value,this);}).call(this)" style="background:#2563eb;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">Copiar</button>
+            <a href="${mpCustomerLink}" target="_blank" rel="noopener" style="background:#fff;color:#1e40af;border:1.5px solid #93c5fd;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none">Abrir ↗</a>
+            ${s.customer_phone ? `<a href="https://wa.me/${_phoneArg.replace(/^(?!51)/,'51')}?text=${encodeURIComponent('Hola ' + (s.customer_name||'').split(' ')[0] + ', podés gestionar tu suscripción Lab Nutrition / actualizar tu tarjeta acá: ' + mpCustomerLink)}" target="_blank" rel="noopener" style="background:#25D366;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none">WhatsApp</a>` : ''}
+            <button onclick="getReauthLink('${s.id}','${_phoneArg}','${_nameArg}')" style="background:#fff;color:#7C3AED;border:1.5px solid #c4b5fd;padding:8px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">🔁 Tarjeta nueva</button>
+          </div>
+          <div style="font-size:10px;color:#64748b;margin-top:6px">El dashboard de MP sirve para cambiar la tarjeta de forma preventiva (requiere su cuenta MP). Para cobrar un mes ya rechazado, usá los botones de la pestaña Cobros Rechazados. Preapproval: <code style="font-size:10px">${s.mp_preapproval_id}</code></div>
+        </div>`;
+      }
       return `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
           ${mpLinkBlock}
