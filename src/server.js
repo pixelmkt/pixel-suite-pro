@@ -59,6 +59,12 @@ app.use((req, res, next) => {
 });
 app.use(cors({ origin: '*' })); // Allow all origins for embedded app
 
+// 🔧 FIX 2026-06-11: Railway corre detrás de un proxy — sin trust proxy,
+//   req.ip es la IP interna del edge (igual para todos) y express-rate-limit
+//   v7 invalida su keyGenerator → los limiters NUNCA disparaban (bug
+//   preexistente desde 2026-06-05, afectaba también al magic-link).
+app.set('trust proxy', 1);
+
 // 🆕 2026-06-05 — Rate limiters anti-abuse
 //   portal magic-link: 10/min/IP (evita spam de emails)
 //   webhooks: NO limitar (Shopify/MP pueden tener picos legítimos)
@@ -7028,7 +7034,7 @@ app.get('/api/public-config', async (req, res) => {
             widget_enabled: merged.widget_enabled !== false,
             discount_badge_text: merged.discount_badge_text || '',
             mp_public_key: merged.mp_public_key || '',
-            build: '2026-06-11.6' // marcador de deploy (verificación sin auth)
+            build: '2026-06-11.7' // marcador de deploy (verificación sin auth)
         });
     } catch (e) { res.json({ brand_name: '', brand_slogan: '', brand_logo: '' }); }
 });
