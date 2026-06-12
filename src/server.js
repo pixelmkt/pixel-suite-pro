@@ -12046,6 +12046,155 @@ app.get('/apps/account-suscripcion/me', (req, res, next) => _portalRateLimit(req
 });
 
 /* ═══════════════════════════════════════════════════════════════════
+   🆕 2026-06-12 — CUSTOMER ACCOUNT UI EXTENSION ("Mi Suscripción")
+   La extensión lab-portal-account (customer-account.page.render) llama a estos
+   endpoints con un session token JWT (shopify.sessionToken.get()). Verificamos
+   el JWT con el client secret del app (HS256), sacamos el customer del claim
+   `sub` y devolvemos SUS suscripciones reales + la config del portal. Esto
+   reemplaza el contenido hardcodeado anterior de la extensión.
+   ═══════════════════════════════════════════════════════════════════ */
+
+// Verifica un session token de Customer Account UI Extension: JWT HS256 firmado
+// con SHOPIFY_API_SECRET. Valida firma + exp + aud. Devuelve el payload o null.
+function _verifyCustomerSessionToken(authHeader) {
+    try {
+        const m = /^Bearer\s+(.+)$/i.exec(String(authHeader || ''));
+        if (!m) return null;
+        const parts = m[1].trim().split('.');
+        if (parts.length !== 3) return null;
+        const [h, p, sig] = parts;
+        const expected = crypto.createHmac('sha256', SHOPIFY_API_SECRET).update(h + '.' + p).digest('base64url');
+        const a = Buffer.from(sig), b = Buffer.from(expected);
+        if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+        const payload = JSON.parse(Buffer.from(p, 'base64url').toString('utf8'));
+        const now = Math.floor(Date.now() / 1000);
+        if (payload.exp && now >= Number(payload.exp) + 10) return null;        // +10s de skew
+        if (payload.nbf && now < Number(payload.nbf) - 10) return null;
+        if (payload.aud && SHOPIFY_API_KEY && String(payload.aud) !== String(SHOPIFY_API_KEY)) return null;
+        return payload; // { iss, dest, aud, sub (customer GID), exp, ... }
+    } catch (_) { return null; }
+}
+
+// Resuelve email del customer (por su id Shopify) + sus suscripciones reales.
+async function _customerSubsByShopifyId(customerId, { canMintLinks = false } = {}) {
+    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+    const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+    let customerEmail = null, customerName = null;
+    if (token && customerId) {
+        try {
+            const r = await fetch(`https://${shop}/admin/api/2026-01/customers/${customerId}.json?fields=id,email,first_name,last_name`, { headers: { 'X-Shopify-Access-Token': token } });
+            if (r.ok) { const d = await r.json(); customerEmail = d.customer?.email; customerName = `${d.customer?.first_name || ''} ${d.customer?.last_name || ''}`.trim(); }
+        } catch (_) {}
+    }
+    if (!customerEmail) return { email: null, name: customerName, subscriptions: [] };
+    const allSubs = await db.getSubscriptions().catch(() => []);
+    const filtered = (Array.isArray(allSubs) ? allSubs : [])
+        .filter(s => (s.customer_email || '').toLowerCase() === customerEmail.toLowerCase() && s.status !== 'pending_payment');
+    const subs = await Promise.all(filtered.map(async s => {
+        const out = {
+            id: s.id, product_title: s.product_title, product_image: s.product_image,
+            status: s.status, cycles_completed: parseInt(s.cycles_completed || 0), cycles_required: parseInt(s.cycles_required || 0),
+            frequency_months: s.frequency_months, permanence_months: s.permanence_months,
+            base_price: s.base_price, final_price: s.final_price, mp_total_amount: s.mp_total_amount,
+            next_charge_at: s.next_charge_at, last_charge_at: s.last_charge_at,
+            needs_payment_update: !!s.needs_payment_update,
+            mp_update_url: s.mp_preapproval_id ? _mpCustomerDashboardUrl(s.mp_preapproval_id) : null,
+            payment_link: null, reauth_link: null
+        };
+        if (s.needs_payment_update && canMintLinks) {
+            try { out.payment_link = (await _getOrCreateRecoveryLink(s, { by: 'account_ext' })).url; } catch (_) {}
+            try { out.reauth_link = (await _getOrCreateReauthLink(s, { by: 'account_ext' })).url; } catch (_) {}
+        }
+        return out;
+    }));
+    return { email: customerEmail, name: customerName, subscriptions: subs };
+}
+
+// Helper: valida token + que la sub pertenezca al customer del token.
+async function _accountExtOwnsSub(req, subId) {
+    const payload = _verifyCustomerSessionToken(req.get('authorization'));
+    if (!payload) return { ok: false, code: 401, error: 'Sesión inválida o expirada.' };
+    const customerId = String(payload.sub || '').replace(/\D/g, '');
+    if (!customerId) return { ok: false, code: 401, error: 'No se pudo identificar tu cuenta.' };
+    const sub = await db.getSubscription(subId).catch(() => null);
+    if (!sub) return { ok: false, code: 404, error: 'Suscripción no encontrada.' };
+    const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+    const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+    let email = null;
+    if (token) { try { const r = await fetch(`https://${shop}/admin/api/2026-01/customers/${customerId}.json?fields=email`, { headers: { 'X-Shopify-Access-Token': token } }); if (r.ok) email = (await r.json()).customer?.email; } catch (_) {} }
+    if (!email || (sub.customer_email || '').toLowerCase() !== email.toLowerCase()) return { ok: false, code: 403, error: 'No autorizado.' };
+    return { ok: true, sub };
+}
+
+// GET: suscripciones del cliente autenticado + config del portal (benefits, BD, permisos).
+app.get('/api/account-ext/me', async (req, res) => {
+    const payload = _verifyCustomerSessionToken(req.get('authorization'));
+    if (!payload) return res.status(401).json({ error: 'Sesión inválida o expirada.' });
+    const customerId = String(payload.sub || '').replace(/\D/g, '');
+    let pc = {};
+    try { const s = await readFromShopify().catch(() => ({})); pc = (s && s.portal_config) || {}; } catch (_) {}
+    const portal = {
+        page_title: pc.page_title || 'Mi Suscripción',
+        benefits: Array.isArray(pc.benefits) ? pc.benefits.filter(b => b && b.title) : [],
+        benefits_title: pc.benefits_title || 'Beneficios de tu membresía',
+        bd_title: pc.bd_title || '', bd_subtitle: pc.bd_subtitle || '',
+        bd_btn_text: pc.bd_btn_text || '', bd_btn_url: pc.bd_btn_url || '',
+        whatsapp_number: String(pc.whatsapp_number || '').replace(/\D/g, ''),
+        whatsapp_message: pc.whatsapp_message || 'Hola, soy suscriptor de Lab Nutrition y necesito ayuda.',
+        allow_pause: pc.allow_pause !== false,
+        allow_cancel: pc.allow_cancel !== false
+    };
+    if (!customerId) return res.json({ is_member: false, subscriptions: [], portal });
+    const { email, name, subscriptions } = await _customerSubsByShopifyId(customerId, { canMintLinks: true });
+    res.json({ is_member: subscriptions.length > 0, customer_id: customerId, email, name, subscriptions, portal });
+});
+
+// POST pausar (gated por allow_pause).
+app.post('/api/account-ext/sub/:id/pause', async (req, res) => {
+    try {
+        const own = await _accountExtOwnsSub(req, req.params.id);
+        if (!own.ok) return res.status(own.code).json({ error: own.error });
+        if (!(await _portalPermAllowed('allow_pause'))) return res.status(403).json({ error: 'La pausa de suscripciones está deshabilitada por la tienda.' });
+        const sub = own.sub;
+        if (sub.status !== 'active') return res.status(400).json({ error: 'Solo puedes pausar una suscripción activa.' });
+        if (mp.pauseSubscription && sub.mp_preapproval_id) await mp.pauseSubscription(sub.mp_preapproval_id).catch(() => {});
+        const pausedUntil = new Date(); pausedUntil.setMonth(pausedUntil.getMonth() + 1);
+        await db.updateSubscription(sub.id, { status: 'paused', paused_until: pausedUntil.toISOString() });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'paused_by_customer', metadata: JSON.stringify({ via: 'account_ext' }) }).catch(() => {});
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST reanudar.
+app.post('/api/account-ext/sub/:id/resume', async (req, res) => {
+    try {
+        const own = await _accountExtOwnsSub(req, req.params.id);
+        if (!own.ok) return res.status(own.code).json({ error: own.error });
+        const sub = own.sub;
+        if (sub.status !== 'paused') return res.status(400).json({ error: 'La suscripción no está pausada.' });
+        if (mp.resumeSubscription && sub.mp_preapproval_id) await mp.resumeSubscription(sub.mp_preapproval_id).catch(() => {});
+        await db.updateSubscription(sub.id, { status: 'active', paused_until: null });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'resumed_by_customer', metadata: JSON.stringify({ via: 'account_ext' }) }).catch(() => {});
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST cancelar (gated por allow_cancel). Cancelación simple (igual que portal-v2).
+app.post('/api/account-ext/sub/:id/cancel', async (req, res) => {
+    try {
+        const own = await _accountExtOwnsSub(req, req.params.id);
+        if (!own.ok) return res.status(own.code).json({ error: own.error });
+        if (!(await _portalPermAllowed('allow_cancel'))) return res.status(403).json({ error: 'La cancelación desde el portal está deshabilitada por la tienda.' });
+        const sub = own.sub;
+        if (sub.status === 'cancelled') return res.json({ success: true, already_cancelled: true });
+        if (mp.cancelSubscription && sub.mp_preapproval_id) await mp.cancelSubscription(sub.mp_preapproval_id).catch(() => {});
+        await db.updateSubscription(sub.id, { status: 'cancelled', cancelled_at: new Date().toISOString(), cancelled_by: 'customer' });
+        await db.createEvent({ subscription_id: sub.id, event_type: 'cancelled_by_customer', metadata: JSON.stringify({ via: 'account_ext' }) }).catch(() => {});
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ═══════════════════════════════════════════════════════════════════
    🆕 UPDATE CARD page + endpoint
    /portal/v2/update-card?token=xxx — vista web del problema + deep link MP
    ═══════════════════════════════════════════════════════════════════ */
