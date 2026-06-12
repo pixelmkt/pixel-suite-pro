@@ -7028,7 +7028,7 @@ app.get('/api/public-config', async (req, res) => {
             widget_enabled: merged.widget_enabled !== false,
             discount_badge_text: merged.discount_badge_text || '',
             mp_public_key: merged.mp_public_key || '',
-            build: '2026-06-11.2' // marcador de deploy (verificación sin auth)
+            build: '2026-06-11.4' // marcador de deploy (verificación sin auth)
         });
     } catch (e) { res.json({ brand_name: '', brand_slogan: '', brand_logo: '' }); }
 });

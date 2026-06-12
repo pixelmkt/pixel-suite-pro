@@ -2525,57 +2525,121 @@
       } catch (e) { alert('Error: ' + e.message); }
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // 🆕 2026-06-11 — MODALES PROPIOS (NO native alert/confirm/clipboard).
+    //   Dentro del iframe de Shopify Admin, alert()/confirm()/prompt() están
+    //   BLOQUEADOS y navigator.clipboard suele fallar → al hacer click en
+    //   "Link pago" no pasaba NADA visible. Estos modales in-page funcionan
+    //   en cualquier contexto (Shopify embebido o standalone).
+    // ════════════════════════════════════════════════════════════════
+    function _copyText(text, btn) {
+      const done = () => { if (btn) { const t = btn.textContent; btn.textContent = '✓ Copiado'; btn.style.background = '#10B981'; setTimeout(() => { btn.textContent = t; btn.style.background = ''; }, 1600); } };
+      const fallback = () => {
+        const ta = document.createElement('textarea'); ta.value = text;
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0'; document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done).catch(fallback);
+      } else { fallback(); }
+    }
+
+    function _closeModal() { const m = document.getElementById('psp-modal'); if (m) m.remove(); }
+
+    // Modal de confirmación (reemplaza confirm()). Devuelve Promise<boolean>.
+    function _confirmModal({ title, body, okText = 'Sí, continuar', cancelText = 'Cancelar', danger = false }) {
+      return new Promise(resolve => {
+        _closeModal();
+        const ov = document.createElement('div');
+        ov.id = 'psp-modal';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(10,10,10,.6);display:flex;align-items:center;justify-content:center;padding:20px';
+        ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;padding:26px;box-shadow:0 24px 60px rgba(0,0,0,.35)">' +
+          '<h2 style="margin:0 0 12px;font-size:18px;color:#0A0A0A">' + title + '</h2>' +
+          '<div style="font-size:14px;color:#374151;line-height:1.55;margin-bottom:22px">' + body + '</div>' +
+          '<div style="display:flex;gap:10px;justify-content:flex-end">' +
+          '<button id="psp-cancel" style="padding:10px 16px;border:1px solid #e5e7eb;background:#fff;border-radius:8px;font-size:14px;cursor:pointer">' + cancelText + '</button>' +
+          '<button id="psp-ok" style="padding:10px 18px;border:0;border-radius:8px;font-size:14px;font-weight:700;color:#fff;cursor:pointer;background:' + (danger ? '#E30613' : '#0A0A0A') + '">' + okText + '</button>' +
+          '</div></div>';
+        document.body.appendChild(ov);
+        ov.addEventListener('click', e => { if (e.target === ov) { _closeModal(); resolve(false); } });
+        document.getElementById('psp-cancel').onclick = () => { _closeModal(); resolve(false); };
+        document.getElementById('psp-ok').onclick = () => { _closeModal(); resolve(true); };
+      });
+    }
+
+    // Modal con el LINK real visible + botones Copiar / Abrir / WhatsApp.
+    function _linkModal({ title, meta, url, waUrl, accent = '#E30613' }) {
+      _closeModal();
+      const ov = document.createElement('div');
+      ov.id = 'psp-modal';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(10,10,10,.6);display:flex;align-items:center;justify-content:center;padding:20px';
+      ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:540px;width:100%;padding:26px;box-shadow:0 24px 60px rgba(0,0,0,.35)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:6px"><h2 style="margin:0;font-size:18px;color:#0A0A0A">' + title + '</h2>' +
+        '<button id="psp-x" style="border:0;background:none;font-size:22px;line-height:1;color:#9ca3af;cursor:pointer">×</button></div>' +
+        '<div style="font-size:13px;color:#6B7280;margin-bottom:16px">' + (meta || '') + '</div>' +
+        '<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9ca3af">Link de pago</label>' +
+        '<input id="psp-link" readonly value="' + url + '" style="width:100%;box-sizing:border-box;margin:6px 0 16px;padding:11px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;color:#0A0A0A;background:#F9FAFB" />' +
+        '<div style="display:flex;flex-wrap:wrap;gap:8px">' +
+        '<button id="psp-copy" style="flex:1;min-width:120px;padding:11px;border:0;border-radius:8px;font-size:14px;font-weight:700;color:#fff;cursor:pointer;background:' + accent + '">📋 Copiar link</button>' +
+        '<button id="psp-open" style="flex:1;min-width:120px;padding:11px;border:1px solid #e5e7eb;background:#fff;border-radius:8px;font-size:14px;cursor:pointer">🔗 Abrir / Probar</button>' +
+        (waUrl ? '<button id="psp-wa" style="flex:1;min-width:120px;padding:11px;border:0;border-radius:8px;font-size:14px;font-weight:700;color:#fff;cursor:pointer;background:#25D366">💬 Enviar WhatsApp</button>' : '') +
+        '</div>' +
+        '<p style="font-size:12px;color:#9ca3af;margin:16px 0 0;line-height:1.5">Cuando el cliente pague, su pedido se crea solo y este caso desaparece de la lista.</p>' +
+        '</div>';
+      document.body.appendChild(ov);
+      ov.addEventListener('click', e => { if (e.target === ov) _closeModal(); });
+      document.getElementById('psp-x').onclick = _closeModal;
+      document.getElementById('psp-copy').onclick = (e) => { const inp = document.getElementById('psp-link'); inp.select(); _copyText(url, e.currentTarget); };
+      document.getElementById('psp-open').onclick = () => window.open(url, '_blank');
+      const wb = document.getElementById('psp-wa'); if (wb) wb.onclick = () => window.open(waUrl, '_blank');
+      // Auto-seleccionar el texto del link para copiar manual fácil
+      setTimeout(() => { const inp = document.getElementById('psp-link'); if (inp) inp.select(); }, 50);
+    }
+
     async function clearFailedFlag(subId) {
-      if (!confirm('Marcar como RESUELTO? (la sub deja la lista de pendientes)')) return;
+      if (!(await _confirmModal({ title: 'Marcar como resuelto', body: 'La suscripción dejará la lista de pendientes. ¿Confirmás?', okText: 'Sí, marcar resuelto' }))) return;
       try {
         const r = await fetch('/api/admin/failed-payments/' + subId + '/clear-flag', { method: 'POST' });
         const d = await r.json();
-        if (d.success) { alert('✓ Marcado resuelto'); loadFailedPayments(); }
-        else alert('Error: ' + (d.error || 'fallo'));
-      } catch (e) { alert('Error: ' + e.message); }
+        if (d.success) { loadFailedPayments(); }
+        else _confirmModal({ title: 'Error', body: (d.error || 'No se pudo'), okText: 'Cerrar', cancelText: 'Cerrar' });
+      } catch (e) { _confirmModal({ title: 'Error', body: e.message, okText: 'Cerrar', cancelText: 'Cerrar' }); }
     }
 
-    // 🆕 2026-06-11: RE-AUTORIZACIÓN — para clientes cuya tarjeta MURIÓ y no
-    // pueden entrar a su cuenta MP. Genera checkout con los ciclos restantes;
-    // al autorizar la tarjeta nueva, MP cobra el mes pendiente de inmediato y
-    // el backend cancela el preapproval viejo y engancha el nuevo (sin duplicar).
-    // ⚠️ Enviar SOLO si el cliente confirma que su tarjeta ya no sirve.
+    // 🆕 RE-AUTORIZACIÓN — clientes cuya tarjeta MURIÓ y no pueden entrar a su
+    // cuenta MP. Genera checkout con los ciclos restantes; al autorizar la
+    // tarjeta nueva MP cobra el mes pendiente y el backend hace el swap.
     async function getReauthLink(subId, phone, firstName) {
-      if (!confirm('⚠️ SOLO para clientes cuya tarjeta YA NO SIRVE.\n\nEl cliente registra su tarjeta nueva, MP le cobra el mes pendiente AHÍ MISMO, y su plan continúa solo (la suscripción vieja se cancela automáticamente).\n\nSi el cliente puede pagar con su tarjeta actual, usa "Link pago" en su lugar.\n\n¿Generar link de tarjeta nueva?')) return;
+      const ok = await _confirmModal({
+        title: '🔁 Link de tarjeta nueva',
+        body: '<b>Solo para clientes cuya tarjeta ya no sirve.</b><br><br>El cliente registra su tarjeta nueva, MP le cobra el mes pendiente ahí mismo, y su plan continúa solo (la suscripción vieja se cancela automáticamente).<br><br>Si el cliente puede pagar con su tarjeta actual, usá <b>"Link pago"</b> en su lugar.',
+        okText: 'Generar link tarjeta nueva', danger: true
+      });
+      if (!ok) return;
       try {
         const r = await fetch('/api/admin/failed-payments/' + subId + '/reauthorize-link', { method: 'POST' });
         const d = await r.json();
-        if (!d.success || !d.url) { alert('Error: ' + (d.error || 'No se pudo generar')); return; }
-        let copied = false;
-        try { await navigator.clipboard.writeText(d.url); copied = true; } catch {}
-        const info = '🔁 Link tarjeta nueva — ' + d.remaining_cycles + ' meses restantes' + (d.reused ? ' (reutilizado)' : ' (nuevo)') + '\n\n' + d.url + (copied ? '\n\n✓ Copiado al portapapeles.' : '');
-        if (phone) {
-          const wa = 'https://wa.me/' + (phone.startsWith('51') ? phone : '51' + phone) + '?text=' + encodeURIComponent('Hola ' + (firstName || '') + ', te escribo de Lab Nutrition. Para reactivar tu suscripción con tu tarjeta nueva entra acá: ' + d.url + ' — Registras tu tarjeta una sola vez, se cobra el mes pendiente y tu plan continúa automático. ¡Gracias!');
-          if (confirm(info + '\n\n¿Abrir WhatsApp con el mensaje listo?')) window.open(wa, '_blank');
-        } else { alert(info); }
+        if (!d.success || !d.url) { _confirmModal({ title: 'Error', body: (d.error || 'No se pudo generar'), okText: 'Cerrar', cancelText: 'Cerrar' }); return; }
+        const wa = phone ? ('https://wa.me/' + (phone.startsWith('51') ? phone : '51' + phone) + '?text=' + encodeURIComponent('Hola ' + (firstName || '') + ', te escribo de Lab Nutrition. Para reactivar tu suscripción con tu tarjeta nueva entrá acá: ' + d.url + ' — Registrás tu tarjeta una sola vez, se cobra el mes pendiente y tu plan continúa automático. ¡Gracias!')) : null;
+        _linkModal({ title: '🔁 Link tarjeta nueva', meta: d.remaining_cycles + ' meses restantes' + (d.reused ? ' · (link reutilizado <7d)' : ' · (nuevo)'), url: d.url, waUrl: wa, accent: '#7C3AED' });
         loadFailedPayments();
-      } catch (e) { alert('Error: ' + e.message); }
+      } catch (e) { _confirmModal({ title: 'Error', body: e.message, okText: 'Cerrar', cancelText: 'Cerrar' }); }
     }
 
-    // 🆕 2026-06-11: link de PAGO real para el ciclo rechazado (Preference MP).
-    // El cliente paga con cualquier medio — no necesita su cuenta MP — y el
-    // backend crea la orden + limpia el caso automáticamente (webhook subrecovery).
+    // 🆕 link de PAGO real para el ciclo rechazado (Preference MP). El cliente
+    // paga con cualquier medio — no necesita su cuenta MP — y el backend crea
+    // la orden + limpia el caso automáticamente (webhook subrecovery).
     async function getPaymentLink(subId, phone, firstName) {
       try {
         const r = await fetch('/api/admin/failed-payments/' + subId + '/payment-link', { method: 'POST' });
         const d = await r.json();
-        if (!d.success || !d.url) { alert('Error: ' + (d.error || 'No se pudo generar el link')); return; }
-        let copied = false;
-        try { await navigator.clipboard.writeText(d.url); copied = true; } catch {}
-        const info = '💳 Link de pago — ciclo ' + d.cycle + ' · S/ ' + (parseFloat(d.amount)||0).toFixed(2) + (d.reused ? ' (reutilizado)' : ' (nuevo)') + '\n\n' + d.url + (copied ? '\n\n✓ Copiado al portapapeles.' : '');
-        if (phone) {
-          const wa = 'https://wa.me/' + (phone.startsWith('51') ? phone : '51' + phone) + '?text=' + encodeURIComponent('Hola ' + (firstName || '') + ', te escribo de Lab Nutrition. El cobro de tu suscripción fue rechazado por el banco. Podés pagar el mes pendiente acá (cualquier tarjeta o medio de pago): ' + d.url + ' — Apenas pagues, tu pedido sale automático. ¡Gracias!');
-          if (confirm(info + '\n\n¿Abrir WhatsApp con el mensaje listo para enviar?')) window.open(wa, '_blank');
-        } else {
-          alert(info);
-        }
+        if (!d.success || !d.url) { _confirmModal({ title: 'Error', body: (d.error || 'No se pudo generar el link'), okText: 'Cerrar', cancelText: 'Cerrar' }); return; }
+        const wa = phone ? ('https://wa.me/' + (phone.startsWith('51') ? phone : '51' + phone) + '?text=' + encodeURIComponent('Hola ' + (firstName || '') + ', te escribo de Lab Nutrition. El cobro de tu suscripción fue rechazado por el banco. Podés pagar el mes pendiente acá (cualquier tarjeta, Yape o PagoEfectivo): ' + d.url + ' — Apenas pagues, tu pedido sale automático. ¡Gracias!')) : null;
+        _linkModal({ title: '💳 Link de pago — ciclo ' + d.cycle, meta: 'S/ ' + (parseFloat(d.amount) || 0).toFixed(2) + (d.reused ? ' · (link reutilizado <7d)' : ' · (nuevo)'), url: d.url, waUrl: wa, accent: '#E30613' });
         loadFailedPayments();
-      } catch (e) { alert('Error: ' + e.message); }
+      } catch (e) { _confirmModal({ title: 'Error', body: e.message, okText: 'Cerrar', cancelText: 'Cerrar' }); }
     }
 
     // Auto-load badge counter on startup
