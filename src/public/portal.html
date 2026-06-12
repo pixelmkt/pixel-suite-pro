@@ -268,7 +268,7 @@
             if (!list.length) return '';
             const layout = config.benefits_layout || 'grid';
             let h = '<div class="section-title">' + (config.benefits_title || 'Beneficios') + '</div><div class="card"><div class="card-inner"><div class="benefits-grid ' + (layout === 'list' ? 'layout-list' : '') + '">';
-            h += list.map((b, i) => '<div class="benefit"><div class="benefit-num">' + String(i + 1).padStart(2, '0') + '</div><div class="benefit-title">' + b.title + '</div><div class="benefit-desc">' + (b.description || '') + '</div></div>').join('');
+            h += list.map((b, i) => '<div class="benefit"><div class="benefit-num">' + (b.icon || String(i + 1).padStart(2, '0')) + '</div><div class="benefit-title">' + b.title + '</div><div class="benefit-desc">' + (b.description || '') + '</div></div>').join('');
             h += '</div></div></div>';
             return h;
           },
@@ -293,7 +293,7 @@
             if (!list.length) return '';
             let h = '<div class="section-title">' + (config.events_title || 'Próximos eventos') + '</div><div class="card"><div class="card-inner"><div class="timeline">';
             h += list.map(ev => '<div class="event">'
-              + '<div class="event-title">' + ev.title + '</div>'
+              + '<div class="event-title">' + (ev.badge ? ev.badge + ' ' : '') + ev.title + '</div>'
               + (ev.date ? '<div class="event-date">' + new Date(ev.date).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' }) + '</div>' : '')
               + (ev.description ? '<div class="event-desc">' + ev.description + '</div>' : '')
               + '</div>').join('');

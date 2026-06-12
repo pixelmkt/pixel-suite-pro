@@ -625,6 +625,17 @@ app.post('/api/subscriptions/create', _requireAdminToken, async (req, res) => {
     }
 });
 
+/* 🔒 2026-06-12: lee un permiso del portal del suscriptor. FAIL-OPEN por defecto:
+   solo bloquea si el admin lo apagó EXPLÍCITAMENTE (=== false). Así no rompemos
+   flujos existentes si el metafield aún no tiene el campo. */
+async function _portalPermAllowed(key) {
+    try {
+        const s = await readFromShopify().catch(() => ({}));
+        const cfg = (s && s.portal_config) || {};
+        return cfg[key] !== false;
+    } catch (_) { return true; }
+}
+
 /* ── PORTAL CONFIG — Beneficios, Producto semana, Eventos (EARLY REGISTRATION) ── */
 app.get('/api/portal-config', async (req, res) => {
     try {
@@ -633,7 +644,7 @@ app.get('/api/portal-config', async (req, res) => {
     } catch (e) { res.json({}); }
 });
 
-app.put('/api/portal-config', async (req, res) => {
+app.put('/api/portal-config', _requireAdminToken, async (req, res) => {
     try {
         const settings = await readFromShopify().catch(() => ({}));
         settings.portal_config = req.body;
@@ -863,9 +874,42 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
         const backUrl = `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/subscriptions/success?email=${encodeURIComponent(email)}&product=${encodeURIComponent(title)}`;
 
         // Create MP PreApprovalPlan + PreApproval → returns real init_point
+        // 🔒 HARDENING 2026-06-12: re-derivar precio server-side (anti-manipulación del
+        //   final_price desde el navegador — un cliente con DevTools podría fijar S/1/mes).
+        //   Solo modo legacy (no bundle). Si hay plan que aplica + precio real de variante
+        //   Shopify, IMPONEMOS el precio esperado (mismo cálculo que el widget). Si no se
+        //   puede resolver, respetamos el body para NO romper la venta.
+        let enforcedBasePrice = basePrice, enforcedFinalPrice = finalPrice, enforcedDiscPct = discPct;
+        if (!isBundleMode && vId) {
+            try {
+                const plansCfg = Array.isArray(dynSettings?.plans_config) ? dynSettings.plans_config : [];
+                const matchPlan = plansCfg.find(p => p && p.active !== false &&
+                    Number(p.frequency || p.freq_months) === freq &&
+                    Number(p.permanence || p.permanence_months) === perm &&
+                    planAppliesToProduct(p, pId));
+                const disc = matchPlan ? Number(matchPlan.discount) : NaN;
+                if (Number.isFinite(disc) && disc >= 0 && disc < 100) {
+                    const shopH = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+                    const pr = await fetch(`https://${shopH}/admin/api/2026-01/products/${encodeURIComponent(pId)}.json?fields=variants`, { headers: { 'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN } });
+                    if (pr.ok) {
+                        const pd = await pr.json();
+                        const v = (pd.product?.variants || []).find(x => String(x.id) === String(vId));
+                        const realBase = v ? parseFloat(v.price) : NaN;
+                        if (Number.isFinite(realBase) && realBase > 0) {
+                            const expected = parseFloat((realBase * (1 - disc / 100)).toFixed(2));
+                            if (Math.abs(expected - finalPrice) > 0.05 || Math.abs(realBase - basePrice) > 0.05) {
+                                console.warn(`[CHECKOUT] 🔒 Precio recalculado: body final S/${finalPrice} → impuesto S/${expected} (base real S/${realBase}, desc plan ${disc}%). Cliente ${email}, prod ${pId}.`);
+                            }
+                            enforcedBasePrice = realBase; enforcedFinalPrice = expected; enforcedDiscPct = disc;
+                        }
+                    }
+                }
+            } catch (e) { console.warn('[CHECKOUT] price re-derivation skip (usa body):', e.message); }
+        }
+
         // Amount includes product price + shipping (S/10.00)
         const shippingCost = 10.00;
-        const totalAmount = parseFloat((finalPrice + shippingCost).toFixed(2));
+        const totalAmount = parseFloat((enforcedFinalPrice + shippingCost).toFixed(2));
         const checkout = await mp.createCheckout({
             frequency: freq,
             permanence: perm,
@@ -895,9 +939,9 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
             product_image: image,
             frequency_months: freq,
             permanence_months: perm,
-            discount_pct: discPct,
-            base_price: basePrice,
-            final_price: parseFloat(finalPrice.toFixed(2)),
+            discount_pct: enforcedDiscPct,
+            base_price: enforcedBasePrice,
+            final_price: parseFloat(enforcedFinalPrice.toFixed(2)),
             shipping_cost: shippingCost,
             mp_total_amount: totalAmount,
             mp_plan_id: checkout.plan_id || '',
@@ -7235,6 +7279,7 @@ app.post('/api/portal/v2/sub/:id/pause', async (req, res) => {
     try {
         const payload = _portalV2VerifyToken(req.query.token);
         if (!payload || !payload.sub_ids.includes(req.params.id)) return res.status(401).json({ error: 'No autorizado' });
+        if (!(await _portalPermAllowed('allow_pause'))) return res.status(403).json({ error: 'La pausa de suscripciones está deshabilitada por la tienda. Escríbenos por WhatsApp y te ayudamos.' });
         const { pauseMonths = 1 } = req.body || {};
         const sub = await db.getSubscription(req.params.id);
         if (!sub || sub.status !== 'active') return res.status(400).json({ error: 'No se puede pausar' });
@@ -7291,6 +7336,7 @@ app.post('/api/portal/v2/sub/:id/cancel', async (req, res) => {
     try {
         const payload = _portalV2VerifyToken(req.query.token);
         if (!payload || !payload.sub_ids.includes(req.params.id)) return res.status(401).json({ error: 'No autorizado' });
+        if (!(await _portalPermAllowed('allow_cancel'))) return res.status(403).json({ error: 'La cancelación desde el portal está deshabilitada por la tienda. Escríbenos por WhatsApp para gestionarla.' });
         const sub = await db.getSubscription(req.params.id);
         if (!sub) return res.status(404).json({ error: 'Not found' });
         if (sub.status === 'cancelled') return res.json({ success: true, already_cancelled: true });
@@ -7312,6 +7358,7 @@ app.get('/api/portal/subscription/:id/history', async (req, res) => {
 /* POST /api/portal/subscription/:id/pause — MUST be before :email route */
 app.post('/api/portal/subscription/:id/pause', async (req, res) => {
     try {
+        if (!(await _portalPermAllowed('allow_pause'))) return res.status(403).json({ error: 'La pausa de suscripciones está deshabilitada por la tienda. Escríbenos por WhatsApp y te ayudamos.' });
         const { pauseMonths = 1 } = req.body;
         const sub = await db.getSubscription(req.params.id);
         if (!sub || sub.status !== 'active') return res.status(400).json({ error: 'Cannot pause' });

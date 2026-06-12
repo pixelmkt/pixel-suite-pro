@@ -1759,9 +1759,11 @@
                 <div><div style="font-weight:600;font-size:13px">Cancelar suscripción</div><div style="font-size:11px;color:var(--mut)">El cliente puede cancelar dentro de la ventana permitida</div></div>
                 <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-cancel" checked><span class="tslide"></span></label>
               </label>
-              <label style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid var(--bdr)">
-                <div><div style="font-weight:600;font-size:13px">Cambiar frecuencia</div><div style="font-size:11px;color:var(--mut)">El cliente puede cambiar de mensual a bimestral</div></div>
-                <label class="toggle-wrap"><span class="toggle"><input type="checkbox" id="p-allow-freq"><span class="tslide"></span></label>
+              <!-- 2026-06-12: "Cambiar frecuencia" OCULTO — todavía no existe una acción de
+                   cambio de frecuencia para el cliente, así que no prometemos lo que no hace.
+                   El input queda en el DOM (display:none) para no romper el JS de guardado. -->
+              <label style="display:none">
+                <input type="checkbox" id="p-allow-freq">
               </label>
             </div>
           </div>
@@ -4566,28 +4568,10 @@
     }
 
     // ──── PORTAL CLIENTE ────
-    async function loadPortalConfig() {
-      document.getElementById('portal-url').textContent = window.location.origin + '/portal';
-      try {
-        const cfg = await api('/api/settings').catch(() => ({}));
-        if (cfg.portal_allow_pause !== undefined) document.getElementById('p-allow-pause').checked = cfg.portal_allow_pause;
-        if (cfg.portal_allow_cancel !== undefined) document.getElementById('p-allow-cancel').checked = cfg.portal_allow_cancel;
-        if (cfg.portal_allow_freq !== undefined) document.getElementById('p-allow-freq').checked = cfg.portal_allow_freq;
-      } catch (e) { }
-    }
-
-    async function savePortalConfig() {
-      const body = {
-        portal_allow_pause: document.getElementById('p-allow-pause').checked,
-        portal_allow_cancel: document.getElementById('p-allow-cancel').checked,
-        portal_allow_freq: document.getElementById('p-allow-freq').checked,
-      };
-      try {
-        await api('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        toast('💾 Permisos del portal guardados');
-      } catch (e) { toast('Error: ' + e.message, 'err'); }
-    }
-
+    // 2026-06-12: par duplicado loadPortalConfig/savePortalConfig ELIMINADO.
+    //   Esta versión vieja escribía portal_allow_* a /api/settings (campos que NINGÚN
+    //   consumidor leía) y quedaba sombreada por hoisting. Las versiones vivas y completas
+    //   están más abajo (~5938/5998) y usan /api/portal-config. (Auditoría 2026-06-12.)
 
     // ──── SETUP GUIDE ────
     let _setupOpen = true;
@@ -5912,10 +5896,12 @@
       events: 'Eventos y promos',
       ctas: 'Botones de acción',
       custom_html: 'HTML personalizado',
-      subscriptions: 'Mis suscripciones (del cliente)',
-      whatsapp: 'Botón de WhatsApp'
+      my_subscriptions: 'Mis suscripciones (del cliente)'
     };
-    let _sectionOrder = ['bd_cta', 'banner', 'benefits', 'product', 'events', 'ctas', 'custom_html', 'subscriptions', 'whatsapp'];
+    // 2026-06-12 FIX: la clave era 'subscriptions' pero el portal renderiza 'my_subscriptions'
+    //   → reordenar "Mis suscripciones" no hacía nada. 'whatsapp' se retiró de la lista:
+    //   es un botón flotante que se pinta fuera del bucle y nunca fue reordenable.
+    let _sectionOrder = ['bd_cta', 'banner', 'benefits', 'product', 'events', 'ctas', 'custom_html', 'my_subscriptions'];
     function renderSectionOrder() {
       const el = document.getElementById('section-order-list');
       if (!el) return;
