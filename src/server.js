@@ -874,33 +874,75 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
         const backUrl = `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/subscriptions/success?email=${encodeURIComponent(email)}&product=${encodeURIComponent(title)}`;
 
         // Create MP PreApprovalPlan + PreApproval → returns real init_point
-        // 🔒 HARDENING 2026-06-12: re-derivar precio server-side (anti-manipulación del
-        //   final_price desde el navegador — un cliente con DevTools podría fijar S/1/mes).
-        //   Solo modo legacy (no bundle). Si hay plan que aplica + precio real de variante
-        //   Shopify, IMPONEMOS el precio esperado (mismo cálculo que el widget). Si no se
-        //   puede resolver, respetamos el body para NO romper la venta.
+        // 🔒 HARDENING 2026-06-12 (v2): re-derivación de precio server-side.
+        //   Prioridad de la verdad:
+        //   1) PRECIO FIJO del admin (product_configs[pId].plans[].force_price) → se cobra
+        //      EXACTO ese monto, sí o sí (es lo que Israel elige, ej. redondear 89.50→90).
+        //   2) Sin precio fijo: piso anti-fraude = basePrice real de la variante × (1 - % del
+        //      plan maestro). Si el body llega POR DEBAJO del piso (DevTools), se impone el
+        //      piso. Si llega IGUAL o ALGO POR ENCIMA (redondeo del theme editor), se respeta
+        //      — el cliente ve y autoriza el monto en MP, subirlo no es vector de fraude.
+        //   3) Si nada se puede resolver, se respeta el body para NO romper la venta.
+        //   Solo modo legacy (no bundle).
         let enforcedBasePrice = basePrice, enforcedFinalPrice = finalPrice, enforcedDiscPct = discPct;
         if (!isBundleMode && vId) {
             try {
-                const plansCfg = Array.isArray(dynSettings?.plans_config) ? dynSettings.plans_config : [];
-                const matchPlan = plansCfg.find(p => p && p.active !== false &&
-                    Number(p.frequency || p.freq_months) === freq &&
-                    Number(p.permanence || p.permanence_months) === perm &&
-                    planAppliesToProduct(p, pId));
-                const disc = matchPlan ? Number(matchPlan.discount) : NaN;
-                if (Number.isFinite(disc) && disc >= 0 && disc < 100) {
+                // (1) Precio fijo por plan desde la Config del producto (admin)
+                const pcCfg = (dynSettings?.product_configs && dynSettings.product_configs[pId])
+                    || ((typeof dynSettings?.[pId] === 'object' && dynSettings[pId]?.plans) ? dynSettings[pId] : null) || {};
+                const pcPlans = (pcCfg && typeof pcCfg.plans === 'object') ? pcCfg.plans : {};
+                let forcePrice = NaN;
+                for (const k of Object.keys(pcPlans)) {
+                    const e = pcPlans[k] || {};
+                    if (e.enabled === false) continue;
+                    if (Number(e.frequency) !== freq || Number(e.permanence) !== perm) continue;
+                    const f = parseFloat(e.force_price);
+                    if (Number.isFinite(f) && f > 0) { forcePrice = f; }
+                    break;
+                }
+
+                // Precio real de variante en Shopify (base para piso y % informativos)
+                let realBase = NaN;
+                try {
                     const shopH = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
                     const pr = await fetch(`https://${shopH}/admin/api/2026-01/products/${encodeURIComponent(pId)}.json?fields=variants`, { headers: { 'X-Shopify-Access-Token': process.env.SHOPIFY_ACCESS_TOKEN } });
                     if (pr.ok) {
                         const pd = await pr.json();
                         const v = (pd.product?.variants || []).find(x => String(x.id) === String(vId));
-                        const realBase = v ? parseFloat(v.price) : NaN;
-                        if (Number.isFinite(realBase) && realBase > 0) {
-                            const expected = parseFloat((realBase * (1 - disc / 100)).toFixed(2));
-                            if (Math.abs(expected - finalPrice) > 0.05 || Math.abs(realBase - basePrice) > 0.05) {
-                                console.warn(`[CHECKOUT] 🔒 Precio recalculado: body final S/${finalPrice} → impuesto S/${expected} (base real S/${realBase}, desc plan ${disc}%). Cliente ${email}, prod ${pId}.`);
-                            }
-                            enforcedBasePrice = realBase; enforcedFinalPrice = expected; enforcedDiscPct = disc;
+                        realBase = v ? parseFloat(v.price) : NaN;
+                    }
+                } catch (_) {}
+
+                if (Number.isFinite(forcePrice)) {
+                    // (1) PRECIO FIJO: se cobra exacto, sí o sí.
+                    if (Math.abs(forcePrice - finalPrice) > 0.005) {
+                        console.warn(`[CHECKOUT] 🔒 Precio FIJO aplicado: body S/${finalPrice} → S/${forcePrice} (Config del producto). Cliente ${email}, prod ${pId}, plan ${freq}m/${perm}m.`);
+                    }
+                    enforcedFinalPrice = forcePrice;
+                    if (Number.isFinite(realBase) && realBase > 0) {
+                        enforcedBasePrice = realBase;
+                        enforcedDiscPct = Math.max(0, Math.round((1 - forcePrice / realBase) * 100));
+                    }
+                } else {
+                    // (2) Piso anti-fraude por % del plan maestro
+                    const plansCfg = Array.isArray(dynSettings?.plans_config) ? dynSettings.plans_config : [];
+                    const matchPlan = plansCfg.find(p => p && p.active !== false &&
+                        Number(p.frequency || p.freq_months) === freq &&
+                        Number(p.permanence || p.permanence_months) === perm &&
+                        planAppliesToProduct(p, pId));
+                    const disc = matchPlan ? Number(matchPlan.discount) : NaN;
+                    if (Number.isFinite(disc) && disc >= 0 && disc < 100 && Number.isFinite(realBase) && realBase > 0) {
+                        const floorPrice = parseFloat((realBase * (1 - disc / 100)).toFixed(2));
+                        const ceiling = floorPrice * 1.5 + 10; // sanity: un widget roto no debe cobrar de más
+                        if (finalPrice < floorPrice - 0.05) {
+                            console.warn(`[CHECKOUT] 🔒 Precio bajo el piso: body S/${finalPrice} → impuesto S/${floorPrice} (base S/${realBase}, ${disc}%). Cliente ${email}, prod ${pId}.`);
+                            enforcedBasePrice = realBase; enforcedFinalPrice = floorPrice; enforcedDiscPct = disc;
+                        } else if (finalPrice > ceiling) {
+                            console.warn(`[CHECKOUT] 🔒 Precio absurdo sobre techo: body S/${finalPrice} → impuesto S/${floorPrice}. Cliente ${email}, prod ${pId}.`);
+                            enforcedBasePrice = realBase; enforcedFinalPrice = floorPrice; enforcedDiscPct = disc;
+                        } else {
+                            // Dentro del rango sano (incluye redondeos hacia arriba del theme editor)
+                            if (Number.isFinite(realBase) && realBase > 0) enforcedBasePrice = realBase;
                         }
                     }
                 }

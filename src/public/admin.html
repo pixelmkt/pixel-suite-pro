@@ -5008,7 +5008,8 @@
             Planes disponibles — activa y configura el descuento para este producto
           </div>
           <div style="font-size:11px;color:var(--mut);margin-bottom:14px;background:#f8f8f8;padding:8px 12px;border-radius:6px">
-            Activa los planes que quieres para este producto. El descuento puede ser diferente al del plan global.
+            Activa los planes que quieres para este producto. El descuento puede ser diferente al del plan global.<br>
+            <strong style="color:#9d2a23">Precio fijo S/ (opcional):</strong> si lo defines, se cobra <strong>EXACTO ese monto por mes</strong> (ej. 90.00) sin importar el %. El envío S/ 10 se suma aparte. Déjalo vacío para usar el % de descuento.
           </div>
           <div class="disc-matrix" id="plan-assign-matrix">
             ${_drawerPlans.map(plan => {
@@ -5016,6 +5017,7 @@
               const saved = savedPlans[key] || {};
               const enabled = saved.enabled !== undefined ? saved.enabled : true;
               const disc = saved.discount !== undefined ? saved.discount : (plan.discount || 0);
+              const fp = (saved.force_price !== undefined && saved.force_price !== null && saved.force_price !== '') ? saved.force_price : '';
               return `<div class="disc-row" style="align-items:flex-start;flex-direction:column;gap:8px;padding:12px;border-radius:8px;border:1.5px solid ${enabled ? 'var(--red)' : 'var(--bdr)'};background:${enabled ? '#fff5f5' : '#fff'}" id="plan-row-${key}">
                 <div style="display:flex;width:100%;align-items:center;gap:10px">
                   <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1">
@@ -5034,6 +5036,13 @@
                       style="width:56px">
                     <span class="disc-pct">%</span>
                   </div>
+                  <div style="display:flex;align-items:center;gap:4px" title="Precio fijo opcional: si lo defines, se cobra EXACTO este monto por mes (el envío S/10 se suma aparte) y el % se ignora">
+                    <span style="font-size:11px;color:var(--mut);font-weight:700">S/</span>
+                    <input class="disc-input" type="number" id="plan-fp-${key}"
+                      min="0" step="0.10" value="${fp}" placeholder="auto"
+                      ${!enabled ? 'disabled' : ''}
+                      style="width:70px">
+                  </div>
                 </div>
               </div>`;
             }).join('')}
@@ -5048,8 +5057,10 @@
     function togglePlanRow(key, enabled) {
       const row = document.getElementById('plan-row-' + key);
       const inp = document.getElementById('plan-disc-' + key);
+      const fp = document.getElementById('plan-fp-' + key);
       if (row) { row.style.border = '1.5px solid ' + (enabled ? 'var(--red)' : 'var(--bdr)'); row.style.background = enabled ? '#fff5f5' : '#fff'; }
       if (inp) inp.disabled = !enabled;
+      if (fp) fp.disabled = !enabled;
     }
 
     function closeDrawer() {
@@ -5066,9 +5077,12 @@
         const enabledEl = document.getElementById('plan-en-' + key);
         const discEl = document.getElementById('plan-disc-' + key);
         if (!enabledEl || !discEl) return;
+        const fpEl = document.getElementById('plan-fp-' + key);
+        const fpVal = (fpEl && fpEl.value !== '') ? parseFloat(fpEl.value) : null;
         plansConfig[key] = {
           enabled: enabledEl.checked,
           discount: parseInt(discEl.value) || 0,
+          force_price: (Number.isFinite(fpVal) && fpVal > 0) ? fpVal : null,
           frequency: plan.frequency,
           permanence: plan.permanence,
           label: (plan.frequency === 1 ? 'Mensual' : plan.frequency === 2 ? 'Bimestral' : `Cada ${plan.frequency} meses`) + ' · ' + plan.permanence + ' meses'

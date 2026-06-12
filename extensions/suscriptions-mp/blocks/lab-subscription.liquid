@@ -516,6 +516,13 @@ Para consultas sobre tu suscripción: asesorecommerce@labnutrition.pe
               var o = overrides[i];
               if (o) { p.forcePrice = parseFloat(o.replace(',', '.')); p.hasForce = !isNaN(p.forcePrice); }
             });
+            // 2026-06-12: PRECIO FIJO desde el ADMIN del app (Config del producto →
+            // plans[].force_price). Tiene PRIORIDAD sobre el override del theme editor
+            // porque el servidor cobra exactamente este valor (re-derivación server-side).
+            activePlans.forEach(function(p) {
+              var fp = parseFloat(p.force_price);
+              if (!isNaN(fp) && fp > 0) { p.forcePrice = fp; p.hasForce = true; }
+            });
             buildChipsFromPlans(activePlans);
           }
         })
