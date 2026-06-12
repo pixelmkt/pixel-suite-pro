@@ -51,6 +51,10 @@
   {% endif %}
 
   <!-- MODE TOGGLE -->
+  {% comment %} 2026-06-12: pestaña "Compra única" OCULTA por defecto (pedido de Israel).
+     Era un panel vacío — la compra normal la maneja el botón nativo del tema, así que
+     la pestaña solo confundía. Reactivable con el checkbox show_one_time_tab. {% endcomment %}
+  {% if block.settings.show_one_time_tab %}
   <div class="lab-sub__toggle">
     <button class="lab-sub__tab lab-sub__tab--active" data-tab="once">Compra única</button>
     <button class="lab-sub__tab" data-tab="sub">
@@ -65,9 +69,10 @@
   <div class="lab-sub__panel lab-sub__panel--active" data-panel="once">
     {% comment %} Compra única uses normal add to cart {% endcomment %}
   </div>
+  {% endif %}
 
   <!-- SUBSCRIPTION PANEL -->
-  <div class="lab-sub__panel" data-panel="sub">
+  <div class="lab-sub__panel{% unless block.settings.show_one_time_tab %} lab-sub__panel--active{% endunless %}" data-panel="sub">
 
     <!-- Variant restriction notice — only shows when non-eligible variant is selected -->
     <div class="lab-sub__variant-notice" id="variant-notice-{{ block.id }}" style="display:none;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:10px;padding:14px 16px;margin-bottom:16px;text-align:center">
@@ -681,6 +686,13 @@ Para consultas sobre tu suscripción: asesorecommerce@labnutrition.pe
       "id": "show_header",
       "label": "Mostrar header (SUSCRÍBETE)",
       "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_one_time_tab",
+      "label": "Mostrar pestaña 'Compra única'",
+      "info": "Apagado: el widget muestra solo la suscripción. La compra normal la maneja el botón propio del tema.",
+      "default": false
     },
     {
       "type": "text",
