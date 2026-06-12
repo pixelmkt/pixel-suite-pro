@@ -2503,7 +2503,7 @@
     }
 
     async function runDunningNow() {
-      if (!confirm('Escanear MP ahora para detectar cobros rechazados? Tarda 1-2 min.')) return;
+      if (!(await _confirmModal({ title: '🔍 Escanear MercadoPago', body: 'Escanea MP ahora para detectar cobros rechazados nuevos y reanudar suscripciones pausadas. Tarda 1-2 min.', okText: 'Escanear ahora' }))) return;
       try {
         const r = await fetch('/api/admin/run-dunning-now', { method: 'POST' });
         const d = await r.json();
@@ -2512,7 +2512,7 @@
     }
 
     async function resendFailedEmail(subId, email) {
-      if (!confirm('Reenviar email de aviso a ' + email + '?')) return;
+      if (!(await _confirmModal({ title: '✉️ Reenviar aviso', body: 'Reenviar email de aviso a <b>' + email + '</b>?', okText: 'Reenviar' }))) return;
       try {
         const r = await fetch('/api/admin/failed-payments/' + subId + '/resend-email', { method: 'POST' });
         const d = await r.json();
@@ -2548,6 +2548,30 @@
 
     function _closeModal() { const m = document.getElementById('psp-modal'); if (m) m.remove(); }
 
+    // 🆕 Toast apilable multilínea (para mensajes largos que el #toast de 1 línea no soporta)
+    function _stackToast(msg) {
+      let host = document.getElementById('psp-toasts');
+      if (!host) {
+        host = document.createElement('div');
+        host.id = 'psp-toasts';
+        host.style.cssText = 'position:fixed;top:16px;right:16px;z-index:100001;display:flex;flex-direction:column;gap:8px;max-width:400px';
+        document.body.appendChild(host);
+      }
+      const t = document.createElement('div');
+      const isErr = /error|❌|fall|no se pudo|inválid|invalid|rechaz/i.test(msg);
+      t.style.cssText = 'background:' + (isErr ? '#7F1D1D' : '#0A0A0A') + ';color:#fff;padding:12px 16px;border-radius:10px;font-size:13px;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.25);white-space:pre-wrap;word-break:break-word;cursor:pointer';
+      t.textContent = msg;
+      t.onclick = () => t.remove();
+      host.appendChild(t);
+      setTimeout(() => { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, Math.min(10000, 3500 + msg.length * 25));
+    }
+
+    // 🆕 SHIM GLOBAL 2026-06-11: window.alert está BLOQUEADO dentro del iframe de
+    //   Shopify Admin (los ~31 alert() del panel no mostraban NADA embebidos).
+    //   Redirige a toast in-page no bloqueante. Cubre todos los call-sites de golpe.
+    window._nativeAlert = window.alert;
+    window.alert = function (msg) { try { _stackToast(String(msg)); } catch (e) { try { window._nativeAlert(msg); } catch (_) {} } };
+
     // Modal de confirmación (reemplaza confirm()). Devuelve Promise<boolean>.
     function _confirmModal({ title, body, okText = 'Sí, continuar', cancelText = 'Cancelar', danger = false }) {
       return new Promise(resolve => {
@@ -2566,6 +2590,24 @@
         ov.addEventListener('click', e => { if (e.target === ov) { _closeModal(); resolve(false); } });
         document.getElementById('psp-cancel').onclick = () => { _closeModal(); resolve(false); };
         document.getElementById('psp-ok').onclick = () => { _closeModal(); resolve(true); };
+      });
+    }
+
+    // Modal de selección (reemplaza prompt() para elegir de una lista). Devuelve Promise<index|-1>.
+    function _pickOneModal({ title, options }) {
+      return new Promise(resolve => {
+        _closeModal();
+        const ov = document.createElement('div');
+        ov.id = 'psp-modal';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(10,10,10,.6);display:flex;align-items:center;justify-content:center;padding:20px';
+        const opts = options.map((o, i) => '<button data-i="' + i + '" class="psp-pick" style="width:100%;text-align:left;padding:12px 14px;border:1px solid #e5e7eb;background:#fff;border-radius:8px;font-size:14px;cursor:pointer;margin-bottom:8px">' + o + '</button>').join('');
+        ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:480px;width:100%;padding:24px;box-shadow:0 24px 60px rgba(0,0,0,.35);max-height:80vh;overflow:auto">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h2 style="margin:0;font-size:17px;color:#0A0A0A">' + title + '</h2><button id="psp-x" style="border:0;background:none;font-size:22px;color:#9ca3af;cursor:pointer">×</button></div>' +
+          opts + '</div>';
+        document.body.appendChild(ov);
+        ov.addEventListener('click', e => { if (e.target === ov) { _closeModal(); resolve(-1); } });
+        document.getElementById('psp-x').onclick = () => { _closeModal(); resolve(-1); };
+        ov.querySelectorAll('.psp-pick').forEach(b => b.onclick = () => { const i = parseInt(b.getAttribute('data-i'), 10); _closeModal(); resolve(i); });
       });
     }
 
@@ -2985,17 +3027,17 @@
             'Para arreglarlo:\n' +
             health.instructions.join('\n') + '\n\n' +
             '¿Querés seguir igual? (no recomendado)';
-          if (!confirm(msg)) return;
+          if (!(await _confirmModal({ title: '⚠️ Resend en modo sandbox', body: msg.replace(/\n/g, '<br>'), okText: 'Seguir igual (no recomendado)', danger: true }))) return;
         } else if (!health.ready_to_send_anywhere) {
-          if (!confirm('El stack de email no está completamente listo:\n\n' + (health.warning || 'estado desconocido') + '\n\n¿Seguir igual?')) return;
+          if (!(await _confirmModal({ title: '⚠️ Email stack incompleto', body: ('El stack de email no está completamente listo:<br><br>' + (health.warning || 'estado desconocido') + '<br><br>¿Seguir igual?'), okText: 'Seguir igual', danger: true }))) return;
         }
       } catch (e) {
         // si el health check falla, igual permitimos seguir pero advertimos
-        if (!confirm('No pude verificar el estado del email stack (' + e.message + '). ¿Seguir igual?')) return;
+        if (!(await _confirmModal({ title: '⚠️ No pude verificar el email stack', body: '(' + e.message + ')<br><br>¿Seguir igual?', okText: 'Seguir igual', danger: true }))) return;
       }
 
       const audCount = _mlAudienceCache ? _mlAudienceCache.count : '?';
-      if (!confirm('Enviarás la campaña a ' + audCount + ' destinatarios del segmento "' + segment + '". ¿Confirmar?')) return;
+      if (!(await _confirmModal({ title: '📨 Confirmar envío de campaña', body: 'Enviarás la campaña a <b>' + audCount + '</b> destinatarios del segmento "<b>' + segment + '</b>".', okText: 'Enviar campaña', danger: true }))) return;
       const btn = document.querySelector('#p-remarketing .btn-r');
       if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
       const result = document.getElementById('ml-result');
@@ -3504,7 +3546,7 @@
 
     async function auResetDefaults() {
       if (!_auCurrentKey) return;
-      if (!confirm('¿Restaurar a la plantilla de fábrica? Perderás tus cambios guardados para esta automatización.')) return;
+      if (!(await _confirmModal({ title: '↩️ Restaurar plantilla', body: '¿Restaurar a la plantilla de fábrica? Perderás tus cambios guardados para esta automatización.', okText: 'Restaurar', danger: true }))) return;
       // Borrar el override en el server mandando strings vacíos (el server ignora null)
       // → enviamos un PUT con campos vacíos para forzar fallback a defaults.
       // Truco: enviamos el objeto vacío (el server seguirá viendo el default).
@@ -3707,10 +3749,9 @@
         if (variants.length === 1) {
           chosen = variants[0];
         } else {
-          const lines = variants.map((v, i) => (i + 1) + '. ' + v.title + ' — stock ' + v.inventory_quantity + (v.sku ? ' (SKU ' + v.sku + ')' : ''));
-          const sel = prompt('Variante para "' + productTitle + '":\n\n' + lines.join('\n') + '\n\nIngresa el número:');
-          const idx = parseInt(sel, 10) - 1;
-          if (isNaN(idx) || idx < 0 || idx >= variants.length) return;
+          const labels = variants.map(v => escapeHtml(v.title) + ' <span style="color:#9ca3af">— stock ' + v.inventory_quantity + (v.sku ? ' · SKU ' + escapeHtml(v.sku) : '') + '</span>');
+          const idx = await _pickOneModal({ title: 'Variante para "' + escapeHtml(productTitle) + '"', options: labels });
+          if (idx < 0 || idx >= variants.length) return;
           chosen = variants[idx];
         }
         if (_giftsSelected.find(g => String(g.variant_id) === String(chosen.id))) {
@@ -4457,7 +4498,13 @@
       // Ahora: DELETE por id exacto. Idempotente y atómico server-side.
       const plan = _plans[i];
       if (!plan || !plan.id) { toast('Plan inválido', 'err'); return; }
-      if (!confirm('¿Eliminar este plan? No afecta suscripciones existentes.')) return;
+      // 🆕 2026-06-11: mostrar a QUÉ productos aplica el plan — los 6 planes del
+      //   catálogo van por pares a productos distintos (CREATINE/WHEY/C4); borrar
+      //   el equivocado rompe el widget de ese producto.
+      const _appliesTo = (plan.applies_to && Array.isArray(plan.applies_to.products) && plan.applies_to.products.length)
+        ? plan.applies_to.products.map(p => escapeHtml(p.title || p.shopify_id)).join(', ')
+        : (plan.applies_to && plan.applies_to.mode === 'all_products' ? 'TODOS los productos' : 'ningún producto');
+      if (!(await _confirmModal({ title: '🗑 Eliminar plan', body: '¿Eliminar este plan?<br><br><b>Aplica a:</b> ' + _appliesTo + '<br><br>No afecta suscripciones existentes, pero el widget de esos productos dejará de ofrecer este plan.', okText: 'Eliminar plan', danger: true }))) return;
       try {
         const r = await api('/api/plans/' + encodeURIComponent(plan.id), { method: 'DELETE' });
         if (r && r.error) { toast('❌ ' + r.error, 'err'); return; }
@@ -4703,7 +4750,7 @@
       el.classList.add('active'); renderSubs();
     }
     async function subAction(id, action) {
-      if (action === 'cancel' && !confirm('¿Cancelar esta suscripción?')) return;
+      if (action === 'cancel' && !(await _confirmModal({ title: 'Cancelar suscripción', body: '¿Cancelar esta suscripción?', okText: 'Sí, cancelar', danger: true }))) return;
       try {
         await api(`/api/subscriptions/${id}/${action}`, { method: 'POST' });
         toast(action === 'pause' ? '⏸ Suscripción pausada' : action === 'resume' ? '▶ Suscripción reactivada' : '✕ Suscripción cancelada');
@@ -4770,7 +4817,7 @@
         `• Se asignará template_suffix al producto\n` +
         `• Las variantes se tomarán de la configuración guardada (o todas si no hay config).\n\n` +
         `⚠️ No modifica MP, webhooks, pedidos ni crons.`;
-      if (!confirm(confirmMsg)) return;
+      if (!(await _confirmModal({ title: '🎨 Instalar template exclusivo', body: confirmMsg.replace(/\n/g, '<br>'), okText: 'Instalar' }))) return;
       const origLabel = btn ? btn.innerHTML : '';
       if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Instalando...'; }
       try {
@@ -4825,7 +4872,7 @@
     }
     async function uninstallSubTemplateFromDrawer() {
       if (!_currentProdId) return;
-      if (!confirm('¿Quitar el template exclusivo de este producto? Volverá al template estándar. No se pierde la config de planes.')) return;
+      if (!(await _confirmModal({ title: 'Quitar template exclusivo', body: '¿Quitar el template exclusivo de este producto? Volverá al template estándar. No se pierde la config de planes.', okText: 'Quitar template' }))) return;
       try {
         const r = await api(`/api/admin/products/${_currentProdId}/uninstall-subscription-template`, { method: 'POST' });
         if (r && r.ok) {
@@ -5716,8 +5763,8 @@
           // Flujo normal: calcula penalidad, genera link si aplica (intocado)
           const pv = await api('/api/subscriptions/' + encodeURIComponent(id) + '/cancel/preview');
           const proceed = pv.penalty > 0
-            ? confirm('Penalidad: S/' + pv.penalty.toFixed(2) + '. Se generará link de pago. ¿Continuar?')
-            : confirm('Sin penalidad (retracto/permanencia cumplida). ¿Cancelar?');
+            ? await _confirmModal({ title: '💰 Cancelación con penalidad', body: 'Penalidad: <b>S/' + pv.penalty.toFixed(2) + '</b>. Se generará link de pago. ¿Continuar?', okText: 'Continuar', danger: true })
+            : await _confirmModal({ title: 'Cancelar suscripción', body: 'Sin penalidad (retracto/permanencia cumplida). ¿Cancelar?', okText: 'Sí, cancelar', danger: true });
           if (!proceed) { if (btn) { btn.disabled = false; btn.innerText = 'Confirmar cancelación'; } if (closeBtn) closeBtn.disabled = false; return; }
           const r = await api('/api/subscriptions/' + encodeURIComponent(id) + '/cancel', { method: 'POST', body: { confirm_penalty: pv.penalty > 0 } });
           if (resultBox) {
@@ -5813,7 +5860,7 @@
         resume: '¿Reanudar esta suscripción?',
         delete: 'ELIMINARÁ el registro permanentemente. ¿Continuar?'
       }[action];
-      if (confirmMsg && !confirm(confirmMsg)) return;
+      if (confirmMsg && !(await _confirmModal({ title: action === 'delete' ? '🗑 Eliminar registro' : 'Confirmar', body: confirmMsg, okText: action === 'delete' ? 'Eliminar' : 'Sí, continuar', danger: action === 'delete' }))) return;
       try {
         if (action === 'pause') {
           const months = parseInt(document.getElementById('sd-pause-months')?.value || 1);
@@ -6480,7 +6527,7 @@
     }
 
     async function deleteBundle(id, name) {
-      if (!confirm(`¿Eliminar el bundle "${name}"?\n\nEsto NO elimina productos ni suscripciones existentes. Las suscripciones ya activas seguirán repitiendo el mismo mix cada ciclo.\n\nSolo se borra la configuración para que no aparezca en el widget.`)) return;
+      if (!(await _confirmModal({ title: '🗑 Eliminar bundle', body: `¿Eliminar el bundle "<b>${escapeHtml(name)}</b>"?<br><br>Esto NO elimina productos ni suscripciones existentes. Las suscripciones ya activas seguirán repitiendo el mismo mix cada ciclo.<br><br>Solo se borra la configuración para que no aparezca en el widget.`, okText: 'Eliminar bundle', danger: true }))) return;
       try {
         const r = await fetch('/api/admin/bundles/' + encodeURIComponent(id), { method: 'DELETE' });
         const d = await r.json();
@@ -6592,7 +6639,7 @@
 
     async function bustCacheAllBundles() {
       const btn = document.getElementById('btn-bust-cache');
-      if (!confirm('Esto forzará a Shopify a regenerar el HTML de todas las páginas de bundles/combos activos para que carguen el widget más reciente. ¿Continuar?')) return;
+      if (!(await _confirmModal({ title: '♻️ Regenerar páginas de bundles', body: 'Esto forzará a Shopify a regenerar el HTML de todas las páginas de bundles/combos activos para que carguen el widget más reciente.', okText: 'Regenerar' }))) return;
       btn.disabled = true;
       const original = btn.textContent;
       btn.textContent = 'Refrescando...';
@@ -6619,7 +6666,7 @@
         document.getElementById('combo-name').focus();
         return;
       }
-      if (!confirm(`Se creará en Shopify el producto contenedor "${comboName}" (precio S/1, oculto de colecciones). ¿Continuar?`)) return;
+      if (!(await _confirmModal({ title: '📦 Crear producto combo', body: `Se creará en Shopify el producto contenedor "<b>${escapeHtml(comboName)}</b>" (precio S/1, oculto de colecciones).`, okText: 'Crear combo' }))) return;
       btn.disabled = true;
       const originalText = btn.textContent;
       btn.textContent = 'Creando...';
