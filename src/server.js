@@ -3298,6 +3298,16 @@ app.get('/api/products/:id/config', async (req, res) => {
     try {
         const id = req.params.id;
         const settings = await readFromShopify() || readFromFile() || {};
+
+        // 🔧 2026-06-12: el toggle OFF del admin ahora SÍ apaga el widget.
+        // Antes is_active=false solo se guardaba en eligible_products y este endpoint
+        // lo ignoraba — el toast "Widget desactivado" era falso.
+        const _elig = Array.isArray(settings.eligible_products) ? settings.eligible_products : [];
+        const _eligEntry = _elig.find(p => String(p.shopify_id || p.shopify_product_id) === String(id));
+        if (_eligEntry && _eligEntry.is_active === false) {
+            return res.json({ plans: {}, disabled: true });
+        }
+
         // NEW format: settings.product_configs[id]
         const newFmt = (typeof settings.product_configs === 'object' && !Array.isArray(settings.product_configs)) ? settings.product_configs : {};
         // OLD format: settings[id] (saved by server versions before v6.0.0)
@@ -4798,7 +4808,9 @@ app.post('/webhooks/mercadopago', async (req, res) => {
                 //   solo mira los últimos 10 eventos — la first_order_created original
                 //   queda fuera en subs con historial). Solo se activa una sub que viene
                 //   de pending: las activas/pausadas/completadas con historial se ignoran.
-                const yaActivada = ['active', 'paused', 'completed'].includes(sub.status) &&
+                // 🔧 2026-06-12: + 'cancelled' — un authorized tardío sobre una sub cancelada
+                // con historial JAMÁS debe re-activarla ni resetear cycles_completed a 0.
+                const yaActivada = ['active', 'paused', 'completed', 'cancelled'].includes(sub.status) &&
                     (sub.activated_at || (parseInt(sub.cycles_completed) || 0) >= 1);
                 if (yaActivada) {
                     console.log(`[MP WEBHOOK] ↩️ preapproval 'authorized' repetido para sub ya activada ${sub.id} (${sub.status}, ciclo ${sub.cycles_completed || 0}) — skip activación (no reset, no orden)`);
@@ -4820,7 +4832,9 @@ app.post('/webhooks/mercadopago', async (req, res) => {
                     metadata: JSON.stringify({ mp_preapproval_id: preapprovalId }) }).catch(() => {});
 
                 // FIX 2026-04-11: Dedup — check if first order was already created (webhook retry)
-                const activationEvents = db?.getEvents ? await db.getEvents(sub.id, 10).catch(() => []) : [];
+                // 🔧 2026-06-12: ventana 10→100 — con historial largo, first_order_created
+                // quedaba fuera de los últimos 10 eventos y el dedup de activación fallaba.
+                const activationEvents = db?.getEvents ? await db.getEvents(sub.id, 100).catch(() => []) : [];
                 const alreadyHasOrder = activationEvents.some(e => e.event_type === 'first_order_created');
 
                 if (!alreadyHasOrder) {
@@ -4865,6 +4879,18 @@ app.post('/webhooks/mercadopago', async (req, res) => {
                 if (notifications.sendWelcome) notifications.sendWelcome({ ...sub, mp_preapproval_id: preapprovalId }).catch(() => {});
 
                 // Tag customer en Shopify
+                // 🔧 2026-06-12: el checkout NUNCA setea customer_id → el tag 'suscriptor-lab'
+                // era decorativo. Ahora lo resolvemos por email y lo persistimos para que
+                // activación Y cancelaciones (que también gatean por customer_id) funcionen.
+                if (!sub.customer_id && sub.customer_email && shopify.getCustomer) {
+                    try {
+                        const c = await shopify.getCustomer(sub.customer_email);
+                        if (c?.id) {
+                            sub.customer_id = String(c.id);
+                            if (db?.updateSubscription) await db.updateSubscription(sub.id, { customer_id: String(c.id) }).catch(() => {});
+                        }
+                    } catch (_) {}
+                }
                 if (sub.customer_id) shopify.tagCustomerAsSubscriber(sub.customer_id, true).catch(() => {});
 
                 console.log(`[MP WEBHOOK] ✅ Suscripción activada: ${sub.id} | ${sub.customer_email}`);
@@ -4971,11 +4997,33 @@ app.post('/webhooks/mercadopago', async (req, res) => {
                         discount_pct: 0,
                         product_title: paymentData.description || 'Suscripción LAB',
                         shipping_address: null,
-                        free_shipping: false
+                        free_shipping: false,
+                        // 🎁 2026-06-12: NUNCA regalos en órdenes huérfanas — el pago no matcheó
+                        // ninguna sub (puede ser una RENOVACIÓN cuyo match falló) y el fallback
+                        // on-the-fly de regalos lo trataría como ciclo 0 con plan all_products.
+                        // Regla del negocio: regalos SOLO en la primera orden real de la sub.
+                        gifts_delivered: true
                     };
                     await createShopifyOrderFromSub(orphanSub, resourceId).catch(e => {
                         console.error('[MP WEBHOOK] Orphan order failed (need variant_id):', e.message);
                     });
+                    // 🔧 2026-06-12: rastro SIEMPRE — antes, si payerEmail era null la orden
+                    // jamás se creaba y NO quedaba registro en DB (solo console.error perdido).
+                    // Evento global (sin sub) para que el admin pueda auditar cobros huérfanos.
+                    if (db?.createEvent) {
+                        await db.createEvent({
+                            subscription_id: `orphan_${resourceId}`,
+                            event_type: 'orphan_payment_received',
+                            metadata: JSON.stringify({
+                                mp_payment_id: String(resourceId),
+                                preapproval_id: preapprovalId || null,
+                                payer_email: payerEmail || null,
+                                amount: paymentData.transaction_amount,
+                                needs_admin_review: true,
+                                at: new Date().toISOString()
+                            })
+                        }).catch(() => {});
+                    }
                 } catch {}
                 return;
             }
@@ -4989,7 +5037,10 @@ app.post('/webhooks/mercadopago', async (req, res) => {
             // FIX 2026-04-11: Dedup — check if this payment was already processed
             const paymentEvents = db?.getEvents ? await db.getEvents(sub.id, 100).catch(() => []) : [];
             const alreadyProcessed = paymentEvents.some(e => {
-                try { const m = JSON.parse(e.metadata || '{}'); return m.mp_payment_id === resourceId; } catch { return false; }
+                // 🔧 2026-06-12: coerción a String — el webhook trae data.id numérico y el
+                // polling guarda String(paymentId); la igualdad estricta fallaba el dedup
+                // y generaba order_creation_failed/needs_admin_review FALSOS en retries.
+                try { const m = JSON.parse(e.metadata || '{}'); return String(m.mp_payment_id) === String(resourceId); } catch { return false; }
             });
             if (alreadyProcessed) {
                 console.log(`[MP WEBHOOK] Payment ${resourceId} already processed for ${sub.id} — skipping (dedup)`);
@@ -5485,7 +5536,11 @@ async function _createShopifyOrderFromSubInner(sub, mpPaymentId) {
             try {
                 const addr = await getCustomerAddress(sub.customer_email, token, shop);
                 if (addr?.address1) {
-                    sub.shipping_address = { ...(sub.shipping_address || {}), ...addr };
+                    // 🔧 2026-06-12: el customer Shopify rellena con '' los campos ausentes —
+                    // filtramos vacíos y lo YA GUARDADO en la sub gana (antes un city:'' del
+                    // customer pisaba un city real de la sub → re-check fallaba → placeholder).
+                    const _clean = Object.fromEntries(Object.entries(addr).filter(([, v]) => v !== '' && v !== null && v !== undefined));
+                    sub.shipping_address = { ..._clean, ...(Object.fromEntries(Object.entries(sub.shipping_address || {}).filter(([, v]) => v !== '' && v !== null && v !== undefined))) };
                     if (db?.updateSubscription && sub.id && !sub.id.startsWith('orphan_')) {
                         db.updateSubscription(sub.id, { shipping_address: sub.shipping_address }).catch(() => {});
                     }
@@ -5754,6 +5809,11 @@ async function _createShopifyOrderFromSubInner(sub, mpPaymentId) {
             db.updateSubscription(sub.id, { shipping_address: shippingAddr }).catch(function() {});
         }
     }
+    // 🔧 2026-06-12: teléfono SIEMPRE en la orden — el widget lo manda dentro de
+    // shipping_address.phone, pero si quedó vacío usamos el customer_phone de la sub.
+    if (shippingAddr && !shippingAddr.phone && sub.customer_phone) {
+        shippingAddr.phone = sub.customer_phone;
+    }
 
     // 🔧 FIX 2026-04-30 cosmético: el label debe reflejar el ciclo QUE SE ESTÁ CREANDO,
     // no el ya completado. Antes: cycles_completed=1 → "Ciclo 1/6" (se veía como ciclo 1 pero era el 2).
@@ -5951,7 +6011,7 @@ async function _createShopifyOrderFromSubInner(sub, mpPaymentId) {
             discount_codes: [],
             shipping_lines: [{ title: 'Envío suscripción', price: '10.00', code: '02' }],
             note: `LAB NUTRITION Suscripción | ${cycleLabel} | ${sub.frequency_months}m x ${sub.permanence_months}m | ${sub.discount_pct || 0}% OFF | IGV incluido${mpPaymentId ? ' | MP: ' + mpPaymentId : ''}`,
-            tags: sub._partial_data ? 'suscripcion,pending_data,revisar_cliente' : 'suscripcion',
+            tags: (sub._partial_data ? 'suscripcion,pending_data,revisar_cliente' : 'suscripcion') + (sub._recovery ? ',recovery' : ''),
             note_attributes: noteAttrs,
             shipping_address: shippingAddr || undefined,
             billing_address: shippingAddr ? { ...shippingAddr, company: sub.dni || '' } : undefined,
@@ -9054,7 +9114,12 @@ async function runMpPaymentPolling() {
         if (!mpToken) { console.warn('[MP POLLING] No MP token'); return; }
 
         const mpHeaders = { Authorization: `Bearer ${mpToken}` };
-        const allSubs = db?.getSubscriptions ? await db.getSubscriptions({ status: 'active' }).catch(() => []) : [];
+        // 🔧 2026-06-12: incluir también subs pausadas POR MP (mp_auto_paused) — si MP las
+        // sigue debitando, sus cobros deben reconciliarse igual (antes quedaban sin orden
+        // si el webhook se perdía, porque el polling solo miraba status='active').
+        const allSubsRaw = db?.getSubscriptions ? await db.getSubscriptions().catch(() => []) : [];
+        const allSubs = (Array.isArray(allSubsRaw) ? allSubsRaw : []).filter(s =>
+            s.status === 'active' || (s.status === 'paused' && s.paused_reason === 'mp_auto_paused'));
         const mpSubs = allSubs.filter(s => s.mp_preapproval_id);
 
         if (!mpSubs.length) { console.log('[MP POLLING] No active MP subscriptions'); return; }
@@ -9117,6 +9182,21 @@ async function runMpPaymentPolling() {
                             }
                         });
                         if (alreadyProcessed) { actualOrdersSkippedDedup++; continue; }
+
+                        // 🔧 2026-06-12: si el webhook bloqueó este payment por débito temprano
+                        // (<25d, early_charge_blocked) y la sub está flaggeada para revisión,
+                        // el polling NO lo convierte en orden a la hora — la decisión es del
+                        // admin (POST /api/admin/subscriptions/:id/retry-order la libera).
+                        if (sub.needs_admin_review) {
+                            const wasBlocked = events.some(e => {
+                                if (e.event_type !== 'early_charge_blocked') return false;
+                                try { const m = typeof e.metadata === 'string' ? JSON.parse(e.metadata) : (e.metadata || {}); return String(m.blocked_payment_id || '') === paymentId; } catch { return false; }
+                            });
+                            if (wasBlocked) {
+                                console.warn(`[MP POLLING] ⏸ Payment ${paymentId} de ${sub.customer_email} bloqueado por débito temprano + needs_admin_review — skip (libera el admin).`);
+                                continue;
+                            }
+                        }
 
                         // Create Shopify order
                         try {
@@ -11457,6 +11537,9 @@ async function handleRecoveryLinkPayment(paymentData, paymentId) {
         nextChargeAt = d.toISOString();
     }
 
+    // 🔧 2026-06-12: marcar la orden como RECOVERY — en Shopify lleva el tag extra
+    // 'recovery' (antes era indistinguible de una renovación normal). Solo in-memory.
+    sub._recovery = true;
     let order = null;
     for (let attempt = 1; attempt <= 3 && !order; attempt++) {
         order = await createShopifyOrderFromSub(sub, paymentId).catch(e => {
@@ -12419,6 +12502,28 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
         console.log('[CRON] "runDunningDigest" scheduled: daily 09:00 PET — 1 email consolidado');
         scheduleDailyCron(10, 30, runDunningFollowups);  // 10:30am Lima — followups + auto-pause
         console.log('[CRON] "runDunningFollowups" scheduled: daily 10:30am PET');
+
+        // 🆕 2026-06-12: 4ta corrida de dunning a las 23:00 PET — cierra el gap nocturno
+        // 18:00→06:00 (12h) para que los pagos por link de recuperación se reconcilien antes.
+        scheduleDailyCron(23, 0, runDunningDetection);
+        console.log('[CRON] "runDunningDetection" extra scheduled: 23:00 PET');
+
+        // 🆕 2026-06-12: sync DIARIO de tags lab-sub-* en customers Shopify (04:30 PET).
+        // Antes SOLO existía el endpoint manual (dry_run por defecto) y nadie lo llamaba —
+        // los Segments "en tiempo real" se quedaban congelados. Reusa el endpoint interno.
+        scheduleDailyCron(4, 30, async () => {
+            try {
+                const port = process.env.PORT || 4000;
+                const r = await fetch(`http://127.0.0.1:${port}/api/admin/customers/sync-sub-tags`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-admin-token': process.env.ADMIN_API_TOKEN || '' },
+                    body: JSON.stringify({ dry_run: false })
+                });
+                const d = await r.json().catch(() => ({}));
+                console.log('[CRON sync-sub-tags]', r.status, JSON.stringify(d).slice(0, 300));
+            } catch (e) { console.warn('[CRON sync-sub-tags] error:', e.message); }
+        });
+        console.log('[CRON] "sync-sub-tags" scheduled: daily 04:30 PET');
 
         // MP Payment Polling — every 1 hour to catch recurring charges
         // and create Shopify orders (for preapprovals without notification_url)

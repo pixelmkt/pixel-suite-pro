@@ -4896,7 +4896,10 @@
           const rawPlans = _plans.length > 0 ? _plans : await api('/api/plans').catch(() => []);
           if (_plans.length === 0 && Array.isArray(rawPlans)) _plans = rawPlans;
           const existingCfg = await api(`/api/products/${id}/config`).catch(() => ({}));
-          const activePlansGlobal = Array.isArray(_plans) ? _plans.filter(p => p.active !== false && p.frequency && p.permanence) : [];
+          // 2026-06-12 FIX: respetar applies_to — antes el auto-assign copiaba TODOS los
+          // planes globales (incluidos los de OTROS productos) a este product_config.
+          const _appliesHere = p => !p.applies_to || p.applies_to.mode === 'all_products' || (p.applies_to.product_ids || []).map(String).includes(String(id));
+          const activePlansGlobal = Array.isArray(_plans) ? _plans.filter(p => p.active !== false && p.frequency && p.permanence && _appliesHere(p)) : [];
 
           // Only auto-assign if no config exists yet (or empty config)
           const hasExistingConfig = existingCfg && existingCfg.plans && Object.keys(existingCfg.plans).length > 0;
@@ -4914,12 +4917,17 @@
                 label: (plan.frequency === 1 ? 'Mensual' : plan.frequency === 2 ? 'Bimestral' : `Cada ${plan.frequency} meses`) + ' · ' + plan.permanence + ' meses'
               };
             });
+            // 2026-06-12 FIX: incluir TODAS las variantes en el allowlist — antes el toggle ON
+            // guardaba planes pero CERO eligible_variant_ids → el checkout/orden quedaba
+            // BLOQUEADO silenciosamente hasta que el admin pasara por Config (paso invisible).
+            const _prodForVariants = _shopifyProds.find(p => String(p.shopify_id) === String(id));
+            const _allVariantIds = ((_prodForVariants && _prodForVariants.variants) || []).map(v => String(v.id));
             await api(`/api/products/${id}/config`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ plans: plansConfig, auto_assigned: true, updated_at: new Date().toISOString() })
+              body: JSON.stringify({ plans: plansConfig, eligible_variant_ids: _allVariantIds, auto_assigned: true, updated_at: new Date().toISOString() })
             }).catch(() => {});
-            toast('✅ Producto activado — planes asignados automáticamente. Personaliza los descuentos abajo.');
+            toast('✅ Producto activado — planes asignados y todas las variantes habilitadas. Personaliza en Config.');
           } else if (hasExistingConfig) {
             toast('✅ Suscripción activada — configuración previa restaurada');
           } else {
@@ -4966,7 +4974,10 @@
         const variants = (prod && prod.variants) ? prod.variants : [];
         const savedVariantIds = (savedCfg && Array.isArray(savedCfg.eligible_variant_ids)) ? savedCfg.eligible_variant_ids : [];
 
-        _drawerPlans = Array.isArray(_plans) ? _plans.filter(p => p.active !== false && p.frequency && p.permanence) : [];
+        // 2026-06-12 FIX: el drawer solo ofrece planes que APLICAN a este producto
+        // (antes listaba todos los globales y se podía habilitar el plan de otro producto).
+        const _appliesHereDrawer = p => !p.applies_to || p.applies_to.mode === 'all_products' || (p.applies_to.product_ids || []).map(String).includes(String(id));
+        _drawerPlans = Array.isArray(_plans) ? _plans.filter(p => p.active !== false && p.frequency && p.permanence && _appliesHereDrawer(p)) : [];
         const savedPlans = (savedCfg && savedCfg.plans) ? savedCfg.plans : {};
 
         if (!_drawerPlans.length) {
@@ -4979,7 +4990,9 @@
         const freqLabel = f => f === 1 ? 'Mensual' : f === 2 ? 'Bimestral' : `Cada ${f} meses`;
 
         // Seccion de variantes elegibles
-        const variantSection = variants.length > 1 ? `
+        // 2026-06-12 FIX: tambien con 1 sola variante — antes (length > 1) el producto de
+        // variante unica guardaba eligible_variant_ids=[] y el cobro quedaba bloqueado.
+        const variantSection = variants.length >= 1 ? `
           <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin-bottom:10px">
             Variantes elegibles para suscripcion
           </div>
@@ -5008,7 +5021,7 @@
             Planes disponibles — activa y configura el descuento para este producto
           </div>
           <div style="font-size:11px;color:var(--mut);margin-bottom:14px;background:#f8f8f8;padding:8px 12px;border-radius:6px">
-            Activa los planes que quieres para este producto. El descuento puede ser diferente al del plan global.<br>
+            Activa los planes que quieres para este producto. El % se sincroniza desde el plan maestro (Planes de Suscripción).<br>
             <strong style="color:#9d2a23">Precio fijo S/ (opcional):</strong> si lo defines, se cobra <strong>EXACTO ese monto por mes</strong> (ej. 90.00) sin importar el %. El envío S/ 10 se suma aparte. Déjalo vacío para usar el % de descuento.
           </div>
           <div class="disc-matrix" id="plan-assign-matrix">
@@ -5088,6 +5101,11 @@
           label: (plan.frequency === 1 ? 'Mensual' : plan.frequency === 2 ? 'Bimestral' : `Cada ${plan.frequency} meses`) + ' · ' + plan.permanence + ' meses'
         };
       });
+      // 2026-06-12 FIX: avisar si vas a dejar el producto SIN planes en el widget
+      if (Object.keys(plansConfig).length && Object.values(plansConfig).every(p => !p.enabled)) {
+        const ok = await _confirmModal({ title: 'Guardar sin planes', body: 'Vas a guardar SIN ningún plan habilitado: el widget mostrará "No hay planes configurados" y el producto no se podrá vender por suscripción. ¿Continuar?', okText: 'Sí, guardar', danger: true });
+        if (!ok) return;
+      }
       // Recoger variantes seleccionadas
       const variantCbs = document.querySelectorAll('.variant-cb');
       const selectedVariants = [];

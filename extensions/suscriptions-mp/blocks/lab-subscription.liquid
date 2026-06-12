@@ -524,6 +524,12 @@ Para consultas sobre tu suscripción: asesorecommerce@labnutrition.pe
               if (!isNaN(fp) && fp > 0) { p.forcePrice = fp; p.hasForce = true; }
             });
             buildChipsFromPlans(activePlans);
+          } else {
+            // 🔒 2026-06-12: sin planes reales (config vacía o producto desactivado por el
+            // admin) el widget NO deja un CTA vivo con esqueleto "–% OFF": muestra el aviso
+            // y oculta el botón. Cierra el "plan fantasma" del submit por defecto.
+            var sc = document.getElementById('sub-content-' + blkId);
+            if (sc) sc.innerHTML = '<div style="background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center;font-size:13px;color:#6b7280">Este producto aún no tiene planes de suscripción configurados.</div>';
           }
         })
         .catch(function() {});
@@ -594,12 +600,18 @@ Para consultas sobre tu suscripción: asesorecommerce@labnutrition.pe
         }
         if (msgEl) msgEl.style.display = 'none';
         var plan = selectedPlanKey && activePlans.find(function(p) { return p.key === selectedPlanKey; });
-        var currentFreq = plan ? plan.frequency : 1;
-        var currentPerm = plan ? plan.permanence : 3;
+        // 🔒 2026-06-12: SIN plan real seleccionado NO se cobra nada. Antes el fallback
+        // (freq=1, perm=3, 10% OFF) creaba un "plan fantasma" si la config estaba vacía.
+        if (!plan) {
+          if (msgEl) { msgEl.style.display = 'block'; msgEl.style.background = '#fee2e2'; msgEl.style.color = '#991b1b'; msgEl.textContent = 'Este producto no tiene planes de suscripción configurados. Escríbenos por WhatsApp.'; }
+          return;
+        }
+        var currentFreq = plan.frequency;
+        var currentPerm = plan.permanence;
         var base = parseFloat(wrap.dataset.price || 0);
         var rawDisc, finalPrice;
-        if (plan && plan.hasForce) { finalPrice = plan.forcePrice; rawDisc = ((base - finalPrice) / base) * 100; }
-        else { var apiDisc = plan ? plan.discount : 10; rawDisc = apiDisc; finalPrice = base * (1 - rawDisc / 100); }
+        if (plan.hasForce) { finalPrice = plan.forcePrice; rawDisc = ((base - finalPrice) / base) * 100; }
+        else { rawDisc = plan.discount || 0; finalPrice = base * (1 - rawDisc / 100); }
         var finalPriceNum = parseFloat(finalPrice.toFixed(2));
         var discNum = parseFloat(rawDisc.toFixed(2));
         var backendUrl = wrap.dataset.backend || 'https://pixel-suite-pro-production.up.railway.app';
