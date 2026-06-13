@@ -3601,12 +3601,22 @@ app.post('/api/selling-plans/sync', async (req, res) => {
             //   Antes: todos los productos recibían TODOS los planes activos → contaminación.
             //   Ahora: cada producto recibe sólo los planes que lo tienen en applies_to.product_ids
             //   (o planes legacy con mode='all_products' que aún aplican a todos).
-            const plansForThisProduct = normalizedPlans.filter(p => planAppliesToProduct(p, prod.shopify_id));
-            if (!plansForThisProduct.length) {
+            const plansForThisProductBase = normalizedPlans.filter(p => planAppliesToProduct(p, prod.shopify_id));
+            if (!plansForThisProductBase.length) {
                 console.log('[SELLING_PLANS] ⏭  Skip ' + prod.product_title + ' — 0 planes aplicables (applies_to)');
                 results.push({ product: prod.product_title, productId: prod.shopify_id, synced: false, skipped: true, reason: 'No plans matched applies_to' });
                 continue;
             }
+            // 2026-06-13: inyectar el PRECIO FIJO por plan desde la config del producto
+            //   (product_configs[id].plans[].force_price) para que el selling plan nativo de
+            //   Shopify cobre exactamente lo que el admin eligió (ej. 90), no el % (89.5).
+            const pcPlans = (pCfg && typeof pCfg.plans === 'object' && !Array.isArray(pCfg.plans)) ? pCfg.plans : {};
+            const plansForThisProduct = plansForThisProductBase.map(p => {
+                const m = pcPlans[p.id] || Object.values(pcPlans).find(x =>
+                    Number(x.frequency) === Number(p.frequency) && Number(x.permanence) === Number(p.permanence));
+                const fp = m ? parseFloat(m.force_price) : NaN;
+                return (Number.isFinite(fp) && fp > 0) ? { ...p, force_price: fp } : p;
+            });
             try {
                 const result = await sellingPlans.syncProductPlans({
                     productId: prod.shopify_id,

@@ -37,14 +37,25 @@ function buildPlanInput(plan) {
                 preAnchorBehavior: 'ASAP'
             }
         },
-        pricingPolicies: discountPct > 0 ? [
+        // 2026-06-13: si el plan tiene PRECIO FIJO (force_price del panel), el selling plan
+        // nativo cobra EXACTO ese monto (adjustmentType PRICE), para respetar la config del
+        // panel. Si no, usa el % de descuento. Así Shopify nunca muestra un precio distinto
+        // al que el admin eligió.
+        pricingPolicies: (Number.isFinite(parseFloat(plan.force_price)) && parseFloat(plan.force_price) > 0) ? [
+            {
+                fixed: {
+                    adjustmentType: 'PRICE',
+                    adjustmentValue: { fixedValue: parseFloat(plan.force_price) }
+                }
+            }
+        ] : (discountPct > 0 ? [
             {
                 fixed: {
                     adjustmentType: 'PERCENTAGE',
                     adjustmentValue: { percentage: discountPct }
                 }
             }
-        ] : [],
+        ] : []),
         inventoryPolicy: { reserve: 'ON_SALE' }
     };
     return sellingPlan;
