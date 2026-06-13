@@ -4110,11 +4110,25 @@ async function autoImportMpSubs(existing = []) {
         if (!email) { console.warn('[AUTO-IMPORT] No email for preapproval', pre.id, '(payer_id:', payerId, ')'); continue; }
 
         // 3) Dedup: si existe un registro pending del mismo email → actualizar
-        const orphan = allLocal.find(s =>
+        let orphan = allLocal.find(s =>
             (s.customer_email || '').toLowerCase() === email.toLowerCase() &&
             (s.mp_plan_id === pre.preapproval_plan_id || !s.mp_preapproval_id) &&
             (s.status === 'pending_payment' || s.status === 'pending')
         );
+        // 🔧 FIX 2026-06-13 (caso José Becerra): si NO matcheó por email, matchear por
+        //   preapproval_plan_id SOLO. Caso real: el cliente escribe un email en el widget
+        //   pero PAGA con una cuenta MercadoPago de OTRO email → el match por email del
+        //   pagador falla y se creaba un DUPLICADO FANTASMA sin dirección/DNI (el pedido
+        //   nunca caía). El mp_plan_id es único de ESE checkout, así que linkea la sub
+        //   pending CORRECTA (con sus datos reales) en vez de crear una huérfana inútil.
+        if (!orphan && pre.preapproval_plan_id) {
+            orphan = allLocal.find(s =>
+                s.mp_plan_id === pre.preapproval_plan_id &&
+                !s.mp_preapproval_id &&
+                (s.status === 'pending_payment' || s.status === 'pending')
+            );
+            if (orphan) console.warn(`[AUTO-IMPORT] 🔗 Match por plan_id — email del pagador (${email}) ≠ email del checkout (${orphan.customer_email}). Linkeando sub real con sus datos.`);
+        }
         if (orphan) {
             try {
                 const updated = await db.updateSubscription(orphan.id, {
