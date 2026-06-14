@@ -11847,7 +11847,7 @@ async function runDunningDetection() {
                     const _rl = await _getOrCreateRecoveryLink(sub, { by: 'flow' }).catch(() => null);
                     emitSubFlow(sub, 'lab-subscription-payment-failed', {
                         amount: Number(latest.transaction_amount) || 0,
-                        payment_link: (_rl && _rl.url) || `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/portal`
+                        paymentlink: (_rl && _rl.url) || `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/portal`
                     }).catch(() => {});
                 } catch (_) {}
                 // 🔒 ANTI-SPAM 2026-06-05: NO mandamos email individual aquí.

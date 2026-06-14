@@ -25,4 +25,4 @@ description = "Se dispara cuando MercadoPago rechaza un cobro de la suscripción
 
     [[settings.fields]]
     type = "url"
-    key = "payment_link"
+    key = "paymentlink"
