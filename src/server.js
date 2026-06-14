@@ -871,6 +871,24 @@ app.post('/api/subscriptions/checkout', async (req, res) => {
                     variant_id: String(vId || '')
                 });
             }
+            // 🔒 2026-06-14: bloqueo POR PRODUCTO. El allowlist anterior es la UNIÓN global
+            //   (whitelist + eligible de todos los productos + bundles), así que la 300g de
+            //   CREATINE pasaba por estar en el whitelist global. Si el PRODUCTO tiene su
+            //   propia lista eligible_variant_ids, la variante DEBE estar en ESA lista.
+            //   Cierra la fuga sin afectar productos SIN lista propia (siguen con el global).
+            try {
+                const _pcfgs = (dynSettings && typeof dynSettings.product_configs === 'object' && !Array.isArray(dynSettings.product_configs)) ? dynSettings.product_configs : {};
+                const _prodElig = Array.isArray(_pcfgs[pId]?.eligible_variant_ids) ? _pcfgs[pId].eligible_variant_ids.map(String).filter(Boolean) : [];
+                if (_prodElig.length && !_prodElig.includes(String(vId))) {
+                    console.warn(`[CHECKOUT] ❌ Variante ${vId} NO elegible para el producto ${pId} (elegibles del producto: [${_prodElig.join(', ')}]). Cliente ${email}.`);
+                    return res.status(400).json({
+                        error: 'Esta presentación no está disponible para suscripción. Selecciona la presentación habilitada.',
+                        code: 'VARIANT_NOT_ELIGIBLE_FOR_PRODUCT',
+                        variant_id: String(vId),
+                        eligible: _prodElig
+                    });
+                }
+            } catch (_) { /* si falla, ya pasó el check global anterior */ }
         }
 
         // 🔒 HARDENING 2026-04-20: límites por cliente (anti-abuso/anti-bot/doble-click).
@@ -7219,20 +7237,42 @@ app.get('/api/public-config', async (req, res) => {
     } catch (e) { res.json({ brand_name: '', brand_slogan: '', brand_logo: '' }); }
 });
 
+// 🔒 2026-06-14: oculta los secretos en la RESPUESTA de /api/settings (la auth admin
+//   está apagada por orden del dueño, así que /api/settings respondía con el token de
+//   MercadoPago, el de Shopify, la pass SMTP y la key de Resend EN CLARO a cualquiera con
+//   la URL). El USO INTERNO no cambia (el backend lee de process.env / readFromShopify,
+//   no de esta respuesta HTTP). El panel sigue funcionando: ve el placeholder y, al guardar
+//   o probar, el servidor IGNORA el placeholder para no pisar el valor real.
+const _SECRET_MASK = '••••••••••••';
+const _SECRET_KEYS = ['mp_access_token', 'mp_webhook_secret', 'shopify_access_token', 'shopify_api_secret', 'supabase_key', 'supabase_service_key', 'smtp_pass', 'resend_api_key'];
+function _maskSecrets(obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    const out = { ...obj };
+    for (const k of _SECRET_KEYS) { if (out[k]) out[k] = _SECRET_MASK; }
+    return out;
+}
+function _stripMaskedSecrets(body) {
+    if (!body || typeof body !== 'object') return;
+    for (const k of _SECRET_KEYS) { if (body[k] === _SECRET_MASK) delete body[k]; }
+}
+
 app.get('/api/settings', async (req, res) => {
     const base = getEnvDefaults();
     // Try Shopify Metafields first (native, always available)
     const fromShopify = await readFromShopify();
-    if (fromShopify) return res.json({ ...base, ...fromShopify });
+    if (fromShopify) return res.json(_maskSecrets({ ...base, ...fromShopify }));
     // Try local file fallback
     const fromFile = readFromFile();
-    if (fromFile) return res.json({ ...base, ...fromFile });
+    if (fromFile) return res.json(_maskSecrets({ ...base, ...fromFile }));
     // Return env defaults
-    res.json(base);
+    res.json(_maskSecrets(base));
 });
 
 app.put('/api/settings', async (req, res) => {
     const body = req.body;
+    // 🔒 2026-06-14: si el panel reenvía el placeholder de un secreto (porque el GET lo
+    //   enmascaró y el admin no lo cambió), NO sobreescribir el valor real.
+    _stripMaskedSecrets(body);
     // Update process.env in memory immediately (for current session)
     const envMap = {
         mp_access_token: 'MP_ACCESS_TOKEN',
@@ -7264,7 +7304,9 @@ app.put('/api/settings', async (req, res) => {
 /* ── TEST MP CONNECTION — verifica token en tiempo real ── */
 app.post('/api/settings/test-mp', async (req, res) => {
     // If a token was sent, apply it now before testing
-    if (req.body && req.body.token) {
+    // 🔒 2026-06-14: ignorar el placeholder enmascarado (el panel lo reenvía si el admin no
+    //   cambió el token); en ese caso probamos el token REAL ya cargado en process.env.
+    if (req.body && req.body.token && req.body.token !== _SECRET_MASK) {
         process.env.MP_ACCESS_TOKEN = req.body.token.trim();
     }
     try {
