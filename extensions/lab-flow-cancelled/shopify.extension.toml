@@ -1,10 +1,11 @@
 api_version = "2026-01"
+uid = "332964a4-99c1-a867-41ae-055b80361833846f8423"
 
 [[extensions]]
-name = "Lab · Suscripción cancelada"
+name = "Lab subscription cancelled"
 type = "flow_trigger"
 handle = "lab-subscription-cancelled"
-description = "Se dispara cuando una suscripción se cancela (por el cliente o por el admin). Úsalo para enviar una campaña de recuperación (win-back) con Shopify Email."
+description = "A subscription was cancelled. Send a win-back campaign with Shopify Email."
 
   [settings]
 

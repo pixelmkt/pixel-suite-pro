@@ -1,10 +1,11 @@
 api_version = "2026-01"
+uid = "2b33b761-7c7d-095a-398b-daa87518ae1776af7bf7"
 
 [[extensions]]
-name = "Lab · Suscripción activada"
+name = "Lab subscription activated"
 type = "flow_trigger"
 handle = "lab-subscription-activated"
-description = "Se dispara cuando un cliente activa una suscripción (primer cobro aprobado en MercadoPago). Úsalo para enviar el email de bienvenida con Shopify Email."
+description = "A customer activated a subscription. Send a welcome email with Shopify Email."
 
   [settings]
 

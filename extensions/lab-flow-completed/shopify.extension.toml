@@ -1,10 +1,11 @@
 api_version = "2026-01"
+uid = "4f8f5b6d-f219-4d55-6b8a-71516c844978ee0273ef"
 
 [[extensions]]
-name = "Lab · Permanencia completada"
+name = "Lab subscription completed"
 type = "flow_trigger"
 handle = "lab-subscription-completed"
-description = "Se dispara cuando la suscripción completa su permanencia (último ciclo cobrado). Úsalo para enviar una campaña de renovación o agradecimiento con Shopify Email."
+description = "A subscription completed its cycles. Send a renewal or thank-you email."
 
   [settings]
 

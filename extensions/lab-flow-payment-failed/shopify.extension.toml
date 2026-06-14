@@ -1,10 +1,11 @@
 api_version = "2026-01"
+uid = "e1b71279-4deb-e2eb-f91e-a4be3696c682bac506ff"
 
 [[extensions]]
-name = "Lab · Cobro rechazado"
+name = "Lab subscription payment failed"
 type = "flow_trigger"
 handle = "lab-subscription-payment-failed"
-description = "Se dispara cuando MercadoPago rechaza un cobro de la suscripción. Incluye el link de pago para recuperar el cobro. Úsalo para enviar el email de recuperación con Shopify Email."
+description = "A subscription charge was rejected. Includes a payment link to recover it. Send a dunning email."
 
   [settings]
 
