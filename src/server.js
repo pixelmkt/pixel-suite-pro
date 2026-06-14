@@ -441,10 +441,16 @@ app.get('/api/admin/flow-health', async (req, res) => {
         const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
         const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
         const handle = (req.query.handle || 'lab-subscription-completed');
+        const extraByHandle = {
+            'lab-subscription-activated': { plan: '1m x 0m' },
+            'lab-subscription-cancelled': { reason: 'health' },
+            'lab-subscription-payment-failed': { amount: 1, paymentlink: `https://${shop.replace('.myshopify.com','')}` },
+            'lab-subscription-completed': {}
+        };
         const mutation = `mutation($handle: String, $payload: JSON){ flowTriggerReceive(handle:$handle, payload:$payload){ userErrors{ field message } } }`;
         const r = await fetch(`https://${shop}/admin/api/2026-01/graphql.json`, {
             method: 'POST', headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: mutation, variables: { handle, payload: { customer_id: customerId, email: sample.customer_email, product: sample.product_title || 'health' } } })
+            body: JSON.stringify({ query: mutation, variables: { handle, payload: { customer_id: customerId, email: sample.customer_email, product: sample.product_title || 'health', ...(extraByHandle[handle] || {}) } } })
         });
         const d = await r.json().catch(() => ({}));
         const errs = (d?.data?.flowTriggerReceive?.userErrors) || d?.errors || [];
