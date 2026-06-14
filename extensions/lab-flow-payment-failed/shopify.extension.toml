@@ -1,0 +1,28 @@
+api_version = "2026-01"
+
+[[extensions]]
+name = "Lab · Cobro rechazado"
+type = "flow_trigger"
+handle = "lab-subscription-payment-failed"
+description = "Se dispara cuando MercadoPago rechaza un cobro de la suscripción. Incluye el link de pago para recuperar el cobro. Úsalo para enviar el email de recuperación con Shopify Email."
+
+  [settings]
+
+    [[settings.fields]]
+    type = "customer_reference"
+
+    [[settings.fields]]
+    type = "email"
+    key = "email"
+
+    [[settings.fields]]
+    type = "single_line_text_field"
+    key = "product"
+
+    [[settings.fields]]
+    type = "number_decimal"
+    key = "amount"
+
+    [[settings.fields]]
+    type = "url"
+    key = "payment_link"

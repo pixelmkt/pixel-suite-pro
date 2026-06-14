@@ -1,0 +1,24 @@
+api_version = "2026-01"
+
+[[extensions]]
+name = "Lab · Suscripción activada"
+type = "flow_trigger"
+handle = "lab-subscription-activated"
+description = "Se dispara cuando un cliente activa una suscripción (primer cobro aprobado en MercadoPago). Úsalo para enviar el email de bienvenida con Shopify Email."
+
+  [settings]
+
+    [[settings.fields]]
+    type = "customer_reference"
+
+    [[settings.fields]]
+    type = "email"
+    key = "email"
+
+    [[settings.fields]]
+    type = "single_line_text_field"
+    key = "product"
+
+    [[settings.fields]]
+    type = "single_line_text_field"
+    key = "plan"

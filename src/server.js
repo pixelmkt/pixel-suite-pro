@@ -376,6 +376,54 @@ async function isVariantAllowedForSubscription(variantId, settingsMaybe) {
     return { ok: true, allowlist: Array.from(allow) };
 }
 
+/* ── 🟢 SHOPIFY FLOW TRIGGERS (marketing nativo, 2026-06-14) ──────────────────
+   Emite eventos de suscripción hacia Shopify Flow (mutación oficial
+   flowTriggerReceive). Kathy arma automatizaciones nativas (Shopify Email) sobre
+   estos triggers: bienvenida, recuperar cobro, win-back, renovación.
+   FIRE-AND-FORGET: jamás bloquea ni rompe el flujo de cobros (todo en try/catch,
+   se llama SIN await en los puntos de uso). Los handles coinciden 1:1 con los
+   shopify.extension.toml de extensions/lab-flow-*. */
+async function dispatchFlowTrigger(handle, payload) {
+    try {
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        if (!token) return;
+        const mutation = `mutation flowTriggerReceive($handle: String, $payload: JSON) {
+            flowTriggerReceive(handle: $handle, payload: $payload) { userErrors { field message } }
+        }`;
+        const r = await fetch(`https://${shop}/admin/api/2026-01/graphql.json`, {
+            method: 'POST',
+            headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: mutation, variables: { handle, payload } })
+        });
+        const d = await r.json().catch(() => ({}));
+        const errs = d?.data?.flowTriggerReceive?.userErrors || [];
+        if (errs.length) console.warn(`[FLOW] ${handle} userErrors:`, JSON.stringify(errs).slice(0, 200));
+        else console.log(`[FLOW] ✅ trigger '${handle}' enviado (${payload?.email || ''})`);
+    } catch (e) { console.warn(`[FLOW] dispatch ${handle} error:`, e.message); }
+}
+
+/* Resuelve el customer_id numérico (legacyResourceId que pide customer_reference) y
+   dispara el trigger. Si no hay customer en Shopify, NO emite (evita userError). */
+async function emitSubFlow(sub, handle, extra = {}) {
+    try {
+        if (!sub || !handle) return;
+        let customerId = (sub.customer_id && /^\d+$/.test(String(sub.customer_id))) ? String(sub.customer_id) : null;
+        if (!customerId && sub.customer_email && shopify.getCustomer) {
+            const c = await shopify.getCustomer(sub.customer_email).catch(() => null);
+            if (c?.id) customerId = String(c.id);
+        }
+        if (!customerId) { console.warn(`[FLOW] skip '${handle}': sin customer Shopify para ${sub.customer_email || '?'}`); return; }
+        const payload = {
+            customer_id: Number(customerId),
+            email: sub.customer_email || '',
+            product: sub.product_title || '',
+            ...extra
+        };
+        await dispatchFlowTrigger(handle, payload);
+    } catch (e) { console.warn(`[FLOW] emit ${handle} error:`, e.message); }
+}
+
 /* ── 🔒 PER-CUSTOMER SUBSCRIPTION LIMITS (hardening 2026-04-20) ───────────────
    Previene abuso/fraude/bot-spam/doble-click. Reja al inicio del checkout.
    Reglas (todas juntas):
@@ -1459,6 +1507,7 @@ app.post('/api/subscriptions/:id/cancel', async (req, res) => {
             if (mp.cancelSubscription) await mp.cancelSubscription(sub.mp_preapproval_id).catch(() => { });
             await db.updateSubscription(sub.id, { status: 'cancelled', cancelled_at: now.toISOString() });
             await db.createEvent({ subscription_id: sub.id, event_type: 'cancelled', metadata: { penalty: 0, reason: info.within_retracto ? 'retracto' : 'permanencia_cumplida' } });
+            emitSubFlow(sub, 'lab-subscription-cancelled', { reason: info.within_retracto ? 'retracto_7d' : 'permanencia_cumplida' }).catch(() => {});
             if (sub.customer_id) shopify.tagCustomerAsSubscriber(sub.customer_id, false).catch(console.error);
             if (notifications?.sendCancellationConfirmation) notifications.sendCancellationConfirmation(sub).catch(e => console.warn('[CANCEL] Email error:', e.message));
             return res.json({ success: true, cancelled: true, penalty: 0, message: 'Suscripción cancelada correctamente.' });
@@ -1505,6 +1554,7 @@ app.post('/api/subscriptions/:id/cancel', async (req, res) => {
             penalty_status: 'pending'
         });
         await db.createEvent({ subscription_id: sub.id, event_type: 'cancelled_with_penalty', metadata: { penalty: info.penalty, cycles_completed: info.cycles_completed } });
+        emitSubFlow(sub, 'lab-subscription-cancelled', { reason: 'cancelacion_anticipada' }).catch(() => {});
         if (sub.customer_id) shopify.tagCustomerAsSubscriber(sub.customer_id, false).catch(console.error);
         if (notifications?.sendCancellationConfirmation) notifications.sendCancellationConfirmation(sub).catch(e => console.warn('[CANCEL] Email error:', e.message));
 
@@ -4946,6 +4996,8 @@ app.post('/webhooks/mercadopago', async (req, res) => {
                 if (sub.customer_id) shopify.tagCustomerAsSubscriber(sub.customer_id, true).catch(() => {});
 
                 console.log(`[MP WEBHOOK] ✅ Suscripción activada: ${sub.id} | ${sub.customer_email}`);
+                // 🟢 Flow nativo: bienvenida
+                emitSubFlow(sub, 'lab-subscription-activated', { plan: `${sub.frequency_months || 1}m x ${sub.permanence_months || 0}m` }).catch(() => {});
 
             } else if (preapprovalInfo?.status === 'cancelled' || preapprovalInfo?.status === 'paused') {
                 // 🆕 FIX 2026-06-11: cuando MP pausa el preapproval (agotó sus reintentos),
@@ -5220,6 +5272,8 @@ app.post('/webhooks/mercadopago', async (req, res) => {
 
                 if (notifications.sendChargeSuccess) notifications.sendChargeSuccess(sub, order.order_number).catch(() => {});
                 if (isComplete && notifications.sendRenewalInvite) notifications.sendRenewalInvite(sub).catch(() => {});
+                // 🟢 Flow nativo: permanencia completada (renovación/agradecimiento)
+                if (isComplete) emitSubFlow(sub, 'lab-subscription-completed', {}).catch(() => {});
 
                 console.log(`[MP WEBHOOK] ✅ Cobro procesado: ${sub.customer_email} | ciclo ${cyclesCompleted}/${sub.cycles_required} | order ${order.name}`);
             } else {
@@ -7521,6 +7575,7 @@ app.post('/api/portal/v2/sub/:id/cancel', async (req, res) => {
         if (mp.cancelSubscription) await mp.cancelSubscription(sub.mp_preapproval_id).catch(() => {});
         await db.updateSubscription(sub.id, { status: 'cancelled', cancelled_at: new Date().toISOString(), cancelled_by: 'customer' });
         await db.createEvent({ subscription_id: sub.id, event_type: 'cancelled_by_customer', metadata: JSON.stringify({ via: 'portal_v2', cycles_completed: parseInt(sub.cycles_completed || 0) }) }).catch(() => {});
+        emitSubFlow(sub, 'lab-subscription-cancelled', { reason: 'portal_cliente' }).catch(() => {});
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -11638,6 +11693,8 @@ async function handleRecoveryLinkPayment(paymentData, paymentId) {
             paused_reason: null,
             last_payment_recovered_at: new Date().toISOString()
         }).catch(e => console.warn('[RECOVERY-LINK] updateSub:', e.message));
+        // 🟢 Flow nativo: permanencia completada (si el recovery cerró el último ciclo)
+        if (isComplete) emitSubFlow(sub, 'lab-subscription-completed', {}).catch(() => {});
         await db.createEvent({
             subscription_id: sub.id,
             event_type: 'recovery_link_paid',
@@ -11785,6 +11842,14 @@ async function runDunningDetection() {
                 }).catch(() => {});
                 // Marca sub
                 await db.updateSubscription(sub.id, { needs_payment_update: true, last_payment_failed_at: new Date().toISOString() }).catch(() => {});
+                // 🟢 Flow nativo: cobro rechazado (1 vez, en la transición) CON el link de pago para recuperar.
+                try {
+                    const _rl = await _getOrCreateRecoveryLink(sub, { by: 'flow' }).catch(() => null);
+                    emitSubFlow(sub, 'lab-subscription-payment-failed', {
+                        amount: Number(latest.transaction_amount) || 0,
+                        payment_link: (_rl && _rl.url) || `${process.env.BACKEND_URL || 'https://pixel-suite-pro-production.up.railway.app'}/portal`
+                    }).catch(() => {});
+                } catch (_) {}
                 // 🔒 ANTI-SPAM 2026-06-05: NO mandamos email individual aquí.
                 // El DIGEST diario consolida todos los casos en 1 email/día.
                 detected++;
@@ -12391,6 +12456,7 @@ app.post('/api/account-ext/sub/:id/cancel', async (req, res) => {
         if (mp.cancelSubscription && sub.mp_preapproval_id) await mp.cancelSubscription(sub.mp_preapproval_id).catch(() => {});
         await db.updateSubscription(sub.id, { status: 'cancelled', cancelled_at: new Date().toISOString(), cancelled_by: 'customer' });
         await db.createEvent({ subscription_id: sub.id, event_type: 'cancelled_by_customer', metadata: JSON.stringify({ via: 'account_ext' }) }).catch(() => {});
+        emitSubFlow(sub, 'lab-subscription-cancelled', { reason: 'mi_suscripcion' }).catch(() => {});
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

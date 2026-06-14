@@ -1,0 +1,20 @@
+api_version = "2026-01"
+
+[[extensions]]
+name = "Lab · Permanencia completada"
+type = "flow_trigger"
+handle = "lab-subscription-completed"
+description = "Se dispara cuando la suscripción completa su permanencia (último ciclo cobrado). Úsalo para enviar una campaña de renovación o agradecimiento con Shopify Email."
+
+  [settings]
+
+    [[settings.fields]]
+    type = "customer_reference"
+
+    [[settings.fields]]
+    type = "email"
+    key = "email"
+
+    [[settings.fields]]
+    type = "single_line_text_field"
+    key = "product"
