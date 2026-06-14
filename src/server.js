@@ -424,6 +424,34 @@ async function emitSubFlow(sub, handle, extra = {}) {
     } catch (e) { console.warn(`[FLOW] emit ${handle} error:`, e.message); }
 }
 
+/* GET /api/admin/flow-health — diagnóstico: dispara un trigger real a Shopify Flow
+   y devuelve si la mutación flowTriggerReceive fue aceptada (userErrors vacío).
+   No-op si Kathy aún no armó workflows. Útil para confirmar que el cableado vive. */
+app.get('/api/admin/flow-health', async (req, res) => {
+    try {
+        const subs = await db.getSubscriptions({ status: 'active' }).catch(() => []);
+        const sample = (Array.isArray(subs) ? subs : []).find(s => s.customer_email);
+        if (!sample) return res.json({ ok: false, reason: 'no_active_sub' });
+        let customerId = (sample.customer_id && /^\d+$/.test(String(sample.customer_id))) ? Number(sample.customer_id) : null;
+        if (!customerId && shopify.getCustomer) {
+            const c = await shopify.getCustomer(sample.customer_email).catch(() => null);
+            if (c?.id) customerId = Number(c.id);
+        }
+        if (!customerId) return res.json({ ok: false, reason: 'no_shopify_customer', email: sample.customer_email });
+        const shop = process.env.SHOPIFY_SHOP || 'nutrition-lab-cluster.myshopify.com';
+        const token = process.env.SHOPIFY_ACCESS_TOKEN || _shopifyToken;
+        const handle = (req.query.handle || 'lab-subscription-completed');
+        const mutation = `mutation($handle: String, $payload: JSON){ flowTriggerReceive(handle:$handle, payload:$payload){ userErrors{ field message } } }`;
+        const r = await fetch(`https://${shop}/admin/api/2026-01/graphql.json`, {
+            method: 'POST', headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: mutation, variables: { handle, payload: { customer_id: customerId, email: sample.customer_email, product: sample.product_title || 'health' } } })
+        });
+        const d = await r.json().catch(() => ({}));
+        const errs = (d?.data?.flowTriggerReceive?.userErrors) || d?.errors || [];
+        res.json({ ok: r.status === 200 && errs.length === 0, http: r.status, handle, customer_tested: customerId, userErrors: errs, note: 'sin workflows armados, el dispatch es no-op pero confirma que la mutacion es aceptada' });
+    } catch (e) { res.json({ ok: false, error: e.message }); }
+});
+
 /* ── 🔒 PER-CUSTOMER SUBSCRIPTION LIMITS (hardening 2026-04-20) ───────────────
    Previene abuso/fraude/bot-spam/doble-click. Reja al inicio del checkout.
    Reglas (todas juntas):
